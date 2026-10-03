@@ -8,5 +8,7 @@
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RelayRoom"] }],
   // The relay only ever sees ciphertext, but keep request logging off anyway.
-  "observability": { "enabled": false }
+  "observability": { "enabled": false },
+  // 8787 is wrangler's default but also fakechat's; stay clear of it.
+  "dev": { "port": 8789, "ip": "127.0.0.1" }
 }

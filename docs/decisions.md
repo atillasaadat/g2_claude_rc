@@ -217,7 +217,7 @@ The difference is that auto mode opens no permission dialogs, so the channel get
 - **Pairing file.** `~/.g2cc/pairing.json` is 0600 in a 0700 directory and is written atomically.
   - A corrupt file is an error, never a silent re-key.
   - `bun channel/pair.ts [--relay URL] [--rotate]` prints a QR code and the pairing text.
-  - The default relay is `ws://127.0.0.1:8787` (`wrangler dev`) until Phase 8.
+  - The default relay is `ws://127.0.0.1:8789` (`wrangler dev`, configured in `relay/wrangler.jsonc`) until Phase 8. Port 8787 is avoided because fakechat also uses it.
 - Tools added:
   - `channel/tools/feed.ts`, a CLI glasses stand-in
   - `scripts/make-sandbox.sh`, which wires `~/g2cc-sandbox` to the real channel

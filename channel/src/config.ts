@@ -3,8 +3,8 @@ import { basename, join } from 'node:path'
 
 /** Fixed because the hook URLs in settings.json must name it. See docs/decisions.md. */
 export const DEFAULT_PORT = 27183
-/** Local `wrangler dev` until the relay is deployed in Phase 8. */
-export const DEFAULT_RELAY_URL = 'ws://127.0.0.1:8787'
+/** Local `wrangler dev` (port 8789, clear of fakechat's 8787) until the relay is deployed in Phase 8. */
+export const DEFAULT_RELAY_URL = 'ws://127.0.0.1:8789'
 
 export interface ChannelConfig {
   home: string
