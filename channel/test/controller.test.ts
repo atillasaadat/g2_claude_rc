@@ -114,7 +114,7 @@ describe('SessionController: hooks', () => {
     expect(out.map(e => e.kind)).toEqual(['event', 'session'])
   })
 
-  test('answers are ignored until Phase 7', () => {
+  test('answers to unknown questions emit nothing', () => {
     const { c, out } = setup()
     c.onInbound(makeEnvelope('answer', { question_id: 'q1', choice: 'a' }) as AnyEnvelope)
     expect(out).toEqual([])

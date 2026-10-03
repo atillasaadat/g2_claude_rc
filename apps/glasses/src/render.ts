@@ -3,7 +3,7 @@
 
 import { getTextWidth } from '@evenrealities/pretext'
 import { BODY_LINES, INNER_WIDTH, fitLine, wrapLines } from './layout'
-import { FEED_LINES, menuItems, type AppState, type FeedLine, type Link, type PermissionCard } from './state'
+import { FEED_LINES, menuItems, type AppState, type FeedLine, type Link, type PermissionCard, type QuestionCard } from './state'
 
 export interface Frame {
   header: string
@@ -20,6 +20,7 @@ function header(s: AppState): string {
   }
   if (s.screen === 'menu') return fitLine(`Menu${s.session ? ` · ${s.session.name}` : ''}`)
   if (s.screen === 'voice') return VOICE_HEADER[s.voice.phase]
+  if (s.screen === 'question') return fitLine(`Question${s.questions.length > 1 ? ` · 1/${s.questions.length}` : ''}`)
   if (s.screen === 'card' && s.cards[0]) {
     return fitLine(`Allow ${s.cards[0].tool_name}?${s.cards.length > 1 ? ` · 1/${s.cards.length}` : ''}`)
   }
@@ -104,6 +105,18 @@ function voiceBody(s: AppState): string {
   }
 }
 
+/** Body budget: question lines, a blank, then up to 4 options. */
+const QUESTION_LINES = BODY_LINES - 1 - 4
+
+function questionBody(s: AppState, q: QuestionCard): string {
+  const lines = wrapLines(q.question)
+  const shown =
+    lines.length <= QUESTION_LINES
+      ? lines
+      : [...lines.slice(0, QUESTION_LINES - 1), fitLine(`${lines[QUESTION_LINES - 1]} ${lines[QUESTION_LINES]}`)]
+  return [...shown, '', ...q.options.map((o, i) => indent(i === s.questionIndex, o))].join('\n')
+}
+
 const PREVIEW_LINES = 4
 const indent = (selected: boolean, label: string): string => {
   const prefix = selected ? '▶ ' : '   '
@@ -147,6 +160,7 @@ export function render(s: AppState): Frame {
   if (s.screen === 'card' && s.cards[0]) return { header: header(s), body: cardBody(s, s.cards[0]) }
   if (s.screen === 'menu') return { header: header(s), body: menuBody(s) }
   if (s.screen === 'voice') return { header: header(s), body: voiceBody(s) }
+  if (s.screen === 'question' && s.questions[0]) return { header: header(s), body: questionBody(s, s.questions[0]) }
   if (s.screen === 'reply' && s.reply) return { header: header(s), body: s.reply.pages[s.replyPage] ?? '' }
   return { header: header(s), body: feedBody(s) }
 }

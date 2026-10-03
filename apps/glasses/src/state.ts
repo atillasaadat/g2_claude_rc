@@ -5,7 +5,7 @@ import type { AnyEnvelope, Body } from '@g2cc/protocol'
 import { resolveGesture, type Gesture, type GestureMap, type Screen } from './gestures'
 import { paginate } from './layout'
 import { toPlainText } from './plain'
-import { parseVoice } from './voice'
+import { matchOption, parseVoice } from './voice'
 
 export const MAX_EVENTS = 50
 export const FEED_LINES = 4
@@ -21,14 +21,17 @@ export type Link = 'offline' | 'relay' | 'online'
 export const CARD_GUARD_MS = 500
 
 export interface MenuItem {
-  id: 'review' | 'talk' | 'stop'
+  id: 'review' | 'review_question' | 'talk' | 'stop'
   label: string
   available: boolean
 }
 
 /** Feed menu (feed tap). Talk arrives with voice prompts in Phase 6. */
 export function menuItems(s: AppState): MenuItem[] {
-  const review: MenuItem[] = s.cards[0] ? [{ id: 'review', label: `Review: ${s.cards[0].tool_name}`, available: true }] : []
+  const review: MenuItem[] = [
+    ...(s.cards[0] ? [{ id: 'review' as const, label: `Review: ${s.cards[0].tool_name}`, available: true }] : []),
+    ...(s.questions[0] ? [{ id: 'review_question' as const, label: 'Review question', available: true }] : []),
+  ]
   const talk: MenuItem = { id: 'talk', label: s.voiceAvailable ? 'Talk' : 'Talk (no Groq key)', available: s.voiceAvailable }
   return [...review, talk, { id: 'stop', label: 'Stop Claude', available: true }]
 }
@@ -47,6 +50,7 @@ export function micWanted(s: AppState): boolean {
 }
 
 export type PermissionCard = Body<'permission'> & { ts: number }
+export type QuestionCard = Body<'question'> & { ts: number }
 
 export interface FeedLine {
   id: string
@@ -68,7 +72,11 @@ export interface AppState {
   events: readonly FeedLine[]
   glance?: string
   reply?: { text: string; ts: number; pages: readonly string[] }
-  screen: Extract<Screen, 'feed' | 'reply' | 'card' | 'voice'> | 'menu'
+  screen: Extract<Screen, 'feed' | 'reply' | 'card' | 'voice'> | 'menu' | 'question'
+  /** Questions from the ask tool, oldest first. Permission cards outrank them. */
+  questions: readonly QuestionCard[]
+  questionIndex: number
+  questionShownAt: number
   voice: VoiceState
   /** A Groq key is configured. */
   voiceAvailable: boolean
@@ -101,6 +109,7 @@ export type Effect =
   | { type: 'send'; kind: 'stop'; body: Record<string, never> }
   | { type: 'send'; kind: 'verdict'; body: Body<'verdict'> }
   | { type: 'send'; kind: 'prompt'; body: Body<'prompt'> }
+  | { type: 'send'; kind: 'answer'; body: Body<'answer'> }
 
 export interface Result {
   state: AppState
@@ -121,6 +130,9 @@ export function initialState(): AppState {
     cardChoice: 'deny',
     cardShownAt: 0,
     voice: { phase: 'idle', attempt: 0 },
+    questions: [],
+    questionIndex: 0,
+    questionShownAt: 0,
     voiceAvailable: false,
     stopPending: false,
     replyPage: 0,
@@ -189,10 +201,21 @@ function onEnvelope(s: AppState, env: AnyEnvelope, now: number): AppState {
     }
     case 'permission_resolved':
       return dropCard(s, env.body.request_id, now)
+    case 'question': {
+      if (now - env.ts > FRESH_MS) return s
+      if (s.questions.some(q => q.question_id === env.body.question_id)) return s
+      const next = { ...s, questions: [...s.questions, { ...env.body, ts: env.ts }] }
+      // Behind a permission card or an existing question, it waits its turn.
+      return s.screen === 'card' || s.screen === 'question' ? next : showQuestion(next, now, 0)
+    }
     default:
-      // question: Phase 7.
       return s
   }
+}
+
+function showQuestion(s: AppState, now: number, index: number): AppState {
+  const voice: VoiceState = s.voice.phase === 'listening' ? { ...s.voice, phase: 'idle' } : s.voice
+  return { ...s, voice, screen: 'question', questionIndex: index, questionShownAt: now }
 }
 
 function showCard(s: AppState, now: number): AppState {
@@ -202,8 +225,12 @@ function showCard(s: AppState, now: number): AppState {
   return { ...s, voice, screen: 'card', cardChoice: 'deny', cardShownAt: now }
 }
 
-/** Where to go when a card closes: back to a pending voice review, else the feed. */
-const afterCard = (s: AppState): AppState['screen'] => (s.voice.phase === 'review' || s.voice.phase === 'error' ? 'voice' : 'feed')
+/** Where to go when a card closes: a pending voice review, then a waiting question, else the feed. */
+function afterCard(s: AppState, now: number): AppState {
+  if (s.voice.phase === 'review' || s.voice.phase === 'error') return { ...s, screen: 'voice' }
+  if (s.questions[0]) return showQuestion(s, now, 0)
+  return { ...s, screen: 'feed' }
+}
 
 /** Removes a card; if it was on screen, shows the next one or returns to the feed. */
 function dropCard(s: AppState, requestId: string, now: number): AppState {
@@ -212,7 +239,7 @@ function dropCard(s: AppState, requestId: string, now: number): AppState {
   if (cards.length === s.cards.length) return s
   const next = { ...s, cards }
   if (!wasShown) return next
-  return cards.length ? showCard(next, now) : { ...next, screen: afterCard(next) }
+  return cards.length ? showCard(next, now) : afterCard(next, now)
 }
 
 function onGesture(s: AppState, gesture: Gesture, map: GestureMap, now: number): Result {
@@ -238,12 +265,18 @@ function onGesture(s: AppState, gesture: Gesture, map: GestureMap, now: number):
     case 'menu.open':
       return done({ ...s, screen: 'menu', menuIndex: 0 })
     case 'card.prev':
+      if (s.screen === 'question') return done({ ...s, questionIndex: Math.max(0, s.questionIndex - 1) })
       if (s.screen === 'card') return done({ ...s, cardChoice: 'allow' })
       return done(s.screen === 'menu' ? { ...s, menuIndex: Math.max(0, s.menuIndex - 1) } : s)
     case 'card.next':
+      if (s.screen === 'question') {
+        const last = (s.questions[0]?.options.length ?? 1) - 1
+        return done({ ...s, questionIndex: Math.min(last, s.questionIndex + 1) })
+      }
       if (s.screen === 'card') return done({ ...s, cardChoice: 'deny' })
       return done(s.screen === 'menu' ? { ...s, menuIndex: Math.min(menuItems(s).length - 1, s.menuIndex + 1) } : s)
     case 'card.confirm':
+      if (s.screen === 'question') return confirmQuestion(s, now)
       return s.screen === 'card' ? confirmCard(s, now) : confirmMenu(s, now)
     case 'voice.send':
     case 'voice.cancel':
@@ -263,11 +296,22 @@ function confirmCard(s: AppState, now: number): Result {
   return done(dropCard(s, card.request_id, now), [verdict])
 }
 
+function confirmQuestion(s: AppState, now: number): Result {
+  const q = s.questions[0]
+  const choice = q?.options[s.questionIndex]
+  if (!q || choice === undefined || now - s.questionShownAt < CARD_GUARD_MS) return done(s)
+  const rest = { ...s, questions: s.questions.slice(1) }
+  const next = rest.questions[0] ? showQuestion(rest, now, 0) : { ...rest, screen: 'feed' as const }
+  return done(next, [{ type: 'send', kind: 'answer', body: { question_id: q.question_id, choice } }])
+}
+
 function confirmMenu(s: AppState, now: number): Result {
   if (s.screen !== 'menu') return done(s)
   switch (menuItems(s)[s.menuIndex]?.id) {
     case 'review':
       return done(showCard(s, now))
+    case 'review_question':
+      return done(showQuestion(s, now, 0))
     case 'stop':
       return done({ ...s, screen: 'feed', stopPending: true }, [{ type: 'send', kind: 'stop', body: {} }])
     case 'talk':
@@ -325,8 +369,13 @@ function onTranscript(s: AppState, text: string, now: number): Result {
     }
     case 'empty':
       return done(voiceError(s, "Didn't catch that"))
-    case 'prompt':
+    case 'prompt': {
+      // With a question waiting, a spoken option selects it (a tap still confirms).
+      const q = s.questions[0]
+      const option = q && s.screen !== 'card' ? matchOption(cmd.text, q.options) : null
+      if (option !== null) return done(showQuestion({ ...s, voice: { phase: 'idle', attempt: s.voice.attempt } }, now, option))
       return done({ ...s, voice: { phase: 'review', attempt: s.voice.attempt, text: cmd.text } })
+    }
   }
 }
 

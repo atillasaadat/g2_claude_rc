@@ -93,7 +93,7 @@ function litPixels(png: Uint8Array, y0: number, y1: number): number {
   return n
 }
 
-async function send<K extends 'session' | 'event' | 'reply' | 'glance' | 'permission' | 'permission_resolved'>(kind: K, body: Body<K>): Promise<void> {
+async function send<K extends 'session' | 'event' | 'reply' | 'glance' | 'permission' | 'permission_resolved' | 'question'>(kind: K, body: Body<K>): Promise<void> {
   relay.send(await computer.seal(kind, body))
 }
 
@@ -255,5 +255,18 @@ describe.skipIf(!RUN)('glasses app in the simulator', () => {
     await waitFor(async () => inbound.some(e => e.kind === 'prompt'), 'prompt at the computer', 5_000)
     expect(inbound.find(e => e.kind === 'prompt')!.body).toEqual({ text: FAKE_TRANSCRIPT })
     await frameWhere(f => f.header.startsWith('●'), 'back to feed')
+  })
+
+  test('a question card shows the options, and the chosen answer reaches the computer', async () => {
+    await send('question', { question_id: 'q0000abcd', question: 'Which branch should I deploy?', options: ['main', 'dev', 'release'] })
+    const card = await frameWhere(f => f.header === 'Question', 'question card')
+    expect(card.body.split('\n')).toEqual(['Which branch should I deploy?', '', '▶ main', '   dev', '   release'])
+    await screenshot('question')
+    await Bun.sleep(700)
+    await input('down')
+    await frameWhere(f => f.header === 'Question' && f.body.includes('▶ dev'), 'dev highlighted')
+    await input('click')
+    await waitFor(async () => inbound.some(e => e.kind === 'answer'), 'answer at the computer', 5_000)
+    expect(inbound.find(e => e.kind === 'answer')!.body).toEqual({ question_id: 'q0000abcd', choice: 'dev' })
   })
 })

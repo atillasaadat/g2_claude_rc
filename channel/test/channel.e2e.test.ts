@@ -211,6 +211,31 @@ describe('channel feed end to end', () => {
     expect(mcpOut().find(isChannel)!.params).toEqual({ content: 'run the unit tests', meta: { source_kind: 'voice' } })
   })
 
+  test('ask shows a question on the glasses and the chosen answer returns as a channel event', async () => {
+    received.length = 0
+    mcpSend({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'ask', arguments: { question: 'Which branch?', options: ['main', 'dev'] } } })
+    await until(() => received.some(e => e.kind === 'question'))
+    const q = received.find(e => e.kind === 'question')!.body as { question_id: string; question: string; options: string[] }
+    expect(q).toMatchObject({ question: 'Which branch?', options: ['main', 'dev'] })
+    const result = mcpOut().find(m => m.id === 3) as { result: { content: Array<{ text: string }> } }
+    expect(result.result.content[0]!.text).toContain(q.question_id)
+
+    glassesRelay!.send(await glasses.seal('answer', { question_id: q.question_id, choice: 'dev' }))
+    const isAnswer = (m: Record<string, unknown>) =>
+      m.method === 'notifications/claude/channel' && (m.params as { meta?: { question_id?: string } }).meta?.question_id === q.question_id
+    await until(() => mcpOut().some(isAnswer))
+    expect(mcpOut().find(isAnswer)!.params).toEqual({
+      content: 'The user answered your question "Which branch?": dev',
+      meta: { question_id: q.question_id, source_kind: 'answer' },
+    })
+  })
+
+  test('AskUserQuestion is redirected while the glasses are connected', async () => {
+    const res = await hook({ hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: {} })
+    const body = (await res.json()) as { hookSpecificOutput?: { permissionDecision?: string } }
+    expect(body.hookSpecificOutput?.permissionDecision).toBe('deny')
+  })
+
   test('the MCP side advertises the channel and permission capabilities and instructions', async () => {
     const init = mcpOut().find(m => m.id === 1) as { result: { capabilities: { experimental: Record<string, unknown> }; instructions: string } }
     expect(init.result.capabilities.experimental['claude/channel']).toEqual({})

@@ -26,9 +26,9 @@ export const DEFAULT_GESTURES: GestureMap = {
   voice: { tap: 'voice.send', double_tap: 'voice.cancel', scroll_up: 'none', scroll_down: 'none' },
 }
 
-/** The feed menu is a small card, so it shares the card row of the map. */
-export function resolveGesture(map: GestureMap, screen: Screen | 'menu', gesture: Gesture): Action {
-  return map[screen === 'menu' ? 'card' : screen][gesture]
+/** The feed menu and question cards are cards too, so they share the card row of the map. */
+export function resolveGesture(map: GestureMap, screen: Screen | 'menu' | 'question', gesture: Gesture): Action {
+  return map[screen === 'menu' || screen === 'question' ? 'card' : screen][gesture]
 }
 
 /** Returns human-readable problems; empty means valid. */

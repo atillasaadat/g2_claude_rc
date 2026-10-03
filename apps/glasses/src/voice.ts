@@ -42,3 +42,40 @@ export function parseVoice(transcript: string): VoiceCommand {
 
   return { type: 'prompt', text: transcript.trim() }
 }
+
+const ORDINALS: Record<string, number> = { first: 0, second: 1, third: 2, fourth: 3 }
+const NUMBERS: Record<string, number> = { one: 0, two: 1, three: 2, four: 3, '1': 0, '2': 1, '3': 2, '4': 3 }
+const normalize = (t: string): string =>
+  t
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+/**
+ * Maps a spoken answer to a question option: the option's text, or its
+ * position ("the second one", "option 3"). Returns null unless exactly one
+ * option matches, so an ambiguous answer never picks for the user.
+ */
+export function matchOption(transcript: string, options: readonly string[]): number | null {
+  const said = normalize(transcript)
+  if (!said) return null
+  const opts = options.map(normalize)
+  const exact = opts.indexOf(said)
+  if (exact >= 0) return exact
+
+  // Positions only count in short answers ("the first one", "option 3"), so a
+  // sentence like "run the tests first" is never read as a choice.
+  const words = said.split(' ')
+  const short = words.length <= 4
+  const ordinal = short ? words.map(w => ORDINALS[w]).find(i => i !== undefined) : undefined
+  const number = short ? words.map(w => NUMBERS[w]).find(i => i !== undefined) : undefined
+  const position = ordinal ?? number
+  if (position !== undefined) return position < options.length ? position : null
+
+  const hits = new Set<number>()
+  opts.forEach((o, i) => {
+    if ((said.length >= 3 && o.includes(said)) || (o.length >= 3 && said.includes(o))) hits.add(i)
+  })
+  return hits.size === 1 ? [...hits][0]! : null
+}

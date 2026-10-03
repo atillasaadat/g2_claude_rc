@@ -60,6 +60,7 @@
   },
   "permissions": {
     "allow": [
+      "mcp__g2__ask",
       "mcp__g2__glance"
     ]
   }

@@ -23,7 +23,8 @@ type C2GKind = (typeof C2G_KINDS)[number]
 export const INSTRUCTIONS = [
   'The user may be following this session on Even Realities G2 smart glasses, which show a live feed of your tool calls and your final reply.',
   'Messages wrapped in <channel source="g2"> were spoken by the user through the glasses and transcribed by speech recognition, so they can contain transcription errors.',
-  'Treat them as the user\'s own prompts. If a spoken request is ambiguous, or would do something destructive or hard to undo, ask the user to confirm before acting.',
+  'Treat them as the user\'s own prompts. If a spoken request is ambiguous, or would do something destructive or hard to undo, confirm with the ask tool before acting.',
+  'When you need the user to make a decision, call the ask tool (a question and 2 to 4 short options) instead of AskUserQuestion, then end your turn. The answer arrives as a <channel source="g2"> message with a question_id attribute.',
   `At the end of each turn, call the glance tool with a one-line plain-text summary (at most ${GLANCE_MAX} characters) of what you did or what you need from the user.`,
 ].join(' ')
 
@@ -63,12 +64,17 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
     onStatus: s => {
       log(`relay ${s}`)
       if (s === 'open') controller.resync()
+      if (s === 'closed') {
+        glassesPresent = 0
+        controller.setGlassesPresent(false)
+      }
     },
     onPresence: p => {
       // A glasses socket joined: re-send state and pending requests with fresh
       // timestamps, since the glasses ignore stale permission cards from history.
       if (p.glasses > glassesPresent) controller.resync()
       glassesPresent = p.glasses
+      controller.setGlassesPresent(p.glasses > 0)
     },
     onRateLimited: () => log('relay rate limit hit'),
     onFrame: async frame => {
@@ -90,6 +96,14 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
       void mcp
         .notification({ method: 'notifications/claude/channel', params: { content: text, meta: { source_kind: 'voice' } } })
         .catch(err => log(`prompt not delivered: ${(err as Error).message}`))
+    },
+    sendAnswer: (content, questionId) => {
+      void mcp
+        .notification({
+          method: 'notifications/claude/channel',
+          params: { content, meta: { question_id: questionId, source_kind: 'answer' } },
+        })
+        .catch(err => log(`answer not delivered: ${(err as Error).message}`))
     },
     sendVerdict: (request_id, behavior) => {
       void mcp
@@ -118,6 +132,19 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
   mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [
       {
+        name: 'ask',
+        description:
+          "Ask the user a multiple-choice question on their smart glasses. Returns immediately; end your turn afterwards. The user's choice arrives later as a channel message with the question_id.",
+        inputSchema: {
+          type: 'object',
+          properties: {
+            question: { type: 'string', description: 'Short question, one or two lines.' },
+            options: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 4, description: '1 to 4 short options.' },
+          },
+          required: ['question', 'options'],
+        },
+      },
+      {
         name: 'glance',
         description: `Show a one-line status (at most ${GLANCE_MAX} characters) on the user's smart glasses. Call it at the end of each turn.`,
         inputSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
@@ -125,6 +152,10 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
     ],
   }))
   mcp.setRequestHandler(CallToolRequestSchema, async req => {
+    if (req.params.name === 'ask') {
+      const r = controller.onAsk(req.params.arguments)
+      return { content: [{ type: 'text', text: r.ok && !relay.isOpen ? `${r.text} (Relay offline: delivered when it reconnects.)` : r.text }], isError: !r.ok }
+    }
     if (req.params.name !== 'glance') throw new Error(`unknown tool ${req.params.name}`)
     const text = (req.params.arguments as { text?: unknown } | undefined)?.text
     if (typeof text !== 'string' || !text.trim()) throw new Error('glance needs non-empty text')

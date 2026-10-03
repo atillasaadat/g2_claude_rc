@@ -369,3 +369,29 @@ The difference is that auto mode opens no permission dialogs, so the channel get
   - Timeline: `Listening…` 08:19:59, `Transcribing…` 08:20:08.4, `Send to Claude?` with the exact text at 08:20:08.9 (about 0.5 s on Groq).
   - Send: the channel injected the prompt, the hooks reported it with `origin: glasses`, and Claude ran `ls -la` and replied. The reply opened on the glasses.
 - **Phase 6 status: done.**
+
+## Phase 7: ask tool (2026-10-03)
+
+- **`ask({question, options})`** is an MCP tool on the g2 channel. It validates the input (a non-empty question and 1 to 4 non-empty options), redacts and clips it (question 500 characters, options 100), stores it under a random `question_id` (`q` plus 8 hex), and sends a `question` envelope.
+  - It **returns immediately** with text telling Claude to end its turn and that the answer will arrive as a channel message carrying `question_id`. Channel events are only delivered between turns, so Claude must not wait mid-turn.
+  - If the relay is offline, the result says the question will be delivered when it reconnects.
+- **Answers:**
+  - Only a choice that is one of the offered options is accepted, and only once.
+  - It is delivered as `notifications/claude/channel`. The content is `The user answered your question "<q>": <choice>`, and `meta` holds `question_id` and `source_kind: answer`.
+  - Pending questions are **not** cleared by UserPromptSubmit or Stop, because the answer itself arrives as a prompt. They are re-sent on resync.
+- **AskUserQuestion redirect (refines CLAUDE.md):** PreToolUse denies AskUserQuestion with a reason pointing at `mcp__g2__ask` **only while a glasses socket is present**, according to relay presence. Without glasses, the native dialog (terminal or RC app) is the better UI, so it is left alone.
+- `settings.example.json` allows `mcp__g2__ask` and `mcp__g2__glance`. The instructions tell Claude to use `ask` for decisions and for confirming ambiguous or destructive spoken requests.
+- **Glasses question card:**
+  - It is its own screen and queue, using the card gesture row and the 500 ms input guard.
+  - The highlight starts on the first option, since no option is inherently dangerous.
+  - Permission cards outrank questions. A question that arrives behind a permission card waits, and comes back when the card closes. The menu shows `Review question` while one is pending.
+- **Spoken answers:** after Talk, `matchOption` maps the transcript to an option.
+  - Exact text matches.
+  - Positions count in short answers of 4 words or fewer ("the second one", "option 3"). "run the tests first" is not a choice.
+  - Otherwise a unique containment match.
+  - An ambiguous answer matches nothing and stays a prompt for review. A match only highlights the option; a tap still confirms.
+- **Tests:**
+  - 16 channel ask and redirect tests.
+  - Channel end to end: `tools/call ask`, then a question at the glasses, an answer, and a channel notification with `meta.question_id`, plus the redirect.
+  - 26 glasses question and matching tests.
+  - A simulator test: question card, swipe down, tap, answer at the computer.

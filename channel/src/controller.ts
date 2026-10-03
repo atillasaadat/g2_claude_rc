@@ -12,6 +12,10 @@
 // pending. Claude Code never says when a request was settled in the terminal
 // or on the phone, so PostToolUse of the same tool, the end of the turn, or a
 // new prompt resolves it (docs/decisions.md, check #8).
+//
+// Questions (Phase 7): the ask tool sends a question card and returns at
+// once. Channel events only arrive between turns, so Claude ends its turn and
+// the answer comes back as a channel message carrying question_id.
 
 import { z } from 'zod'
 import { REQUEST_ID_RE, type AnyEnvelope, type Body, type C2G_KINDS } from '@g2cc/protocol'
@@ -43,6 +47,20 @@ const PermissionRequest = z.object({
 type Pending = Body<'permission'>
 
 export const PREVIEW_MAX = 2000
+export const OPTION_MAX = 100
+
+export const ASK_DENY_REASON =
+  'The user is following this session on smart glasses and cannot see this dialog. Call the mcp__g2__ask tool with the question and 2 to 4 short options instead, then end your turn: the answer arrives as a channel message.'
+
+const AskInput = z.object({
+  question: z.string().trim().min(1),
+  options: z.array(z.string().trim().min(1)).min(1).max(4),
+})
+
+export type AskResult = { ok: boolean; text: string }
+
+const newQuestionId = (): string =>
+  'q' + Array.from(crypto.getRandomValues(new Uint8Array(4)), b => b.toString(16).padStart(2, '0')).join('')
 
 export interface ControllerOptions {
   /** CLAUDE_CODE_SESSION_ID. When unknown, hooks from any session are accepted. */
@@ -54,6 +72,8 @@ export interface ControllerOptions {
   sendVerdict?: (requestId: string, behavior: 'allow' | 'deny') => void
   /** Injects a confirmed voice prompt as a notifications/claude/channel event. */
   sendPrompt?: (text: string) => void
+  /** Injects the answer to an ask question as a channel event with meta.question_id. */
+  sendAnswer?: (content: string, questionId: string) => void
 }
 
 export class SessionController {
@@ -61,6 +81,8 @@ export class SessionController {
   private stopRequested = false
   /** Insertion-ordered, so the oldest request of a tool resolves first. */
   private readonly pending = new Map<string, Pending>()
+  private readonly questions = new Map<string, Body<'question'>>()
+  private glassesPresent = false
 
   constructor(private readonly opts: ControllerOptions) {
     this.tracker = new SessionTracker({ name: opts.name, cwd: opts.cwd })
@@ -82,6 +104,31 @@ export class SessionController {
   resync(): void {
     this.emitSession(this.tracker.snapshot())
     for (const p of this.pending.values()) this.opts.emit({ kind: 'permission', body: p })
+    for (const q of this.questions.values()) this.opts.emit({ kind: 'question', body: q })
+  }
+
+  /** AskUserQuestion is only redirected to the glasses while they are connected. */
+  setGlassesPresent(present: boolean): void {
+    this.glassesPresent = present
+  }
+
+  onAsk(input: unknown): AskResult {
+    const parsed = AskInput.safeParse(input)
+    if (!parsed.success) return { ok: false, text: 'ask needs a non-empty question and 1 to 4 non-empty options.' }
+    const question_id = newQuestionId()
+    const body: Body<'question'> = {
+      question_id,
+      question: clip(oneLine(redact(parsed.data.question)), 500),
+      options: parsed.data.options.map(o => clip(oneLine(redact(o)), OPTION_MAX)),
+    }
+    this.questions.set(question_id, body)
+    this.opts.emit({ kind: 'question', body })
+    return {
+      ok: true,
+      text:
+        `Asked on the user's glasses (question_id=${question_id}). Do not wait or call ask again: end your turn now. ` +
+        `The answer arrives later as a <channel source="g2"> message with question_id="${question_id}".`,
+    }
   }
 
   onPermissionRequest(params: unknown): void {
@@ -125,6 +172,12 @@ export class SessionController {
         this.note(STOP_REASON)
       }
       return STOP_RESPONSE
+    }
+
+    if (p.hook_event_name === 'PreToolUse' && p.tool_name === 'AskUserQuestion' && this.glassesPresent) {
+      return {
+        hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: ASK_DENY_REASON },
+      }
     }
 
     // After a halt, only a new prompt leaves 'stopped' (idle notifications do not).
@@ -175,8 +228,15 @@ export class SessionController {
         if (state === 'working' || state === 'waiting') this.note('Queued for the next turn: Claude is busy')
         return
       }
+      case 'answer': {
+        const q = this.questions.get(env.body.question_id)
+        // Only one of the offered options, and only once.
+        if (!q || !q.options.includes(env.body.choice)) return
+        this.questions.delete(q.question_id)
+        this.opts.sendAnswer?.(`The user answered your question "${q.question}": ${env.body.choice}`, q.question_id)
+        return
+      }
       default:
-        // answer: Phase 7.
         return
     }
   }
