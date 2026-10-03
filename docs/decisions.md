@@ -267,3 +267,26 @@ The difference is that auto mode opens no permission dialogs, so the channel get
   - **Replies are converted from Markdown to plain text** (`src/plain.ts`) before pagination. Emphasis, inline code, links, headings, rules, fences and quotes are stripped, and list markers become `•`. The same reply went from 4 pages to 3.
   - **A fresh prompt returns to the feed.** While the user was reading the previous reply, a whole new turn streamed into a feed they could not see. Replayed old prompts do not switch screens.
 - **Phase 3 status: done.**
+
+## Phase 4: stop (2026-10-03)
+
+- **Trigger (user's choice, option a):** feed tap opens a menu with `Talk` and `Stop Claude`.
+  - Talk shows "(coming soon)" until Phase 6.
+  - The menu shares the **card** row of the gesture map: scroll moves the highlight, tap selects, double tap goes back. So there is no new row in the editor.
+  - Stored Phase 3 maps (`feed.tap = voice.start`) remain valid.
+- **Channel:** hook and stop logic moved into `SessionController` (`channel/src/controller.ts`), which is transport-free and unit-tested.
+  - `stop` sets a flag **only while Claude is working or waiting**. When Claude is idle, the controller replies "Nothing to stop" and re-sends the session, so a stray stop can never block the next turn's first tool.
+  - **Stop applies even while a permission prompt is open** (state `waiting`).
+  - The next PreToolUse gets `continue: false` plus PreToolUse `permissionDecision: "deny"`. The flag stays up until the next UserPromptSubmit, so **every call in a parallel batch is denied**. Denied calls are not reported as `tool_start`.
+  - The channel sets `state: stopped` and posts "Stopped from glasses" itself, because the Stop hook does not fire after a halt. `stopped` is sticky: idle notifications do not overwrite it. Only a new prompt does.
+  - Stops addressed to another session (`sid` mismatch) are ignored.
+- **Glasses:**
+  - The header shows `■ stopping…` from send until a session update says `idle` or `stopped`, or a fresh prompt arrives.
+  - The stop is sealed with the glasses `SecureChannel` and buffered by the relay client if offline.
+  - The relay keeps commands for 60 s if the channel is briefly away.
+- **Known limit:** a stop only takes effect at the next tool call. A turn that is only generating text finishes normally. Stopping a pending permission prompt by auto-denying it belongs with Phase 5.
+- **Tests:**
+  - 12 controller unit tests.
+  - Channel end to end: a glasses `stop` over `wrangler dev` makes the next PreToolUse return the stop JSON, then a new prompt clears it.
+  - Glasses: menu, stop and stopping tests.
+  - Simulator: tap, down and tap send a valid `stop` to the computer side.

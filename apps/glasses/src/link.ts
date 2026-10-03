@@ -1,16 +1,18 @@
 // The glasses side of the encrypted relay link.
 
-import { RelayClient, SecureChannel, type AnyEnvelope, type Pairing } from '@g2cc/protocol'
+import { RelayClient, SecureChannel, type AnyEnvelope, type Body, type OutKind, type Pairing } from '@g2cc/protocol'
 import type { Msg } from './state'
 
 export class Link {
   private relay: RelayClient | null = null
+  private secure: SecureChannel<'glasses'> | null = null
 
   constructor(private readonly dispatch: (msg: Msg) => void) {}
 
   async connect(pairing: Pairing): Promise<void> {
     this.disconnect()
     const secure = await SecureChannel.create(pairing.key, 'glasses')
+    this.secure = secure
     const url = `${pairing.relayUrl.replace(/\/+$/, '')}/v1/room/${secure.roomId}?role=glasses`
     this.relay = new RelayClient({
       url,
@@ -25,9 +27,16 @@ export class Link {
     this.relay.start()
   }
 
+  /** Seals and sends a command. Buffered by the relay client while offline. */
+  async send<K extends OutKind<'glasses'>>(kind: K, body: Body<K>): Promise<void> {
+    if (!this.secure || !this.relay) throw new Error('not paired')
+    this.relay.send(await this.secure.seal(kind, body))
+  }
+
   disconnect(): void {
     this.relay?.stop()
     this.relay = null
+    this.secure = null
     this.dispatch({ type: 'relay', status: 'closed' })
   }
 }

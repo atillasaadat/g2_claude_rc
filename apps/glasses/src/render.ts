@@ -1,8 +1,9 @@
 // Pure rendering: AppState -> the text of the two containers. Every line is
 // measured with pretext so nothing ever wraps or overflows on the glasses.
 
-import { BODY_LINES, fitLine } from './layout'
-import { FEED_LINES, type AppState, type FeedLine, type Link } from './state'
+import { getTextWidth } from '@evenrealities/pretext'
+import { BODY_LINES, INNER_WIDTH, fitLine } from './layout'
+import { FEED_LINES, MENU_ITEMS, type AppState, type FeedLine, type Link } from './state'
 
 export interface Frame {
   header: string
@@ -17,9 +18,11 @@ function header(s: AppState): string {
   if (s.screen === 'reply' && s.reply) {
     return fitLine(`Reply ${s.replyPage + 1}/${s.reply.pages.length} · ↑↓ pages${s.session ? ` · ${s.session.name}` : ''}`)
   }
+  if (s.screen === 'menu') return fitLine(`Menu${s.session ? ` · ${s.session.name}` : ''}`)
   if (!s.session) return fitLine(`${DOT[s.link]} waiting for Claude Code`)
   const { name, state, mode } = s.session
-  return fitLine(`${DOT[s.link]} ${name} · ${state}${mode ? ` · ${mode}` : ''}`)
+  const status = s.stopPending ? '■ stopping…' : `${state}${mode ? ` · ${mode}` : ''}`
+  return fitLine(`${DOT[s.link]} ${name} · ${status}`)
 }
 
 function eventLine(e: FeedLine): string {
@@ -60,8 +63,19 @@ function unpairedBody(): string {
     .join('\n')
 }
 
+function menuBody(s: AppState): string {
+  const items = MENU_ITEMS.map((item, i) => {
+    const label = item.available ? item.label : `${item.label} (coming soon)`
+    // fitLine trims, so the indent goes outside it and the label gets the remaining width.
+    const prefix = i === s.menuIndex ? '▶ ' : '   '
+    return prefix + fitLine(label, INNER_WIDTH - getTextWidth(prefix))
+  })
+  return [...items, '', fitLine('tap: select · double tap: back')].join('\n')
+}
+
 export function render(s: AppState): Frame {
   if (!s.paired) return { header: header(s), body: unpairedBody() }
+  if (s.screen === 'menu') return { header: header(s), body: menuBody(s) }
   if (s.screen === 'reply' && s.reply) return { header: header(s), body: s.reply.pages[s.replyPage] ?? '' }
   return { header: header(s), body: feedBody(s) }
 }

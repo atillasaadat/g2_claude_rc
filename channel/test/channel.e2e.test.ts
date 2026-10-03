@@ -10,6 +10,7 @@ import { SecureChannel, type AnyEnvelope } from '@g2cc/protocol'
 import { relaySocketUrl } from '../src/config'
 import { loadOrCreatePairing } from '../src/pairing-store'
 import { RelayClient } from '@g2cc/protocol'
+import { STOP_RESPONSE } from '../src/controller'
 
 const ROOT = join(import.meta.dir, '..', '..')
 const SESSION = '11111111-2222-3333-4444-555555555555'
@@ -41,6 +42,7 @@ async function waitFor(url: string, ms = 60_000): Promise<void> {
 
 const received: AnyEnvelope[] = []
 let glassesRelay: RelayClient | null = null
+let glasses: SecureChannel<'glasses'>
 
 async function until(pred: () => boolean, ms = 8_000): Promise<void> {
   const end = Date.now() + ms
@@ -106,7 +108,7 @@ beforeAll(async () => {
   }
 
   const pairing = await loadOrCreatePairing(home)
-  const glasses = await SecureChannel.create(pairing.key, 'glasses')
+  glasses = await SecureChannel.create(pairing.key, 'glasses')
   glassesRelay = new RelayClient({
     url: relaySocketUrl(relayUrl, glasses.roomId, 'glasses'),
     onFrame: async f => {
@@ -165,6 +167,22 @@ describe('channel feed end to end', () => {
     mcpSend({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'glance', arguments: { text: 'Deployed v2, all green' } } })
     await until(() => received.some(e => e.kind === 'glance'))
     expect(received.find(e => e.kind === 'glance')!.body).toEqual({ text: 'Deployed v2, all green' })
+  })
+
+  test('stop from the glasses halts the next tool call', async () => {
+    await hook({ hook_event_name: 'UserPromptSubmit', prompt: 'long task' })
+    received.length = 0
+    glassesRelay!.send(await glasses.seal('stop', {}))
+    await until(() => JSON.stringify(received).includes('Stop requested'))
+
+    const res = await hook({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'sleep 9' } })
+    expect(await res.json()).toEqual(STOP_RESPONSE)
+    await until(() => received.some(e => e.kind === 'session' && e.body.state === 'stopped'))
+
+    // The next prompt clears it.
+    await hook({ hook_event_name: 'UserPromptSubmit', prompt: 'carry on' })
+    const next = await hook({ hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: 'a' } })
+    expect(await next.json()).toEqual({})
   })
 
   test('the MCP side advertises the channel capability and instructions', async () => {

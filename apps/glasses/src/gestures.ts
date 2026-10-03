@@ -10,7 +10,7 @@ export type Gesture = (typeof GESTURES)[number]
 
 /** Actions each screen understands. 'none' is always allowed. */
 export const ACTIONS = {
-  feed: ['none', 'voice.start', 'app.exit', 'feed.older', 'feed.newer', 'reply.open'],
+  feed: ['none', 'menu.open', 'voice.start', 'app.exit', 'feed.older', 'feed.newer', 'reply.open'],
   reply: ['none', 'nav.back', 'page.prev', 'page.next'],
   card: ['none', 'nav.back', 'card.prev', 'card.next', 'card.confirm'],
   voice: ['none', 'voice.send', 'voice.cancel'],
@@ -20,14 +20,15 @@ export type Action = (typeof ACTIONS)[Screen][number]
 export type GestureMap = { [S in Screen]: Record<Gesture, (typeof ACTIONS)[S][number]> }
 
 export const DEFAULT_GESTURES: GestureMap = {
-  feed: { tap: 'voice.start', double_tap: 'app.exit', scroll_up: 'feed.older', scroll_down: 'feed.newer' },
+  feed: { tap: 'menu.open', double_tap: 'app.exit', scroll_up: 'feed.older', scroll_down: 'feed.newer' },
   reply: { tap: 'none', double_tap: 'nav.back', scroll_up: 'page.prev', scroll_down: 'page.next' },
   card: { tap: 'card.confirm', double_tap: 'nav.back', scroll_up: 'card.prev', scroll_down: 'card.next' },
   voice: { tap: 'voice.send', double_tap: 'voice.cancel', scroll_up: 'none', scroll_down: 'none' },
 }
 
-export function resolveGesture(map: GestureMap, screen: Screen, gesture: Gesture): Action {
-  return map[screen][gesture]
+/** The feed menu is a small card, so it shares the card row of the map. */
+export function resolveGesture(map: GestureMap, screen: Screen | 'menu', gesture: Gesture): Action {
+  return map[screen === 'menu' ? 'card' : screen][gesture]
 }
 
 /** Returns human-readable problems; empty means valid. */

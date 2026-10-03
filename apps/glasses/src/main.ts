@@ -1,5 +1,5 @@
-// G2 Claude Code: glasses app entry. Phase 3 shows the live feed and reply
-// view. Voice (Phase 6), permission and question cards (Phases 5, 7) come later.
+// G2 Claude Code: glasses app entry. Feed, reply view, and a feed menu with
+// Stop (Phase 4). Voice (Phase 6), permission and question cards (5, 7) come later.
 
 import { waitForEvenAppBridge } from '@evenrealities/even_hub_sdk'
 import { fromBase64Url } from '@g2cc/protocol'
@@ -35,6 +35,9 @@ function dispatch(msg: Msg): void {
   paint()
   for (const effect of result.effects) {
     if (effect.type === 'exit') void bridge.shutDownPageContainer(1)
+    if (effect.type === 'send') {
+      link.send(effect.kind, effect.body).catch(err => log(`could not send ${effect.kind}:`, (err as Error).message))
+    }
   }
 }
 

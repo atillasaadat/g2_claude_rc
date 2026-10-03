@@ -16,6 +16,12 @@ export const FRESH_MS = 60_000
 
 export type Link = 'offline' | 'relay' | 'online'
 
+/** Feed menu (feed tap). Talk arrives with voice prompts in Phase 6. */
+export const MENU_ITEMS = [
+  { id: 'talk', label: 'Talk', available: false },
+  { id: 'stop', label: 'Stop Claude', available: true },
+] as const
+
 export interface FeedLine {
   id: string
   ts: number
@@ -36,7 +42,10 @@ export interface AppState {
   events: readonly FeedLine[]
   glance?: string
   reply?: { text: string; ts: number; pages: readonly string[] }
-  screen: Extract<Screen, 'feed' | 'reply'>
+  screen: Extract<Screen, 'feed' | 'reply'> | 'menu'
+  menuIndex: number
+  /** A stop was sent and the channel has not yet reported idle or stopped. */
+  stopPending: boolean
   replyPage: number
   /** How many events back from the newest the feed is scrolled. */
   feedOffset: number
@@ -49,7 +58,7 @@ export type Msg =
   | { type: 'gesture'; gesture: Gesture; map: GestureMap }
   | { type: 'paired'; paired: boolean }
 
-export type Effect = { type: 'exit' }
+export type Effect = { type: 'exit' } | { type: 'send'; kind: 'stop'; body: Record<string, never> }
 
 export interface Result {
   state: AppState
@@ -65,6 +74,8 @@ export function initialState(): AppState {
     sessionTs: 0,
     events: [],
     screen: 'feed',
+    menuIndex: 0,
+    stopPending: false,
     replyPage: 0,
     feedOffset: 0,
   }
@@ -97,14 +108,20 @@ function onEvent(s: AppState, env: Extract<AnyEnvelope, { kind: 'event' }>, now:
         : { id: env.id, ts: env.ts, type: 'notify', summary: b.summary }
   const next = { ...s, events: appendEvent(s.events, line) }
   // A new turn takes the user back to the live feed. Replayed history does not.
-  return b.type === 'prompt' && now - env.ts <= FRESH_MS ? { ...next, screen: 'feed', feedOffset: 0 } : next
+  return b.type === 'prompt' && now - env.ts <= FRESH_MS ? { ...next, screen: 'feed', feedOffset: 0, stopPending: false } : next
 }
 
 function onEnvelope(s: AppState, env: AnyEnvelope, now: number): AppState {
   switch (env.kind) {
     case 'session':
       // History may replay older session frames after newer ones.
-      return env.ts < s.sessionTs ? s : { ...s, session: env.body, sessionTs: env.ts }
+      if (env.ts < s.sessionTs) return s
+      return {
+        ...s,
+        session: env.body,
+        sessionTs: env.ts,
+        stopPending: s.stopPending && env.body.state !== 'idle' && env.body.state !== 'stopped',
+      }
     case 'event':
       return onEvent(s, env, now)
     case 'glance':
@@ -142,6 +159,18 @@ function onGesture(s: AppState, gesture: Gesture, map: GestureMap): Result {
       return done({ ...s, replyPage: Math.min(lastPage, s.replyPage + 1) })
     case 'nav.back':
       return done({ ...s, screen: 'feed' })
+    case 'menu.open':
+      return done({ ...s, screen: 'menu', menuIndex: 0 })
+    case 'card.prev':
+      return done(s.screen === 'menu' ? { ...s, menuIndex: Math.max(0, s.menuIndex - 1) } : s)
+    case 'card.next':
+      return done(s.screen === 'menu' ? { ...s, menuIndex: Math.min(MENU_ITEMS.length - 1, s.menuIndex + 1) } : s)
+    case 'card.confirm': {
+      if (s.screen !== 'menu') return done(s)
+      const item = MENU_ITEMS[s.menuIndex]
+      if (item?.id !== 'stop') return done(s) // Talk: not available yet
+      return done({ ...s, screen: 'feed', stopPending: true }, [{ type: 'send', kind: 'stop', body: {} }])
+    }
     default:
       // 'none', and actions for screens added in later phases (voice, cards).
       return done(s)

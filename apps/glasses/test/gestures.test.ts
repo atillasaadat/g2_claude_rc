@@ -7,7 +7,7 @@ describe('default gesture map', () => {
   })
 
   test('matches the agreed defaults', () => {
-    expect(resolveGesture(DEFAULT_GESTURES, 'feed', 'tap')).toBe('voice.start')
+    expect(resolveGesture(DEFAULT_GESTURES, 'feed', 'tap')).toBe('menu.open')
     expect(resolveGesture(DEFAULT_GESTURES, 'feed', 'double_tap')).toBe('app.exit')
     expect(resolveGesture(DEFAULT_GESTURES, 'card', 'scroll_down')).toBe('card.next')
     expect(resolveGesture(DEFAULT_GESTURES, 'card', 'tap')).toBe('card.confirm')
@@ -51,5 +51,19 @@ describe('parseGestureMap', () => {
     expect(parseGestureMap('{nope')).toEqual(DEFAULT_GESTURES)
     expect(parseGestureMap(JSON.stringify({ ...DEFAULT_GESTURES, feed: { ...DEFAULT_GESTURES.feed, tap: 'rm -rf' } }))).toEqual(DEFAULT_GESTURES)
     expect(parseGestureMap(JSON.stringify({ ...DEFAULT_GESTURES, feed: { ...DEFAULT_GESTURES.feed, double_tap: 'none' } }))).toEqual(DEFAULT_GESTURES)
+  })
+})
+
+describe('menu gestures', () => {
+  test('feed tap opens the menu by default, and the menu uses card gestures', () => {
+    expect(resolveGesture(DEFAULT_GESTURES, 'feed', 'tap')).toBe('menu.open')
+    expect(resolveGesture(DEFAULT_GESTURES, 'menu', 'scroll_down')).toBe('card.next')
+    expect(resolveGesture(DEFAULT_GESTURES, 'menu', 'tap')).toBe('card.confirm')
+    expect(resolveGesture(DEFAULT_GESTURES, 'menu', 'double_tap')).toBe('nav.back')
+  })
+
+  test('a Phase 3 map with feed tap on voice.start is still valid', () => {
+    const old = { ...DEFAULT_GESTURES, feed: { ...DEFAULT_GESTURES.feed, tap: 'voice.start' as const } }
+    expect(validateGestureMap(old)).toEqual([])
   })
 })

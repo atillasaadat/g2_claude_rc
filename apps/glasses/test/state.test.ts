@@ -132,7 +132,8 @@ describe('reduce: gestures', () => {
   })
 
   test('voice.start is a no-op until Phase 6', () => {
-    const r = reduce(initialState(), { type: 'gesture', gesture: 'tap', map: DEFAULT_GESTURES })
+    const map = { ...DEFAULT_GESTURES, feed: { ...DEFAULT_GESTURES.feed, tap: 'voice.start' as const } }
+    const r = reduce(initialState(), { type: 'gesture', gesture: 'tap', map })
     expect(r.state.screen).toBe('feed')
     expect(r.effects).toEqual([])
   })
@@ -157,5 +158,61 @@ describe('reduce: new turns', () => {
   test('replies are shown as plain text', () => {
     const s = recv(initialState(), env('reply', { text: '**Done.** Ran `bun test`.' })).state
     expect(s.reply?.pages[0]).toBe('Done. Ran bun test.')
+  })
+})
+
+describe('reduce: menu and stop', () => {
+  const working = () => recv(initialState(), env('session', { name: 'repo', cwd: '/r', state: 'working' })).state
+  const g = (s: AppState, gest: 'tap' | 'double_tap' | 'scroll_up' | 'scroll_down') =>
+    reduce(s, { type: 'gesture', gesture: gest, map: DEFAULT_GESTURES })
+
+  test('feed tap opens the menu with Talk highlighted', () => {
+    const s = g(working(), 'tap').state
+    expect(s.screen).toBe('menu')
+    expect(s.menuIndex).toBe(0)
+  })
+
+  test('menu scroll moves the highlight within bounds, double tap goes back', () => {
+    let s = g(working(), 'tap').state
+    s = g(s, 'scroll_down').state
+    expect(s.menuIndex).toBe(1)
+    s = g(s, 'scroll_down').state
+    expect(s.menuIndex).toBe(1)
+    s = g(s, 'scroll_up').state
+    s = g(s, 'scroll_up').state
+    expect(s.menuIndex).toBe(0)
+    expect(g(s, 'double_tap').state.screen).toBe('feed')
+  })
+
+  test('choosing Stop sends stop, returns to the feed, and marks stopping', () => {
+    let s = g(working(), 'tap').state
+    s = g(s, 'scroll_down').state
+    const r = g(s, 'tap')
+    expect(r.effects).toEqual([{ type: 'send', kind: 'stop', body: {} }])
+    expect(r.state.screen).toBe('feed')
+    expect(r.state.stopPending).toBe(true)
+  })
+
+  test('choosing Talk does nothing until voice exists', () => {
+    const r = g(g(working(), 'tap').state, 'tap')
+    expect(r.effects).toEqual([])
+    expect(r.state.screen).toBe('menu')
+  })
+
+  test('stopping clears once the session is stopped or idle', () => {
+    let s: AppState = { ...working(), stopPending: true }
+    s = recv(s, env('session', { name: 'repo', cwd: '/r', state: 'working' }, NOW + 1)).state
+    expect(s.stopPending).toBe(true)
+    s = recv(s, env('session', { name: 'repo', cwd: '/r', state: 'stopped' }, NOW + 2)).state
+    expect(s.stopPending).toBe(false)
+    s = { ...s, stopPending: true }
+    s = recv(s, env('session', { name: 'repo', cwd: '/r', state: 'idle' }, NOW + 3)).state
+    expect(s.stopPending).toBe(false)
+  })
+
+  test('a fresh prompt clears stopping', () => {
+    let s: AppState = { ...working(), stopPending: true }
+    s = recv(s, env('event', { type: 'prompt', summary: 'next', origin: 'local' })).state
+    expect(s.stopPending).toBe(false)
   })
 })

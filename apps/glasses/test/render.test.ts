@@ -84,3 +84,22 @@ describe('render', () => {
     expect(render(feed()).body).toContain('No activity yet')
   })
 })
+
+describe('render: menu and stop', () => {
+  const base = () => feed(env('session', { name: 'g2cc-sandbox', cwd: '/x', state: 'working' }))
+
+  test('menu lists Talk and Stop with the highlight on the selected item', () => {
+    const s: AppState = { ...base(), screen: 'menu', menuIndex: 1 }
+    const out = render(s)
+    expect(out.header.startsWith('Menu')).toBe(true)
+    const lines = out.body.split('\n')
+    expect(lines[0]).toBe('   Talk (coming soon)')
+    expect(lines[1]).toBe('▶ Stop Claude')
+    assertFits(out.body, BODY_LINES)
+  })
+
+  test('header shows stopping while a stop is pending', () => {
+    const s: AppState = { ...base(), stopPending: true }
+    expect(render(s).header).toContain('■ stopping…')
+  })
+})

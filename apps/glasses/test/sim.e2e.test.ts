@@ -10,7 +10,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PNG } from 'pngjs'
-import { encodePairing, generateKey, RelayClient, SecureChannel, toBase64Url, type Body } from '@g2cc/protocol'
+import { encodePairing, generateKey, RelayClient, SecureChannel, toBase64Url, type AnyEnvelope, type Body } from '@g2cc/protocol'
 
 const RUN = process.env.G2CC_SIM === '1'
 const APP = join(import.meta.dir, '..')
@@ -25,6 +25,7 @@ let automation = ''
 let computer: SecureChannel<'computer'>
 let relay: RelayClient
 let lastConsoleId = -1
+const inbound: AnyEnvelope[] = []
 
 function freePort(): number {
   const s = Bun.serve({ port: 0, fetch: () => new Response() })
@@ -115,7 +116,13 @@ beforeAll(async () => {
   const key = generateKey()
   const pairing = await encodePairing({ relayUrl: `ws://127.0.0.1:${wranglerPort}`, key })
   computer = await SecureChannel.create(key, 'computer')
-  relay = new RelayClient({ url: `ws://127.0.0.1:${wranglerPort}/v1/room/${computer.roomId}?role=computer`, onFrame: () => {} })
+  relay = new RelayClient({
+    url: `ws://127.0.0.1:${wranglerPort}/v1/room/${computer.roomId}?role=computer`,
+    onFrame: async f => {
+      const env = await computer.open(f)
+      if (env) inbound.push(env)
+    },
+  })
   relay.start()
 
   const autoPort = freePort()
@@ -178,5 +185,25 @@ describe.skipIf(!RUN)('glasses app in the simulator', () => {
     await input('up')
     const f = await frameWhere(f => f.body.includes('1 newer'), 'scrolled feed')
     expect(f.body).not.toContain('notice 5')
+  })
+
+  test('feed tap opens the menu, and choosing Stop sends a stop to the computer', async () => {
+    await send('session', { name: 'g2cc-sandbox', cwd: '/x', state: 'working', mode: 'auto' })
+    await frameWhere(f => f.header.includes('working'), 'working header')
+    await input('click')
+    const menu = await frameWhere(f => f.header.startsWith('Menu'), 'menu')
+    expect(menu.body.split('\n')[0]).toBe('▶ Talk (coming soon)')
+    await screenshot('menu')
+
+    await input('down')
+    await frameWhere(f => f.body.startsWith('   Talk') && f.body.includes('▶ Stop Claude'), 'stop highlighted')
+    await input('click')
+    const stopping = await frameWhere(f => f.header.includes('■ stopping…'), 'stopping header')
+    expect(stopping.header).toContain('g2cc-sandbox')
+    await waitFor(async () => inbound.some(e => e.kind === 'stop'), 'stop at the computer', 5_000)
+
+    await send('session', { name: 'g2cc-sandbox', cwd: '/x', state: 'stopped', mode: 'auto' })
+    const stopped = await frameWhere(f => f.header === '● g2cc-sandbox · stopped · auto', 'stopped header')
+    expect(stopped.header).not.toContain('stopping')
   })
 })

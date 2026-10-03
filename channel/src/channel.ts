@@ -1,8 +1,8 @@
 // Wires the pieces together: MCP (stdio, to Claude Code), the localhost hook
 // server, and the encrypted relay connection to the glasses.
 //
-// Phase 2 is read-only: the feed flows out, and inbound envelopes from the
-// glasses are decrypted and validated but not acted on yet.
+// Inbound envelopes from the glasses are decrypted and validated before the
+// controller sees them. Phase 4 acts on `stop`; other commands come later.
 
 import { existsSync } from 'node:fs'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
@@ -11,7 +11,8 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import { GLANCE_MAX, SecureChannel, type Body, type C2G_KINDS } from '@g2cc/protocol'
 import { DEFAULT_RELAY_URL, relaySocketUrl, type ChannelConfig } from './config'
 import { startHookServer, type HookResponse, type HookServer } from './hook-server'
-import { SessionTracker, translateHook, type HookPayload } from './hooks'
+import { SessionController } from './controller'
+import type { HookPayload } from './hooks'
 import { loadOrCreatePairing, pairingPath } from './pairing-store'
 import { clip, oneLine, redact } from './redact'
 import { RelayClient } from '@g2cc/protocol'
@@ -38,7 +39,6 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
     relayUrl: cfg.relayUrlOverride ?? (existsSync(pairingPath(cfg.home)) ? undefined : DEFAULT_RELAY_URL),
   })
   const secure = await SecureChannel.create(pairing.key, 'computer')
-  const tracker = new SessionTracker({ name: cfg.sessionName, cwd: cfg.projectDir })
 
   // Sealing is async; a promise chain keeps envelopes in hook order.
   let outbound: Promise<void> = Promise.resolve()
@@ -52,25 +52,25 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
     url: relaySocketUrl(pairing.relayUrl, secure.roomId, 'computer'),
     onStatus: s => {
       log(`relay ${s}`)
-      if (s === 'open') emit('session', tracker.snapshot())
+      if (s === 'open') emit('session', controller.snapshot())
     },
     onRateLimited: () => log('relay rate limit hit'),
     onFrame: async frame => {
       const env = await secure.open(frame)
       if (!env) return // failed decryption, schema, or replay checks: drop silently
-      log(`ignored inbound ${env.kind} (read-only phase)`)
+      log(`inbound ${env.kind}`)
+      controller.onInbound(env)
     },
   })
 
-  const onHook = (raw: Record<string, unknown>): HookResponse => {
-    const p = raw as HookPayload
-    // Only this session's hooks. Others may share the port's settings.json.
-    if (cfg.sessionId && p.session_id !== cfg.sessionId) return {}
-    const session = tracker.update(p)
-    for (const out of translateHook(p)) emit(out.kind, out.body)
-    if (session) emit('session', session)
-    return {}
-  }
+  // Only this session's hooks count: others may share the port's settings.json.
+  const controller = new SessionController({
+    ...(cfg.sessionId ? { sessionId: cfg.sessionId } : {}),
+    name: cfg.sessionName,
+    cwd: cfg.projectDir,
+    emit: e => emit(e.kind, e.body as never),
+  })
+  const onHook = (raw: Record<string, unknown>): HookResponse => controller.onHook(raw as HookPayload)
 
   let hooks: HookServer | null = null
   try {
