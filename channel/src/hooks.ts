@@ -133,6 +133,9 @@ export function translateHook(p: HookPayload): Outbound[] {
       return [{ kind: 'event', body: { type: 'prompt', summary: summary(text), origin: wrapped ? 'glasses' : 'local' } }]
     }
     case 'Notification':
+      // idle_prompt ("Claude is waiting for your input") follows every turn by
+      // about a minute: noise on a small display, and it only updates state.
+      if (p.notification_type === 'idle_prompt') return []
       return typeof p.message === 'string' ? [{ kind: 'event', body: { type: 'notify', summary: summary(p.message) } }] : []
     case 'Stop': {
       const text = p.last_assistant_message

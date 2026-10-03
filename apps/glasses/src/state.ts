@@ -327,7 +327,8 @@ function onSessionEnvelope(s: AppState, sid: string, env: AnyEnvelope, now: numb
     }
     case 'event': {
       const next = withView(base, sid, onEvent(seen, env, now, onTimeline))
-      const needsInput = env.body.type === 'notify' && /waiting for your input|needs your/i.test(env.body.summary)
+      // Permission prompts are what need the user (questions and cards pop up on their own).
+      const needsInput = env.body.type === 'notify' && /needs your permission/i.test(env.body.summary)
       return fresh && needsInput ? notifyOther(next, sid, 'needs your input', now) : next
     }
     case 'glance':

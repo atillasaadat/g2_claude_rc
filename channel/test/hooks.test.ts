@@ -104,6 +104,11 @@ describe('translateHook: prompts, notifications, replies', () => {
     ])
   })
 
+  test('idle reminders are dropped from the feed', () => {
+    const p: HookPayload = { ...base, hook_event_name: 'Notification', message: 'Claude is waiting for your input', notification_type: 'idle_prompt' }
+    expect(translateHook(p)).toEqual([])
+  })
+
   test('stop emits the final reply, redacted', () => {
     const p: HookPayload = { ...base, hook_event_name: 'Stop', last_assistant_message: 'Set PASSWORD=hunter2 and done.' }
     expect(translateHook(p)).toEqual([{ kind: 'reply', body: { text: 'Set PASSWORD=[REDACTED] and done.' } }])

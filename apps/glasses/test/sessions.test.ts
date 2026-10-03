@@ -37,9 +37,11 @@ describe('multiple sessions', () => {
     expect(frame(s).header).toContain('◆')
   })
 
-  test('another session waiting for input raises a toast', () => {
-    const s = recv(two(), at(B, 'event', { type: 'notify', summary: 'Claude is waiting for your input' }))
+  test('another session needing permission raises a toast; idle reminders do not', () => {
+    const s = recv(two(), at(B, 'event', { type: 'notify', summary: 'Claude needs your permission to use Bash' }))
     expect(frame(s).header).toBe('◆ repo-b: needs your input')
+    const idle = recv(two(), at(B, 'event', { type: 'notify', summary: 'Claude is waiting for your input' }))
+    expect(frame(idle).header).not.toContain('needs your input')
   })
 
   test('the OS side menu lists the sessions; choosing one switches and clears unread', () => {
