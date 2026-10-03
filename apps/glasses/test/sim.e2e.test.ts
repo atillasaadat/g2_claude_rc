@@ -18,7 +18,7 @@ const APP = join(import.meta.dir, '..')
 const ROOT = join(APP, '..', '..')
 const ARTIFACTS = join(APP, 'test', 'artifacts')
 
-type Frame = { header: string; body: string }
+type Frame = { header: string; timeline: string; overlay?: { name: string; content: string } }
 
 const procs: Array<ReturnType<typeof Bun.spawn>> = []
 let tmp = ''
@@ -144,127 +144,115 @@ afterAll(() => {
   if (tmp) rmSync(tmp, { recursive: true, force: true })
 })
 
+const ov = (f: Frame) => f.overlay?.content ?? ''
+
 describe.skipIf(!RUN)('glasses app in the simulator', () => {
   test('pairs from the URL fragment and shows the computer as connected', async () => {
     await send('session', { name: 'g2cc-sandbox', cwd: '/x', state: 'idle', mode: 'auto' })
-    const f = await frameWhere(f => f.header === '● g2cc-sandbox · idle · auto', 'connected header')
-    expect(f.body).toContain('No activity yet')
+    const f = await frameWhere(f => f.header.startsWith('● g2cc-sandbox · idle') && f.header.endsWith('auto'), 'connected header')
+    expect(f.timeline).toContain('No activity yet')
   })
 
-  test('shows the live feed with merged tool lines and glance', async () => {
+  test('the timeline shows merged tool lines, glance, and animated working dots', async () => {
     await send('session', { name: 'g2cc-sandbox', cwd: '/x', state: 'working', mode: 'auto' })
     await send('event', { type: 'prompt', summary: 'run the tests', origin: 'local' })
     await send('event', { type: 'tool_start', tool: 'Bash', summary: 'bun test' })
     await send('event', { type: 'tool_end', tool: 'Bash', summary: 'ok' })
     await send('event', { type: 'tool_start', tool: 'Edit', summary: 'src/state.ts' })
     await send('glance', { text: 'Fixing the reducer' })
-    const f = await frameWhere(f => f.body.includes('Fixing the reducer') && f.body.includes('▶ Edit'), 'feed frame')
-    expect(f.header).toBe('● g2cc-sandbox · working · auto')
-    expect(f.body.split('\n').slice(0, 3)).toEqual(['> run the tests', '• Bash: bun test → ok', '▶ Edit: src/state.ts'])
-
-    await Bun.sleep(400) // let the debounced render reach the framebuffer
-    const png = await screenshot('feed')
+    const f = await frameWhere(f => f.timeline.includes('» Fixing the reducer'), 'timeline frame')
+    expect(f.timeline.split('\n')).toEqual(['> run the tests', '• Bash: bun test → ok', '▶ Edit: src/state.ts', '» Fixing the reducer'])
+    await frameWhere(f => f.header.includes('working ··'), 'dots advanced')
+    await Bun.sleep(300)
+    const png = await screenshot('timeline')
     expect(litPixels(png, 0, 35)).toBeGreaterThan(50)
-    expect(litPixels(png, 35, 288)).toBeGreaterThan(200)
+    expect(litPixels(png, 38, 288)).toBeGreaterThan(200)
   })
 
-  test('a fresh reply opens the paginated reply view, which pages and goes back', async () => {
-    const text = Array.from({ length: 14 }, (_, i) => `Line ${i + 1}: the reducer now merges tool start and end events.`).join('\n')
+  test('a long reply lands on its first line, and swipes scroll through it', async () => {
+    await send('session', { name: 'g2cc-sandbox', cwd: '/x', state: 'idle', mode: 'auto' })
+    const text = Array.from({ length: 14 }, (_, i) => `Line ${i + 1}: the timeline scrolls continuously.`).join('\n')
     await send('reply', { text })
-    const first = await frameWhere(f => f.header.startsWith('Reply 1/'), 'reply page 1')
-    expect(first.body.split('\n')[0]).toBe('Line 1: the reducer now merges tool start and end events.')
+    const first = await frameWhere(f => f.timeline.split('\n')[0] === 'Line 1: the timeline scrolls continuously.', 'reply start at the top')
+    expect(first.header).toMatch(/▼ \d+ newer$/)
     await screenshot('reply')
-
     await input('down')
-    const second = await frameWhere(f => f.header.startsWith('Reply 2/'), 'reply page 2')
-    expect(second.body).toContain('Line 1')
-
+    await frameWhere(f => f.timeline.split('\n')[0] === 'Line 4: the timeline scrolls continuously.', 'scrolled down 3 lines')
     await input('double_click')
-    const back = await frameWhere(f => f.header.startsWith('●'), 'back to feed')
-    expect(back.body).toContain('↓ reply')
+    await frameWhere(f => f.timeline.split('\n').at(-1) === 'Line 14: the timeline scrolls continuously.' && f.header.endsWith('auto'), 'back to live')
   })
 
-  test('scrolling up shows older events', async () => {
-    for (let i = 0; i < 6; i++) await send('event', { type: 'notify', summary: `notice ${i}` })
-    await frameWhere(f => f.body.includes('notice 5'), 'newest notices')
-    await input('up')
-    const f = await frameWhere(f => f.body.includes('1 newer'), 'scrolled feed')
-    expect(f.body).not.toContain('notice 5')
-  })
-
-  test('feed tap opens the menu, and choosing Stop sends a stop to the computer', async () => {
+  test('tap opens the menu box, and Stop sends a stop to the computer', async () => {
     await send('session', { name: 'g2cc-sandbox', cwd: '/x', state: 'working', mode: 'auto' })
     await frameWhere(f => f.header.includes('working'), 'working header')
     await input('click')
-    const menu = await frameWhere(f => f.header.startsWith('Menu'), 'menu')
-    expect(menu.body.split('\n')[0]).toBe('▶ Talk')
+    const menu = await frameWhere(f => f.overlay?.name === 'menu', 'menu')
+    expect(ov(menu).split('\n')).toEqual(['▶ Talk', '   Stop Claude'])
+    await Bun.sleep(600) // let the fade finish before the screenshot
     await screenshot('menu')
-
     await input('down')
-    await frameWhere(f => f.body.startsWith('   Talk') && f.body.includes('▶ Stop Claude'), 'stop highlighted')
+    await frameWhere(f => ov(f).includes('▶ Stop Claude'), 'stop highlighted')
     await input('click')
-    const stopping = await frameWhere(f => f.header.includes('■ stopping…'), 'stopping header')
-    expect(stopping.header).toContain('g2cc-sandbox')
+    await frameWhere(f => f.header.includes('■ stopping…'), 'stopping header')
     await waitFor(async () => inbound.some(e => e.kind === 'stop'), 'stop at the computer', 5_000)
-
     await send('session', { name: 'g2cc-sandbox', cwd: '/x', state: 'stopped', mode: 'auto' })
-    const stopped = await frameWhere(f => f.header === '● g2cc-sandbox · stopped · auto', 'stopped header')
-    expect(stopped.header).not.toContain('stopping')
+    await frameWhere(f => f.header.startsWith('● g2cc-sandbox · stopped'), 'stopped header')
   })
 
-  test('a permission card appears, Allow sends the verdict, and resolved cards close', async () => {
+  test('a permission card overlays the timeline; Allow sends the verdict; resolved cards close', async () => {
     await send('permission', {
       request_id: 'wokkv',
       tool_name: 'Bash',
       description: 'Create empty test file',
       input_preview: '{ "command": "touch perm-test-3.txt", "description": "Create empty test file" }',
     })
-    const card = await frameWhere(f => f.header === 'Allow Bash?', 'permission card')
-    expect(card.body.split('\n').at(-1)).toBe('▶ Deny')
-    expect(card.body).toContain('touch perm-test-3.txt')
+    const card = await frameWhere(f => f.overlay?.name === 'card', 'permission card')
+    expect(ov(card).split('\n')[0]).toBe('Allow Bash?')
+    expect(ov(card)).toContain('touch perm-test-3.txt')
+    expect(ov(card).split('\n').at(-1)).toMatch(/▶ Deny$/)
+    await Bun.sleep(700) // past the input guard and the fade
     await screenshot('permission')
-
-    await Bun.sleep(700) // past the input guard
     await input('up')
-    await frameWhere(f => f.header === 'Allow Bash?' && f.body.includes('▶ Allow'), 'allow highlighted')
+    await frameWhere(f => ov(f).includes('▶ Allow'), 'allow highlighted')
     await input('click')
     await waitFor(async () => inbound.some(e => e.kind === 'verdict'), 'verdict at the computer', 5_000)
     expect(inbound.find(e => e.kind === 'verdict')!.body).toEqual({ request_id: 'wokkv', behavior: 'allow' })
-    await frameWhere(f => f.header.startsWith('●'), 'back to feed')
+    await frameWhere(f => !f.overlay, 'card closed')
 
-    // Answered elsewhere: the channel's permission_resolved closes the card.
     await send('permission', { request_id: 'fghij', tool_name: 'Write', description: 'Write a file', input_preview: '{}' })
-    await frameWhere(f => f.header === 'Allow Write?', 'second card')
+    await frameWhere(f => ov(f).startsWith('Allow Write?'), 'second card')
     await send('permission_resolved', { request_id: 'fghij' })
-    await frameWhere(f => f.header.startsWith('●'), 'card closed by resolution')
+    await frameWhere(f => !f.overlay, 'closed by resolution')
   })
 
-  test('voice: Talk, speak, review, and send a prompt to the computer', async () => {
+  test('voice: the box fills in live, then review and send a prompt to the computer', async () => {
     await send('session', { name: 'g2cc-sandbox', cwd: '/x', state: 'idle', mode: 'auto' })
-    await frameWhere(f => f.header.includes('idle'), 'idle header')
-    await input('click') // menu
-    await frameWhere(f => f.header.startsWith('Menu') && f.body.startsWith('▶ Talk'), 'menu with Talk')
-    await input('click') // Talk
-    await frameWhere(f => f.header === 'Listening…', 'listening')
+    await frameWhere(f => f.header.includes('idle') && !f.overlay, 'idle')
+    await input('click')
+    await frameWhere(f => ov(f).startsWith('▶ Talk'), 'menu with Talk')
+    await input('click')
+    await frameWhere(f => f.overlay?.name === 'voice' && / Listening/.test(ov(f)), 'listening')
+    await Bun.sleep(800) // the rebuild reaches the framebuffer a little after the frame is logged
     await screenshot('listening')
     await input('click') // done speaking
-    const review = await frameWhere(f => f.header === 'Send to Claude?', 'review')
-    expect(review.body.split('\n')[0]).toBe(FAKE_TRANSCRIPT)
+    const review = await frameWhere(f => ov(f).startsWith('Send to Claude?'), 'review')
+    expect(ov(review).split('\n')[1]).toBe(FAKE_TRANSCRIPT)
+    await Bun.sleep(600)
     await screenshot('voice-review')
-    await input('click') // send
+    await input('click')
     await waitFor(async () => inbound.some(e => e.kind === 'prompt'), 'prompt at the computer', 5_000)
     expect(inbound.find(e => e.kind === 'prompt')!.body).toEqual({ text: FAKE_TRANSCRIPT })
-    await frameWhere(f => f.header.startsWith('●'), 'back to feed')
+    await frameWhere(f => !f.overlay, 'back to the timeline')
   })
 
   test('a question card shows the options, and the chosen answer reaches the computer', async () => {
     await send('question', { question_id: 'q0000abcd', question: 'Which branch should I deploy?', options: ['main', 'dev', 'release'] })
-    const card = await frameWhere(f => f.header === 'Question', 'question card')
-    expect(card.body.split('\n')).toEqual(['Which branch should I deploy?', '', '▶ main', '   dev', '   release'])
-    await screenshot('question')
+    const card = await frameWhere(f => f.overlay?.name === 'question', 'question card')
+    expect(ov(card).split('\n')).toEqual(['Which branch should I deploy?', '', '▶ main', '   dev', '   release'])
     await Bun.sleep(700)
+    await screenshot('question')
     await input('down')
-    await frameWhere(f => f.header === 'Question' && f.body.includes('▶ dev'), 'dev highlighted')
+    await frameWhere(f => ov(f).includes('▶ dev'), 'dev highlighted')
     await input('click')
     await waitFor(async () => inbound.some(e => e.kind === 'answer'), 'answer at the computer', 5_000)
     expect(inbound.find(e => e.kind === 'answer')!.body).toEqual({ question_id: 'q0000abcd', choice: 'dev' })

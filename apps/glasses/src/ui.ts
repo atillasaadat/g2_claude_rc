@@ -23,6 +23,7 @@ let els: {
   status: HTMLDivElement
   header: HTMLDivElement
   body: HTMLPreElement
+  overlay: HTMLPreElement
   pairInput: HTMLTextAreaElement
   pairMsg: HTMLDivElement
   gestures: HTMLDivElement
@@ -40,7 +41,10 @@ export function mountUi(cb: UiCallbacks): void {
       </header>
       <section class="mirror" aria-label="Glasses display">
         <div id="m-header" class="m-header"></div>
-        <pre id="m-body" class="m-body"></pre>
+        <div class="m-stage">
+          <pre id="m-body" class="m-body"></pre>
+          <pre id="m-overlay" class="m-overlay" hidden></pre>
+        </div>
       </section>
       <details>
         <summary>Pairing</summary>
@@ -67,6 +71,7 @@ export function mountUi(cb: UiCallbacks): void {
     status: app.querySelector('#status')!,
     header: app.querySelector('#m-header')!,
     body: app.querySelector('#m-body')!,
+    overlay: app.querySelector('#m-overlay')!,
     pairInput: app.querySelector('#pair-input')!,
     pairMsg: app.querySelector('#pair-msg')!,
     gestures: app.querySelector('#gestures')!,
@@ -129,7 +134,11 @@ export function setStatus(link: Link, paired: boolean): void {
 export function mirror(frame: Frame): void {
   if (!els) return
   els.header.textContent = frame.header
-  els.body.textContent = frame.body
+  els.body.textContent = frame.timeline
+  els.body.classList.toggle('dimmed', Boolean(frame.overlay))
+  els.overlay.hidden = !frame.overlay
+  els.overlay.textContent = frame.overlay?.content ?? ''
+  els.overlay.dataset.kind = frame.overlay?.name ?? ''
 }
 
 export function setGestureMap(map: GestureMap): void {
@@ -188,8 +197,14 @@ function injectStyles(): void {
     .status-offline { color: #FF453A; border-color: #FF453A; background: rgba(255,69,58,0.08); }
     .mirror { background: #000; border: 1px solid #3E3E3E; border-radius: 12px; padding: 12px;
       color: #3CFA44; font: 13px/1.5 ui-monospace, Menlo, monospace; }
-    .m-header { border-bottom: 1px solid #1F5F22; padding-bottom: 6px; margin-bottom: 6px; white-space: pre; overflow: hidden; }
-    .m-body { margin: 0; white-space: pre-wrap; word-break: break-word; min-height: 9lh; }
+    .m-header { border: 1px solid #1F5F22; border-radius: 8px; padding: 2px 8px; margin-bottom: 6px; white-space: pre; overflow: hidden; }
+    .m-stage { position: relative; }
+    .m-body { margin: 0; white-space: pre-wrap; word-break: break-word; min-height: 9lh; transition: opacity 200ms; }
+    .m-body.dimmed { opacity: 0.3; }
+    .m-overlay { position: absolute; top: 0; left: 4%; right: 4%; margin: 0; padding: 6px 10px; white-space: pre-wrap;
+      background: #000; border: 2px solid #3CFA44; border-radius: 10px; animation: fadein 300ms ease-out; }
+    .m-overlay[data-kind="menu"] { left: auto; right: 2%; width: 45%; }
+    @keyframes fadein { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
     details { background: #2E2E2E; border: 1px solid #3E3E3E; border-radius: 12px; padding: 12px 16px; }
     summary { cursor: pointer; font-weight: 600; }
     .hint { font-size: 13px; color: #A7A7A7; }

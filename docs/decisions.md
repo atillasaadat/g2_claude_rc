@@ -404,3 +404,48 @@ The difference is that auto mode opens no permission dialogs, so the channel get
   - The user picked `hello` in the simulator at 1:40:31. The answer arrived as a g2 channel message (`origin: glasses` in the feed), and Claude ran `echo hello > greeting.txt` and replied.
   - The file contains `hello`.
 - **Phase 7 status: done.**
+
+## UI redesign (2026-10-03)
+
+The user asked for boxes, overlays, a voice box that fills in while speaking, animations, autoscroll, and one continuous scroll (with the R1 ring in mind). Choices made by the user: a header pill plus timeline, the voice box at the top, landing at the start of long replies, and subtle animations.
+
+- **Scenes, not screens.** `render(state)` returns containers:
+  - a header pill (576x34, border 1, radius 8)
+  - the timeline (576x250, 9 lines, always the input capture)
+  - at most one overlay box (border 2, radius 10)
+
+  Every container sets a unique `zOrderIndex` (the all-or-nothing rule).
+- **Display diffing** (`display.ts`):
+  - When the layout key (ids, names, boxes, capture, z) changes, the display does one `rebuildPageContainer`, which flickers briefly on hardware. That only happens when an overlay opens, closes or resizes.
+  - Otherwise it does `textContainerUpgrade` with `textColor` (brightness 0 to 4) for only the changed containers, which is flicker-free.
+- **Brightness is per container**, which drives the animations:
+  - The timeline dims to 1 behind overlays.
+  - Overlays fade in through 2, 3, 4 over 450 ms.
+  - The listening label pulses (`●` and `○`).
+  - The working dots in the header cycle (`·`, `··`, `···`).
+
+  The animation clock ticks every 250 ms **only while something animates**, so it is idle otherwise. Per-line fades are not possible without one container per line, so they were dropped.
+- **No background fill:** unpainted pixels are off, so a box cannot hide the text beneath it. The first screenshots showed the timeline straight through the card. **Occlusion:** the renderer blanks the timeline rows a full-width box covers, and clips rows short of the side menu, so boxes read as solid.
+- **Continuous timeline** (`timeline.ts`):
+  - Prompts are wrapped, with indented continuations and `(voice)` for glasses prompts.
+  - Tool start and end merge into one line.
+  - Notes are `!`, glances are `»`.
+  - Replies are full plain text, with blank lines around replies and before each turn.
+  - At most 80 entries.
+- **Scrolling** is bottom-anchored (`fromBottom`):
+  - Live content sticks to the newest line.
+  - A scrolled-up view stays put while new lines arrive, and the header shows `▼ n newer`.
+  - A fresh reply taller than the view lands on its first line; a fresh prompt returns to live.
+  - A swipe moves 3 lines. Double tap jumps to live when scrolled, otherwise it opens the exit dialog (`live.or.exit`).
+  - The R1 ring sends the same events, so it works unchanged.
+- **Gesture map rows** are now `timeline`, `card` and `voice`. The menu and question cards use the card row. Stored Phase 3 to 7 maps fall back to the defaults.
+- **The reply view and pagination are gone**; replies live in the timeline.
+- **Live transcript** (`recorder.ts`):
+  - While listening, the audio so far is re-transcribed every 2.5 s, so the box fills in. The final transcription runs when the user taps done.
+  - Groq's free tier is 20 requests per minute, 7,200 audio-seconds per hour and 2,000 requests per day. Partials stay at or under 14 per minute, and an error (such as a 429) stops partials for that recording, keeping the quota for the final transcription.
+  - The voice box keeps a fixed 3-line size while listening, so it never rebuilds as text grows.
+- **Header hints:** while an overlay is open, the header shows its gestures, for example `↑ allow · ↓ deny · tap: confirm · 2× tap: later`.
+- **Phone mirror** shows the dimmed timeline with the overlay box on top, and a CSS fade-in.
+- **Tests:**
+  - 129 glasses unit tests: timeline, scrolling, reply landing, priority, overlays, voice partials, render fit for every container, occlusion, the recorder rate cap, and display rebuild versus upgrade.
+  - 7 simulator tests, rewritten for the scene frames.

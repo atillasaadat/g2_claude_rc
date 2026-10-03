@@ -1,30 +1,54 @@
-// Owns the two text containers. Created once; afterwards only the containers
-// whose text changed are upgraded in place (flicker-free), debounced because
-// the BLE render queue is slow.
+// Draws Scenes on the glasses. The page is created once; afterwards:
+//   - same layout (container ids, boxes, borders): flicker-free
+//     textContainerUpgrade of only the containers whose text or brightness changed
+//   - different layout (an overlay opened, closed, or resized): one
+//     rebuildPageContainer, which flickers briefly on hardware
+// Updates are debounced because the BLE render queue is slow.
 
 import {
   CreateStartUpPageContainer,
+  RebuildPageContainer,
   TextContainerProperty,
   TextContainerUpgrade,
   type EvenAppBridge,
 } from '@evenrealities/even_hub_sdk'
 import type { BridgeQueue } from './bridge-queue'
-import { BODY, HEADER, PADDING } from './layout'
-import type { Frame } from './render'
+import type { ContainerSpec, Scene } from './render'
 
-const RENDER_DEBOUNCE_MS = 120
-// Firmware limits: 1000 chars at creation, 2000 per upgrade.
+const RENDER_DEBOUNCE_MS = 100
+// Firmware limits: 1000 chars at creation or rebuild, 2000 per upgrade.
 const CREATE_MAX = 1000
 const UPGRADE_MAX = 2000
+const BORDER_COLOR = 12
 
-const HEADER_ID = 1
-const HEADER_NAME = 'header'
-const BODY_ID = 2
-const BODY_NAME = 'body'
+/** Everything except text and brightness: a change here needs a rebuild. */
+export function layoutKey(scene: Scene): string {
+  return JSON.stringify(scene.containers.map(c => [c.id, c.name, c.box, c.capture, c.z]))
+}
+
+function property(c: ContainerSpec): TextContainerProperty {
+  return new TextContainerProperty({
+    xPosition: c.box.x,
+    yPosition: c.box.y,
+    width: c.box.w,
+    height: c.box.h,
+    borderWidth: c.box.border,
+    borderColor: BORDER_COLOR,
+    borderRadius: c.box.radius,
+    paddingLength: c.box.padding,
+    containerID: c.id,
+    containerName: c.name,
+    content: c.content.slice(0, CREATE_MAX) || ' ',
+    textColor: c.brightness,
+    isEventCapture: c.capture ? 1 : 0,
+    // All-or-nothing per page: every container sets a unique zOrderIndex.
+    zOrderIndex: c.z,
+  })
+}
 
 export class Display {
-  private shown: Frame = { header: '', body: '' }
-  private pending: Frame | null = null
+  private shown: Scene = { containers: [] }
+  private pending: Scene | null = null
   private timer: ReturnType<typeof setTimeout> | null = null
 
   constructor(
@@ -33,36 +57,18 @@ export class Display {
     private readonly onError: (err: unknown) => void,
   ) {}
 
-  async init(frame: Frame): Promise<void> {
-    const container = (id: number, name: string, box: typeof HEADER | typeof BODY, content: string, capture: 0 | 1) =>
-      new TextContainerProperty({
-        xPosition: box.x,
-        yPosition: box.y,
-        width: box.w,
-        height: box.h,
-        borderWidth: 0,
-        borderColor: 0,
-        paddingLength: PADDING,
-        containerID: id,
-        containerName: name,
-        content: content.slice(0, CREATE_MAX) || ' ',
-        // The body receives input: taps arrive as sysEvent, scrolls as textEvent.
-        isEventCapture: capture,
-      })
+  async init(scene: Scene): Promise<void> {
     const result = await this.queue.run('createStartUpPageContainer', () =>
       this.bridge.createStartUpPageContainer(
-        new CreateStartUpPageContainer({
-          containerTotalNum: 2,
-          textObject: [container(HEADER_ID, HEADER_NAME, HEADER, frame.header, 0), container(BODY_ID, BODY_NAME, BODY, frame.body, 1)],
-        }),
+        new CreateStartUpPageContainer({ containerTotalNum: scene.containers.length, textObject: scene.containers.map(property) }),
       ),
     )
     if (result !== 0) throw new Error(`createStartUpPageContainer failed: ${result}`)
-    this.shown = frame
+    this.shown = scene
   }
 
-  show(frame: Frame): void {
-    this.pending = frame
+  show(scene: Scene): void {
+    this.pending = scene
     if (this.timer) return
     this.timer = setTimeout(() => {
       this.timer = null
@@ -70,37 +76,53 @@ export class Display {
     }, RENDER_DEBOUNCE_MS)
   }
 
-  /** Re-sends everything, e.g. after the app returns to the foreground. */
-  repaint(frame: Frame): void {
-    this.shown = { header: '', body: '' }
-    this.show(frame)
+  /** Redraws everything, e.g. after the app returns to the foreground. */
+  repaint(scene: Scene): void {
+    this.shown = { containers: [] }
+    this.show(scene)
   }
 
   private async flush(): Promise<void> {
-    const frame = this.pending
+    const scene = this.pending
     this.pending = null
-    if (!frame) return
+    if (!scene) return
     try {
-      if (frame.header !== this.shown.header) await this.upgrade(HEADER_ID, HEADER_NAME, frame.header)
-      if (frame.body !== this.shown.body) await this.upgrade(BODY_ID, BODY_NAME, frame.body)
-      this.shown = frame
+      if (layoutKey(scene) !== layoutKey(this.shown)) {
+        await this.rebuild(scene)
+      } else {
+        for (const c of scene.containers) {
+          const before = this.shown.containers.find(p => p.id === c.id)
+          if (before?.content !== c.content || before.brightness !== c.brightness) await this.upgrade(c)
+        }
+      }
+      this.shown = scene
     } catch (err) {
       this.onError(err)
     }
   }
 
-  private async upgrade(id: number, name: string, content: string): Promise<void> {
-    const ok = await this.queue.run(`textContainerUpgrade ${name}`, () =>
+  private async rebuild(scene: Scene): Promise<void> {
+    const ok = await this.queue.run('rebuildPageContainer', () =>
+      this.bridge.rebuildPageContainer(
+        new RebuildPageContainer({ containerTotalNum: scene.containers.length, textObject: scene.containers.map(property) }),
+      ),
+    )
+    if (!ok) throw new Error('rebuildPageContainer failed')
+  }
+
+  private async upgrade(c: ContainerSpec): Promise<void> {
+    const ok = await this.queue.run(`textContainerUpgrade ${c.name}`, () =>
       this.bridge.textContainerUpgrade(
         new TextContainerUpgrade({
-          containerID: id,
-          containerName: name,
+          containerID: c.id,
+          containerName: c.name,
           contentOffset: 0,
           contentLength: 0,
-          content: content.slice(0, UPGRADE_MAX) || ' ',
+          content: c.content.slice(0, UPGRADE_MAX) || ' ',
+          textColor: c.brightness,
         }),
       ),
     )
-    if (!ok) throw new Error(`textContainerUpgrade ${name} failed`)
+    if (!ok) throw new Error(`textContainerUpgrade ${c.name} failed`)
   }
 }

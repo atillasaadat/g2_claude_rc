@@ -1,69 +1,44 @@
 import { describe, expect, test } from 'bun:test'
 import { DEFAULT_GESTURES, parseGestureMap, resolveGesture, validateGestureMap, type GestureMap } from '../src/gestures'
 
-describe('default gesture map', () => {
-  test('is valid', () => {
+describe('gesture map', () => {
+  test('defaults are valid and match the design', () => {
     expect(validateGestureMap(DEFAULT_GESTURES)).toEqual([])
-  })
-
-  test('matches the agreed defaults', () => {
-    expect(resolveGesture(DEFAULT_GESTURES, 'feed', 'tap')).toBe('menu.open')
-    expect(resolveGesture(DEFAULT_GESTURES, 'feed', 'double_tap')).toBe('app.exit')
-    expect(resolveGesture(DEFAULT_GESTURES, 'card', 'scroll_down')).toBe('card.next')
-    expect(resolveGesture(DEFAULT_GESTURES, 'card', 'tap')).toBe('card.confirm')
-    expect(resolveGesture(DEFAULT_GESTURES, 'card', 'double_tap')).toBe('nav.back')
+    expect(resolveGesture(DEFAULT_GESTURES, 'timeline', 'tap')).toBe('menu.open')
+    expect(resolveGesture(DEFAULT_GESTURES, 'timeline', 'double_tap')).toBe('live.or.exit')
+    expect(resolveGesture(DEFAULT_GESTURES, 'timeline', 'scroll_up')).toBe('timeline.up')
+    expect(resolveGesture(DEFAULT_GESTURES, 'timeline', 'scroll_down')).toBe('timeline.down')
     expect(resolveGesture(DEFAULT_GESTURES, 'voice', 'tap')).toBe('voice.send')
-    expect(resolveGesture(DEFAULT_GESTURES, 'voice', 'double_tap')).toBe('voice.cancel')
-    expect(resolveGesture(DEFAULT_GESTURES, 'reply', 'scroll_down')).toBe('page.next')
-    expect(resolveGesture(DEFAULT_GESTURES, 'reply', 'double_tap')).toBe('nav.back')
-  })
-})
-
-describe('validateGestureMap', () => {
-  const withFeed = (feed: Partial<GestureMap['feed']>): GestureMap => ({ ...DEFAULT_GESTURES, feed: { ...DEFAULT_GESTURES.feed, ...feed } })
-
-  test('requires a way to exit the app from the feed', () => {
-    expect(validateGestureMap(withFeed({ double_tap: 'none' }))).toContain('feed: no gesture exits the app')
   })
 
-  test('requires a way off every other screen', () => {
-    const map: GestureMap = { ...DEFAULT_GESTURES, reply: { tap: 'none', double_tap: 'none', scroll_up: 'page.prev', scroll_down: 'page.next' } }
-    expect(validateGestureMap(map)).toContain('reply: no gesture leaves this screen')
-  })
-
-  test('rejects actions that do not belong on a screen', () => {
-    expect(validateGestureMap(withFeed({ tap: 'card.confirm' as never }))).toContain('feed.tap: card.confirm is not available here')
-  })
-
-  test('rejects a voice map without send', () => {
-    const map: GestureMap = { ...DEFAULT_GESTURES, voice: { tap: 'voice.cancel', double_tap: 'voice.cancel', scroll_up: 'none', scroll_down: 'none' } }
-    expect(validateGestureMap(map)).toContain('voice: no gesture sends the prompt')
-  })
-})
-
-describe('parseGestureMap', () => {
-  test('round trips the defaults', () => {
-    expect(parseGestureMap(JSON.stringify(DEFAULT_GESTURES))).toEqual(DEFAULT_GESTURES)
-  })
-
-  test('falls back to defaults for garbage, unknown actions, or invalid maps', () => {
-    expect(parseGestureMap('')).toEqual(DEFAULT_GESTURES)
-    expect(parseGestureMap('{nope')).toEqual(DEFAULT_GESTURES)
-    expect(parseGestureMap(JSON.stringify({ ...DEFAULT_GESTURES, feed: { ...DEFAULT_GESTURES.feed, tap: 'rm -rf' } }))).toEqual(DEFAULT_GESTURES)
-    expect(parseGestureMap(JSON.stringify({ ...DEFAULT_GESTURES, feed: { ...DEFAULT_GESTURES.feed, double_tap: 'none' } }))).toEqual(DEFAULT_GESTURES)
-  })
-})
-
-describe('menu gestures', () => {
-  test('feed tap opens the menu by default, and the menu uses card gestures', () => {
-    expect(resolveGesture(DEFAULT_GESTURES, 'feed', 'tap')).toBe('menu.open')
-    expect(resolveGesture(DEFAULT_GESTURES, 'menu', 'scroll_down')).toBe('card.next')
+  test('menu and question cards share the card row', () => {
     expect(resolveGesture(DEFAULT_GESTURES, 'menu', 'tap')).toBe('card.confirm')
-    expect(resolveGesture(DEFAULT_GESTURES, 'menu', 'double_tap')).toBe('nav.back')
+    expect(resolveGesture(DEFAULT_GESTURES, 'question', 'scroll_down')).toBe('card.next')
   })
 
-  test('a Phase 3 map with feed tap on voice.start is still valid', () => {
-    const old = { ...DEFAULT_GESTURES, feed: { ...DEFAULT_GESTURES.feed, tap: 'voice.start' as const } }
-    expect(validateGestureMap(old)).toEqual([])
+  const withTimeline = (t: Partial<GestureMap['timeline']>): GestureMap => ({ ...DEFAULT_GESTURES, timeline: { ...DEFAULT_GESTURES.timeline, ...t } })
+
+  test('requires an exit path from the timeline', () => {
+    expect(validateGestureMap(withTimeline({ double_tap: 'none' }))).toContain('timeline: no gesture exits the app')
+    expect(validateGestureMap(withTimeline({ double_tap: 'none', tap: 'app.exit' }))).toEqual([])
+  })
+
+  test('rejects actions from another screen', () => {
+    expect(validateGestureMap(withTimeline({ tap: 'card.confirm' as never }))).toContain('timeline.tap: card.confirm is not available here')
+  })
+
+  test('requires card back, voice send and cancel', () => {
+    expect(validateGestureMap({ ...DEFAULT_GESTURES, card: { tap: 'card.confirm', double_tap: 'none', scroll_up: 'none', scroll_down: 'none' } })).toContain(
+      'card: no gesture leaves this screen',
+    )
+    const voice = { tap: 'none', double_tap: 'none', scroll_up: 'none', scroll_down: 'none' } as const
+    expect(validateGestureMap({ ...DEFAULT_GESTURES, voice })).toEqual(['voice: no gesture sends the prompt', 'voice: no gesture cancels'])
+  })
+
+  test('parse falls back to defaults for garbage and for older (feed/reply) maps', () => {
+    expect(parseGestureMap(JSON.stringify(DEFAULT_GESTURES))).toEqual(DEFAULT_GESTURES)
+    expect(parseGestureMap('{nope')).toEqual(DEFAULT_GESTURES)
+    const phase3 = { feed: { tap: 'menu.open', double_tap: 'app.exit', scroll_up: 'feed.older', scroll_down: 'feed.newer' }, reply: {}, card: DEFAULT_GESTURES.card, voice: DEFAULT_GESTURES.voice }
+    expect(parseGestureMap(JSON.stringify(phase3))).toEqual(DEFAULT_GESTURES)
   })
 })

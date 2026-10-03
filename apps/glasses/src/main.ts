@@ -1,5 +1,5 @@
-// G2 Claude Code: glasses app entry. Feed, reply view, feed menu with Stop
-// (Phase 4), permission cards (Phase 5), voice prompts (Phase 6). Questions (7) come later.
+// G2 Claude Code: glasses app entry. A continuous timeline with overlays for
+// the menu, permission cards, questions, and voice (live transcript).
 
 import { AudioInputSource, waitForEvenAppBridge } from '@evenrealities/even_hub_sdk'
 import { fromBase64Url } from '@g2cc/protocol'
@@ -8,10 +8,10 @@ import { Display } from './display'
 import { DEFAULT_GESTURES, type GestureMap } from './gestures'
 import { toSignal } from './input'
 import { Link } from './link'
-import { render } from './render'
-import { BYTES_PER_SECOND } from './asr/wav'
+import { frameOf, render } from './render'
 import { transcribe } from './asr/stt'
-import { initialState, micWanted, reduce, type AppState, type Msg } from './state'
+import { VoiceRecorder } from './recorder'
+import { initialState, isAnimating, micWanted, reduce, type AppState, type Msg } from './state'
 import { Storage } from './storage'
 import { mirror, mountUi, setGestureMap, setStatus } from './ui'
 
@@ -25,64 +25,49 @@ let started = false
 const STT_KEY = (import.meta.env.VITE_STT_API_KEY as string | undefined) ?? ''
 // Dev only: a canned transcript so simulator tests can drive the voice flow without speaking.
 const FAKE_STT = import.meta.env.DEV ? ((import.meta.env.VITE_G2CC_FAKE_STT as string | undefined) ?? '') : ''
-const MAX_RECORDING_BYTES = 60 * BYTES_PER_SECOND
-const MIN_RECORDING_BYTES = 0.3 * BYTES_PER_SECOND
+const TICK_MS = 250
 
 let micOn = false
-let pcm: Uint8Array[] = []
-let pcmBytes = 0
-let transcribingAttempt = 0
+let ticker: ReturnType<typeof setInterval> | null = null
+let lastLogged = ''
+
+const recorder = new VoiceRecorder({
+  dispatch: msg => dispatch(msg),
+  transcribe: pcm => transcribe(pcm, { apiKey: STT_KEY }),
+  ...(FAKE_STT ? { fakeTranscript: FAKE_STT } : {}),
+})
 
 /** Keeps the bridge mic in step with micWanted(state). Calls go through the shared queue. */
 function syncMic(): void {
   const wanted = micWanted(state)
   if (wanted === micOn) return
   micOn = wanted
-  if (wanted) {
-    pcm = []
-    pcmBytes = 0
-  }
+  recorder.setListening(wanted, state.voice.attempt)
   queue
     .run('audioControl', () => (wanted ? bridge.audioControl(true, AudioInputSource.Glasses) : bridge.audioControl(false)))
     .catch(err => log('mic control failed:', (err as Error).message))
 }
 
-function onAudio(chunk: Uint8Array): void {
-  if (!micOn) return
-  pcm.push(chunk)
-  pcmBytes += chunk.length
-  if (pcmBytes >= MAX_RECORDING_BYTES) dispatch({ type: 'voice_limit' })
-}
-
-/** Starts transcription once per attempt, when the reducer enters 'transcribing'. */
-function syncTranscription(): void {
-  const { phase, attempt } = state.voice
-  if (phase !== 'transcribing' || attempt === transcribingAttempt) return
-  transcribingAttempt = attempt
-  const audio = pcm
-  const bytes = pcmBytes
-  pcm = []
-  pcmBytes = 0
-  if (FAKE_STT) {
-    setTimeout(() => dispatch({ type: 'transcript', attempt, text: FAKE_STT, now: Date.now() }), 300)
-    return
+/** Runs the animation clock only while something animates (dots, pulse, fade). */
+function syncTicker(): void {
+  const wanted = isAnimating(state)
+  if (wanted && !ticker) ticker = setInterval(() => dispatch({ type: 'tick', now: Date.now() }), TICK_MS)
+  if (!wanted && ticker) {
+    clearInterval(ticker)
+    ticker = null
   }
-  if (bytes < MIN_RECORDING_BYTES) {
-    dispatch({ type: 'transcript_error', attempt, message: "Didn't catch that" })
-    return
-  }
-  transcribe(audio, { apiKey: STT_KEY })
-    .then(text => dispatch({ type: 'transcript', attempt, text, now: Date.now() }))
-    .catch(err => dispatch({ type: 'transcript_error', attempt, message: (err as Error).message }))
 }
 
 function paint(): void {
-  const frame = render(state)
-  display?.show(frame)
+  const scene = render(state)
+  const frame = frameOf(scene)
+  display?.show(scene)
   mirror(frame)
   setStatus(state.link, state.paired)
   // Dev only: lets simulator automation assert on exactly what was drawn.
-  if (import.meta.env.DEV && started) log('frame', JSON.stringify(frame))
+  const logged = JSON.stringify(frame)
+  if (import.meta.env.DEV && started && logged !== lastLogged) log('frame', logged)
+  lastLogged = logged
 }
 
 function dispatch(msg: Msg): void {
@@ -91,7 +76,8 @@ function dispatch(msg: Msg): void {
   paint()
   if (started) {
     syncMic()
-    syncTranscription()
+    if (state.voice.phase === 'transcribing') recorder.finish(state.voice.attempt)
+    syncTicker()
   }
   for (const effect of result.effects) {
     if (effect.type === 'exit') void bridge.shutDownPageContainer(1)
@@ -163,7 +149,7 @@ let cleanedUp = false
 const unsubscribe = bridge.onEvenHubEvent(event => {
   const chunk = event.audioEvent?.audioPcm
   if (chunk) {
-    onAudio(chunk)
+    recorder.onAudio(chunk)
     return
   }
   const signal = toSignal(event)
@@ -186,6 +172,8 @@ function cleanup(): void {
   if (cleanedUp) return
   cleanedUp = true
   if (micOn) void bridge.audioControl(false)
+  recorder.setListening(false, state.voice.attempt)
+  if (ticker) clearInterval(ticker)
   link.disconnect()
   unsubscribe()
 }

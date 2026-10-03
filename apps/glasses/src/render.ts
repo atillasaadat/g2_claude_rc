@@ -1,135 +1,131 @@
-// Pure rendering: AppState -> the text of the two containers. Every line is
+// Pure rendering: AppState -> Scene (the containers to draw). Every line is
 // measured with pretext so nothing ever wraps or overflows on the glasses.
+//
+// Brightness (textColor 0..4) is per container and can change without a
+// rebuild, which is what the animations use: the timeline dims behind an
+// overlay, overlays fade in, the mic label pulses, the working dots move.
 
 import { getTextWidth } from '@evenrealities/pretext'
-import { BODY_LINES, INNER_WIDTH, fitLine, wrapLines } from './layout'
-import { FEED_LINES, menuItems, type AppState, type FeedLine, type Link, type PermissionCard, type QuestionCard } from './state'
+import {
+  clampLines,
+  fitLine,
+  LINE_H,
+  HEADER,
+  HEADER_WIDTH,
+  innerWidth,
+  OVERLAY_WIDTH,
+  overlayBox,
+  sideBox,
+  spread,
+  tailLines,
+  TIMELINE,
+  TIMELINE_LINES,
+  type Box,
+} from './layout'
+import { FADE_MS, menuItems, type AppState, type Link, type PermissionCard, type QuestionCard } from './state'
+import { buildTimeline, visibleWindow } from './timeline'
 
+export interface ContainerSpec {
+  id: number
+  name: string
+  box: Box
+  content: string
+  /** Text brightness 0..4. */
+  brightness: number
+  capture: boolean
+  /** Stacking order, larger in front. */
+  z: number
+}
+
+export interface Scene {
+  containers: readonly ContainerSpec[]
+}
+
+/** A flat view of a scene, for logs, the phone mirror, and tests. */
 export interface Frame {
   header: string
-  body: string
+  timeline: string
+  overlay?: { name: string; content: string }
 }
+
+export const HEADER_ID = 1
+export const TIMELINE_ID = 2
+export const OVERLAY_ID = 3
+
+const BRIGHT = 4
+const DIM = 1
 
 // Glyphs verified present in the firmware font (docs/decisions.md).
 const DOT: Record<Link, string> = { online: '●', relay: '○', offline: '×' }
 
-function header(s: AppState): string {
-  if (!s.paired) return fitLine('G2 Claude Code · not paired')
-  if (s.screen === 'reply' && s.reply) {
-    return fitLine(`Reply ${s.replyPage + 1}/${s.reply.pages.length} · ↑↓ pages${s.session ? ` · ${s.session.name}` : ''}`)
-  }
-  if (s.screen === 'menu') return fitLine(`Menu${s.session ? ` · ${s.session.name}` : ''}`)
-  if (s.screen === 'voice') return VOICE_HEADER[s.voice.phase]
-  if (s.screen === 'question') return fitLine(`Question${s.questions.length > 1 ? ` · 1/${s.questions.length}` : ''}`)
-  if (s.screen === 'card' && s.cards[0]) {
-    return fitLine(`Allow ${s.cards[0].tool_name}?${s.cards.length > 1 ? ` · 1/${s.cards.length}` : ''}`)
-  }
-  if (!s.session) return fitLine(`${DOT[s.link]} waiting for Claude Code`)
+const indent = (selected: boolean, label: string, width: number): string => {
+  const prefix = selected ? '▶ ' : '   '
+  return prefix + fitLine(label, width - getTextWidth(prefix))
+}
+
+/** Working dots cycle 1..3 while Claude works. */
+const dots = (clock: number): string => '·'.repeat(1 + (Math.floor(clock / 400) % 3))
+
+function statusHeader(s: AppState): string {
+  if (!s.paired) return fitLine('G2 Claude Code · not paired', HEADER_WIDTH)
+  if (!s.session) return spread(`${DOT[s.link]} waiting for Claude Code`, '', HEADER_WIDTH)
   const { name, state, mode } = s.session
-  const status = s.stopPending ? '■ stopping…' : `${state}${mode ? ` · ${mode}` : ''}`
-  return fitLine(`${DOT[s.link]} ${name} · ${status}`)
+  const status = s.stopPending ? '■ stopping…' : state === 'working' ? `working ${dots(s.clock)}` : state
+  const right = s.fromBottom > 0 ? `▼ ${s.fromBottom} newer` : (mode ?? '')
+  return spread(`${DOT[s.link]} ${name} · ${status}`, right, HEADER_WIDTH)
 }
 
-function eventLine(e: FeedLine): string {
-  switch (e.type) {
-    case 'prompt':
-      return fitLine(`> ${e.summary}`)
-    case 'notify':
-      return fitLine(`! ${e.summary}`)
-    case 'tool': {
-      const label = e.tool && e.summary && e.summary !== e.tool ? `${e.tool}: ${e.summary}` : (e.tool ?? e.summary)
-      return fitLine(e.result === undefined ? `▶ ${label}` : `• ${label} → ${e.result}`)
-    }
-  }
+const HINTS: Record<Exclude<AppState['screen'], 'timeline'>, string> = {
+  menu: '↑↓ choose · tap: select · 2× tap: back',
+  card: '↑ allow · ↓ deny · tap: confirm · 2× tap: later',
+  question: '↑↓ choose · tap: answer · 2× tap: later',
+  voice: '',
 }
 
-function feedBody(s: AppState): string {
-  const end = s.events.length - s.feedOffset
-  const visible = s.events.slice(Math.max(0, end - FEED_LINES), end)
-  const lines = visible.length ? visible.map(eventLine) : ['No activity yet.']
-  if (s.feedOffset > 0) lines.push(fitLine(`↑↓ ${s.feedOffset} newer`))
-  if (s.glance) lines.push('', fitLine(`» ${s.glance}`))
-  if (s.reply && s.feedOffset === 0) {
-    const n = s.reply.pages.length
-    lines.push(fitLine(`↓ reply (${n} page${n === 1 ? '' : 's'})`))
-  }
-  return lines.slice(0, BODY_LINES).join('\n')
-}
-
-function unpairedBody(): string {
-  return [
-    'Not paired.',
-    '',
-    'On your computer run: bun channel/pair.ts',
-    'then paste the pairing text into this app',
-    'on your phone.',
-  ]
-    .map(l => fitLine(l))
-    .join('\n')
-}
-
-function menuBody(s: AppState): string {
-  const items = menuItems(s).map((item, i) => {
-    const label = item.label
-    // fitLine trims, so the indent goes outside it and the label gets the remaining width.
-    return indent(i === s.menuIndex, label)
-  })
-  return [...items, '', fitLine('tap: select · double tap: back')].join('\n')
-}
-
-const VOICE_HEADER: Record<AppState['voice']['phase'], string> = {
-  idle: 'Voice',
-  listening: 'Listening…',
-  transcribing: 'Transcribing…',
-  review: 'Send to Claude?',
-  error: 'Voice',
-}
-const REVIEW_LINES = 6
-
-function voiceBody(s: AppState): string {
+function voiceHint(s: AppState): string {
   switch (s.voice.phase) {
     case 'listening':
-      return ['Speak now. Say "stop" to stop Claude.', '', 'tap: done · double tap: cancel'].map(l => fitLine(l)).join('\n')
-    case 'transcribing':
-      return ['One moment.', '', 'double tap: cancel'].map(l => fitLine(l)).join('\n')
-    case 'review': {
-      const lines = wrapLines(s.voice.text ?? '')
-      const shown =
-        lines.length <= REVIEW_LINES
-          ? lines
-          : [...lines.slice(0, REVIEW_LINES - 1), fitLine(`${lines[REVIEW_LINES - 1]} ${lines[REVIEW_LINES]}`)]
-      return [...shown, '', fitLine('tap: send · double tap: cancel')].join('\n')
-    }
+      return 'tap: done · 2× tap: cancel'
+    case 'review':
+      return 'tap: send · 2× tap: cancel'
+    case 'error':
+      return 'tap: try again · 2× tap: cancel'
     default:
-      return [s.voice.error ?? '', '', 'tap: try again · double tap: cancel'].map(l => fitLine(l)).join('\n')
+      return '2× tap: cancel'
   }
 }
 
-/** Body budget: question lines, a blank, then up to 4 options. */
-const QUESTION_LINES = BODY_LINES - 1 - 4
-
-function questionBody(s: AppState, q: QuestionCard): string {
-  const lines = wrapLines(q.question)
-  const shown =
-    lines.length <= QUESTION_LINES
-      ? lines
-      : [...lines.slice(0, QUESTION_LINES - 1), fitLine(`${lines[QUESTION_LINES - 1]} ${lines[QUESTION_LINES]}`)]
-  return [...shown, '', ...q.options.map((o, i) => indent(i === s.questionIndex, o))].join('\n')
+function header(s: AppState): string {
+  if (s.screen === 'timeline' || !s.paired) return statusHeader(s)
+  return fitLine(s.screen === 'voice' ? voiceHint(s) : HINTS[s.screen], HEADER_WIDTH)
 }
 
-const PREVIEW_LINES = 4
-const indent = (selected: boolean, label: string): string => {
-  const prefix = selected ? '▶ ' : '   '
-  return prefix + fitLine(label, INNER_WIDTH - getTextWidth(prefix))
+function timelineText(s: AppState): string {
+  const w = innerWidth(TIMELINE)
+  if (!s.paired) {
+    return ['Not paired.', '', 'On your computer run: bun channel/pair.ts', 'then paste the pairing text into this app', 'on your phone.']
+      .map(l => fitLine(l, w))
+      .join('\n')
+  }
+  const { lines } = buildTimeline(s.entries)
+  if (!lines.length) return fitLine('No activity yet. Tap for the menu.', w)
+  return visibleWindow(lines, TIMELINE_LINES, s.fromBottom).join('\n')
+}
+
+// Overlays ---------------------------------------------------------------
+
+function menuOverlay(s: AppState): { box: Box; content: string } {
+  const items = menuItems(s)
+  const box = sideBox(items.length)
+  return { box, content: items.map((item, i) => indent(i === s.menuIndex, item.label, innerWidth(box))).join('\n') }
 }
 
 /** The preview is JSON text from Claude Code. Show its fields, minus a repeat of the description. */
-function previewLines(card: PermissionCard): string[] {
-  let text = card.input_preview
+function previewText(card: PermissionCard): string {
   try {
     const obj = JSON.parse(card.input_preview) as unknown
     if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
-      text = Object.entries(obj as Record<string, unknown>)
+      return Object.entries(obj as Record<string, unknown>)
         .filter(([k, v]) => !(k === 'description' && v === card.description))
         .map(([k, v]) => (k === 'command' ? String(v) : `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`))
         .join('\n')
@@ -137,30 +133,118 @@ function previewLines(card: PermissionCard): string[] {
   } catch {
     // Not JSON (or truncated by Claude Code): show it as is.
   }
-  const lines = wrapLines(text)
-  if (lines.length <= PREVIEW_LINES) return lines
-  // Joining the next line forces pxTruncate to cut the last kept line with '...'.
-  const kept = lines.slice(0, PREVIEW_LINES - 1)
-  return [...kept, fitLine(`${lines[PREVIEW_LINES - 1]} ${lines[PREVIEW_LINES]}`)]
+  return card.input_preview
 }
 
-function cardBody(s: AppState, card: PermissionCard): string {
-  return [
-    fitLine(card.description || card.tool_name),
+function cardOverlay(s: AppState, card: PermissionCard): { box: Box; content: string } {
+  const w = OVERLAY_WIDTH
+  const title = `Allow ${card.tool_name}?${s.cards.length > 1 ? `  (1 of ${s.cards.length})` : ''}`
+  // Short fixed labels, so no fitting: fitLine would collapse the spacing.
+  const mark = (on: boolean) => (on ? '▶ ' : '   ')
+  const choices = `${mark(s.cardChoice === 'allow')}Allow${' '.repeat(12)}${mark(s.cardChoice === 'deny')}Deny`
+  const lines = [
+    fitLine(title, w),
+    fitLine(card.description || card.tool_name, w),
     '',
-    ...previewLines(card),
+    ...clampLines(previewText(card), 3, w),
     '',
-    indent(s.cardChoice === 'allow', 'Allow'),
-    indent(s.cardChoice === 'deny', 'Deny'),
-  ].join('\n')
+    choices,
+  ]
+  return { box: overlayBox(lines.length), content: lines.join('\n') }
 }
 
-export function render(s: AppState): Frame {
-  if (!s.paired) return { header: header(s), body: unpairedBody() }
-  if (s.screen === 'card' && s.cards[0]) return { header: header(s), body: cardBody(s, s.cards[0]) }
-  if (s.screen === 'menu') return { header: header(s), body: menuBody(s) }
-  if (s.screen === 'voice') return { header: header(s), body: voiceBody(s) }
-  if (s.screen === 'question' && s.questions[0]) return { header: header(s), body: questionBody(s, s.questions[0]) }
-  if (s.screen === 'reply' && s.reply) return { header: header(s), body: s.reply.pages[s.replyPage] ?? '' }
-  return { header: header(s), body: feedBody(s) }
+function questionOverlay(s: AppState, q: QuestionCard): { box: Box; content: string } {
+  const w = OVERLAY_WIDTH
+  const head = s.questions.length > 1 ? `(1 of ${s.questions.length}) ${q.question}` : q.question
+  const lines = [...clampLines(head, 3, w), '', ...q.options.map((o, i) => indent(i === s.questionIndex, o, w))]
+  return { box: overlayBox(lines.length), content: lines.join('\n') }
+}
+
+/** Live while listening (fixed 3-line box, so it never rebuilds as text grows); sized to fit on review. */
+function voiceOverlay(s: AppState): { box: Box; content: string } {
+  const w = OVERLAY_WIDTH
+  const v = s.voice
+  switch (v.phase) {
+    case 'listening': {
+      const pulse = Math.floor(s.clock / 500) % 2 ? '○' : '●'
+      const said = v.partial ? tailLines(`${v.partial} _`, 2, w) : ['Speak now. Say "stop" to stop Claude.']
+      const lines = [`${pulse} Listening`, ...said, ...(said.length < 2 ? [''] : [])]
+      return { box: overlayBox(3), content: lines.map(l => fitLine(l, w)).join('\n') }
+    }
+    case 'transcribing': {
+      const said = v.partial ? tailLines(v.partial, 2, w) : ['One moment.', '']
+      return { box: overlayBox(3), content: ['○ Transcribing', ...said].map(l => fitLine(l, w)).join('\n') }
+    }
+    case 'review': {
+      const lines = ['Send to Claude?', ...clampLines(v.text ?? '', 5, w)]
+      return { box: overlayBox(lines.length), content: lines.join('\n') }
+    }
+    default:
+      return { box: overlayBox(2), content: ['Voice', fitLine(v.error ?? '', w)].join('\n') }
+  }
+}
+
+function overlay(s: AppState): { name: string; box: Box; content: string } | null {
+  switch (s.screen) {
+    case 'menu':
+      return { name: 'menu', ...menuOverlay(s) }
+    case 'card':
+      return s.cards[0] ? { name: 'card', ...cardOverlay(s, s.cards[0]) } : null
+    case 'question':
+      return s.questions[0] ? { name: 'question', ...questionOverlay(s, s.questions[0]) } : null
+    case 'voice':
+      return { name: 'voice', ...voiceOverlay(s) }
+    default:
+      return null
+  }
+}
+
+/** Overlays fade in: brightness 2, 3, then 4 over FADE_MS. */
+function fade(s: AppState): number {
+  const t = s.clock - s.overlaySince
+  if (!Number.isFinite(t) || t >= FADE_MS) return BRIGHT
+  return t < FADE_MS / 3 ? 2 : 3
+}
+
+/**
+ * The display has no fill: unpainted pixels are off, so an overlay cannot hide
+ * what is under it. Occlude instead: blank the timeline rows a full-width box
+ * covers, and clip rows short of a side box, so the box reads as solid.
+ */
+export function occlude(timeline: string, box: Box): string {
+  const top = TIMELINE.y + TIMELINE.border + TIMELINE.padding
+  const left = TIMELINE.x + TIMELINE.border + TIMELINE.padding
+  const clipTo = box.x - left - 12
+  return timeline
+    .split('\n')
+    .map((line, i) => {
+      const y0 = top + i * LINE_H
+      const covered = y0 < box.y + box.h && y0 + LINE_H > box.y
+      if (!covered) return line
+      return clipTo < 40 ? '' : fitLine(line, clipTo)
+    })
+    .join('\n')
+}
+
+export function render(s: AppState): Scene {
+  const over = s.paired ? overlay(s) : null
+  const timeline = over ? occlude(timelineText(s), over.box) : timelineText(s)
+  return {
+    containers: [
+      { id: HEADER_ID, name: 'header', box: HEADER, content: header(s), brightness: 3, capture: false, z: 1 },
+      // The timeline always captures input: taps arrive as sysEvent, swipes as textEvent.
+      { id: TIMELINE_ID, name: 'timeline', box: TIMELINE, content: timeline, brightness: over ? DIM : BRIGHT, capture: true, z: 2 },
+      ...(over ? [{ id: OVERLAY_ID, name: over.name, box: over.box, content: over.content, brightness: fade(s), capture: false, z: 3 }] : []),
+    ],
+  }
+}
+
+export function frameOf(scene: Scene): Frame {
+  const by = (id: number) => scene.containers.find(c => c.id === id)
+  const o = by(OVERLAY_ID)
+  return {
+    header: by(HEADER_ID)?.content ?? '',
+    timeline: by(TIMELINE_ID)?.content ?? '',
+    ...(o ? { overlay: { name: o.name, content: o.content } } : {}),
+  }
 }
