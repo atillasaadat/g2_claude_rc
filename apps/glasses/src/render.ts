@@ -111,7 +111,7 @@ function header(s: AppState): string {
 function timelineText(s: AppState): string {
   const w = innerWidth(TIMELINE)
   if (!s.paired) {
-    return ['Not paired.', '', 'On your computer run: bun channel/pair.ts', 'then paste the pairing text into this app', 'on your phone.']
+    return ['Not paired.', '', 'Open this app on your phone and follow', 'the Setup guide there.']
       .map(l => fitLine(l, w))
       .join('\n')
   }

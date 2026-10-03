@@ -2,6 +2,7 @@
 // display, pairing, and the gesture map editor. Dynamic values only ever go
 // through textContent, never innerHTML.
 
+import { GUIDE_CSS, GUIDE_HTML, wireGuide } from './guide'
 import { ACTIONS, DEFAULT_GESTURES, GESTURES, SCREENS, validateGestureMap, type GestureMap } from './gestures'
 import type { Frame } from './render'
 import type { Link } from './state'
@@ -25,6 +26,7 @@ let els: {
   header: HTMLDivElement
   body: HTMLPreElement
   overlay: HTMLPreElement
+  guide: HTMLDetailsElement
   pairInput: HTMLTextAreaElement
   pairMsg: HTMLDivElement
   gestures: HTMLDivElement
@@ -48,9 +50,13 @@ export function mountUi(cb: UiCallbacks): void {
           <pre id="m-overlay" class="m-overlay" hidden></pre>
         </div>
       </section>
+      <details id="guide">
+        <summary>Setup guide</summary>
+        ${GUIDE_HTML}
+      </details>
       <details>
         <summary>Pairing</summary>
-        <p class="hint">On your computer run <code>bun channel/pair.ts</code> and paste the pairing text here. It contains a secret key.</p>
+        <p class="hint">On your computer run <code>bun channel/pair.ts --text</code> and paste the pairing text here. It contains a secret key.</p>
         <textarea id="pair-input" rows="4" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder='{"v":1,"relayUrl":...}'></textarea>
         <div class="row">
           <button id="pair-save">Save pairing</button>
@@ -60,7 +66,7 @@ export function mountUi(cb: UiCallbacks): void {
       </details>
       <details>
         <summary>Voice (Groq key)</summary>
-        <p class="hint">Talk needs a free Groq API key. It normally arrives with the pairing QR; paste one here to set or replace it. Stored on this device only.</p>
+        <p class="hint">Talk needs a free Groq API key from console.groq.com/keys. Paste it here (a pairing QR may already include one). It is stored on this phone only.</p>
         <div id="stt-status" class="hint"></div>
         <input id="stt-input" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="gsk_..." />
         <div class="row"><button id="stt-save">Save key</button></div>
@@ -82,6 +88,7 @@ export function mountUi(cb: UiCallbacks): void {
     header: app.querySelector('#m-header')!,
     body: app.querySelector('#m-body')!,
     overlay: app.querySelector('#m-overlay')!,
+    guide: app.querySelector('#guide')!,
     pairInput: app.querySelector('#pair-input')!,
     pairMsg: app.querySelector('#pair-msg')!,
     gestures: app.querySelector('#gestures')!,
@@ -132,6 +139,7 @@ export function mountUi(cb: UiCallbacks): void {
     message(els.gestureMsg, 'Defaults restored. Save to keep them.', false)
   })
 
+  wireGuide(els.guide)
   injectStyles()
 }
 
@@ -140,8 +148,15 @@ function message(el: HTMLDivElement, text: string, error: boolean): void {
   el.className = error ? 'msg msg-error' : 'msg'
 }
 
+let guideShown = false
+
 export function setStatus(link: Link, paired: boolean): void {
   if (!els) return
+  // Open the guide once for an unpaired app; after that, respect the user's toggle.
+  if (!guideShown) {
+    guideShown = true
+    els.guide.open = !paired
+  }
   const [cls, text] = !paired
     ? ['offline', 'Not paired']
     : link === 'online'
@@ -250,6 +265,6 @@ function injectStyles(): void {
     select { background: #232323; color: #E5E5E5; border: 1px solid #3E3E3E; border-radius: 6px; padding: 4px; }
   `
   const style = document.createElement('style')
-  style.textContent = css
+  style.textContent = css + GUIDE_CSS
   document.head.appendChild(style)
 }
