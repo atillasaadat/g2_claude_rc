@@ -136,6 +136,10 @@ beforeAll(async () => {
 afterAll(() => {
   relay?.stop()
   for (const p of procs.reverse()) p.kill()
+  // The launcher spawns the native simulator window as a separate process that
+  // outlives it; close that window by its unique automation port.
+  // '--' ends pkill's options, since the pattern itself starts with dashes.
+  if (automation) Bun.spawnSync(['pkill', '-f', '--', `--automation-port ${new URL(automation).port}`])
   if (tmp) rmSync(tmp, { recursive: true, force: true })
 })
 
