@@ -3,6 +3,7 @@
 // Static content only; nothing dynamic is ever interpolated into this HTML.
 
 export const GUIDE_URL = 'https://atillasaadat.com/g2-claude/'
+export const REPO_URL = 'https://github.com/atillasaadat/g2_claude_rc'
 
 const cmd = (text: string): string =>
   `<div class="g-cmd"><pre>${text}</pre><button type="button" class="g-copy secondary">Copy</button></div>`
@@ -48,7 +49,7 @@ export const GUIDE_HTML = `
     <li><strong>Talk is off:</strong> add your Groq key under Voice.</li>
     <li><strong>Stop seems slow:</strong> it takes effect at Claude's next tool call.</li>
   </ul>
-  <p class="hint">Full guide: <a href="${GUIDE_URL}">${GUIDE_URL.replace('https://', '')}</a></p>
+  <p class="hint">Full guide: <a href="${GUIDE_URL}">${GUIDE_URL.replace('https://', '')}</a>. Source code: <a href="${REPO_URL}">${REPO_URL.replace('https://', '')}</a></p>
 `
 
 export const GUIDE_CSS = `

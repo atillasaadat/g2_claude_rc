@@ -616,3 +616,10 @@ Four read-only reviews (crypto and pairing, the local channel surface, the relay
   - Dismissing a card by tool name fails safe.
   - The pairing key and Groq key sit in the Even app's per-app storage, as WebViews allow.
 - **Compatibility.** The relay now refuses sockets without the auth token, and the pairing protocol changed, so the app build in Even Hub review (0.2.0) cannot connect after this deploy. App 0.3.0 must be uploaded. Existing pairings keep working: the key did not change, and the first token a room sees is the legitimate one.
+
+## Public repository (2026-10-03)
+
+- The user made the repository public. `/plugin marketplace add atillasaadat/g2_claude_rc` now works for anyone. **Verified** in a throwaway `CLAUDE_CONFIG_DIR` with no GitHub credentials: the marketplace was added, and `g2@g2cc` 0.3.0 was installed and enabled with both bundles.
+- The website, the in-app guide and the Even Hub listing copy now link to the source.
+- Before going public, history was already clean of secrets (audit, Phase 10).
+- No license file yet, so the default is all rights reserved: others may read the code but not reuse it. Choosing one is the user's call.

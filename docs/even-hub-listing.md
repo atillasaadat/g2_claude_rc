@@ -31,19 +31,20 @@ Works with the R1 ring, and every gesture can be remapped in the phone view.
 **Private by design**
 Everything between your computer and your glasses is end-to-end encrypted with a key only your computer and your phone hold. The relay in between only passes ciphertext. Nothing on your computer listens to the internet, and your Claude account never leaves Claude Code.
 
+Open source, the app and the Claude Code plugin alike: https://github.com/atillasaadat/g2_claude_rc
+
 G2 Claude Code is an independent project. It is not made by or affiliated with Anthropic. Claude and Claude Code are trademarks of Anthropic.
 
-## Release notes (0.2.0)
+## Release notes (0.3.2)
 
 First public release. Pair with a one-time code from the Claude Code plugin, then watch, talk to, approve, and stop Claude Code from your glasses.
 
 ## Permissions (as declared in app.json)
 
 - **Glasses microphone:** records voice prompts only while you choose Talk. Audio goes to Groq for transcription with your own key and is not stored by this app.
-- **Network:** the encrypted relay at atillasaadat.com, and api.groq.com for transcription.
+- **Network:** the encrypted relay at atillasaadat.com, and api.groq.com for transcription and for checking that the saved key works.
 
 ## Still needed before submitting
 
 - A privacy policy page that covers both permissions and names the relay domain (atillasaadat.com) and Groq.
-- A monochrome icon and screenshots taken from the device or simulator.
-- A public repository, so people can add the plugin marketplace.
+- A monochrome icon. Screenshots: `bun scripts/store-screenshots.ts` in apps/glasses writes them to build/store-screenshots/.
