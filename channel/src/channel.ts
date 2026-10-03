@@ -14,7 +14,7 @@ import { startHookServer, type HookResponse, type HookServer } from './hook-serv
 import { SessionTracker, translateHook, type HookPayload } from './hooks'
 import { loadOrCreatePairing, pairingPath } from './pairing-store'
 import { clip, oneLine, redact } from './redact'
-import { RelayClient } from './relay-client'
+import { RelayClient } from '@g2cc/protocol'
 
 type C2GKind = (typeof C2G_KINDS)[number]
 

@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import { SecureChannel, type AnyEnvelope } from '@g2cc/protocol'
 import { relaySocketUrl } from '../src/config'
 import { loadOrCreatePairing } from '../src/pairing-store'
-import { RelayClient } from '../src/relay-client'
+import { RelayClient } from '@g2cc/protocol'
 
 const ROOT = join(import.meta.dir, '..', '..')
 const SESSION = '11111111-2222-3333-4444-555555555555'

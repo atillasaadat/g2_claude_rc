@@ -228,3 +228,34 @@ The difference is that auto mode opens no permission dialogs, so the channel get
   - A real `--rc` sandbox session, running in auto mode, streamed its whole turn through the local relay to `tools/feed.ts`, in order: session header, prompt, `working · auto`, Bash start and end, glance, the full reply, `idle`.
   - Follow-up: `ToolSearch` and the channel's own `mcp__g2__*` tools are now hidden from the feed. They were noise, and glance already arrives as its own envelope.
 - **Phase 2 status: done.**
+
+## Phase 3: glasses feed (2026-10-03)
+
+- **SDK upgrade:** even_hub_sdk 0.0.10 to **0.0.16**, simulator 0.7 to 0.9.5, CLI 0.1.14, pretext 0.1.4. `app.json` now has `min_sdk_version: 0.0.16`.
+  - 0.0.16 has `zOrderIndex` but **no `setBackgroundState`**; the background-state skill is ahead of the published SDK.
+  - We don't need it: when the phone backgrounds the WebView and the host reloads it headless, the relay's history replay rebuilds the feed on connect.
+- **Font glyphs** were checked with pretext `getAdvW`.
+  - Present: `● ○ · … ↑ ↓ ▶ × • → ━ ─ ■ □ —`.
+  - Missing, rendered as a 4 px blank: `► ✓ ✗ ⏸`.
+- **Two containers for every screen:** a header (1 line, 576x35) and a body (9 lines, 576x253, event capture), both with padding 4.
+  - Switching screens is always `textContainerUpgrade`, which is flicker-free, never `rebuildPageContainer`.
+  - Only containers whose text changed are upgraded, with a 120 ms debounce.
+- **Every line is measured** with pretext against a 560 px budget, which is the 568 px inner width minus an 8 px safety margin.
+  - Feed lines use `pxTruncate`.
+  - The reply text is word-wrapped into explicit lines (long words are hard-broken) and paginated into 9-line pages, so LVGL never rewraps.
+- **All bridge calls are serialized** through `BridgeQueue` with a 4 s timeout each: render and storage share one BLE link.
+- **Feed:**
+  - The header is `● name · state · mode`. `●` means the computer is connected, `○` the relay only, `×` offline.
+  - The body shows the last 4 events, a newer-events marker when scrolled back, the glance line, and a `↓ reply (n pages)` hint.
+  - `tool_start` and `tool_end` merge into one line (`▶ Bash: x` becomes `• Bash: x → ok`).
+- **Reply:** a reply newer than 60 s opens the reply view. Older ones come from history replay and are stored without taking over the screen.
+- **Gestures:** a typed `(screen, gesture) -> action` map with the agreed defaults, plus a validator.
+  - The feed must be able to exit.
+  - Reply and card screens must be able to go back.
+  - Voice must be able to send and cancel.
+  - The companion UI has an editor that only offers the actions valid for each screen. Invalid stored maps fall back to the defaults.
+- **Pairing:** paste the text in the companion UI, or open the app with `#pair=<base64url(pairing text)>`, which is a dev convenience. The fragment is cleared from the URL immediately. The pairing is validated before it is saved, so a bad paste never replaces a good one.
+- `RelayClient` moved into `@g2cc/protocol` and is shared by the channel and the glasses app.
+- **Tests:**
+  - 40 unit tests (gestures, layout, reducer, render), all asserting that output fits.
+  - `G2CC_SIM=1 bun test test/sim.e2e.test.ts` runs the real app in the simulator against `wrangler dev`. It asserts the exact drawn frames, lit pixels in the header and body regions, reply paging and back, and scrolling to older events. Screenshots go to `test/artifacts/`.

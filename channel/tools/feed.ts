@@ -7,7 +7,7 @@
 import { SecureChannel, type AnyEnvelope } from '@g2cc/protocol'
 import { loadConfig, relaySocketUrl } from '../src/config'
 import { loadOrCreatePairing } from '../src/pairing-store'
-import { RelayClient } from '../src/relay-client'
+import { RelayClient } from '@g2cc/protocol'
 
 const pairing = await loadOrCreatePairing(loadConfig().home)
 const glasses = await SecureChannel.create(pairing.key, 'glasses')

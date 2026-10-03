@@ -1,161 +1,122 @@
-import {
-  waitForEvenAppBridge,
-  TextContainerProperty,
-  CreateStartUpPageContainer,
-  TextContainerUpgrade,
-  OsEventTypeList,
-} from '@evenrealities/even_hub_sdk'
-import { startSttStream } from './asr/stt'
-import { mountUi, setStatus, setTranscript } from './ui'
+// G2 Claude Code: glasses app entry. Phase 3 shows the live feed and reply
+// view. Voice (Phase 6), permission and question cards (Phases 5, 7) come later.
 
-mountUi()
+import { waitForEvenAppBridge } from '@evenrealities/even_hub_sdk'
+import { fromBase64Url } from '@g2cc/protocol'
+import { BridgeQueue } from './bridge-queue'
+import { Display } from './display'
+import { DEFAULT_GESTURES, type GestureMap } from './gestures'
+import { toSignal } from './input'
+import { Link } from './link'
+import { render } from './render'
+import { initialState, reduce, type AppState, type Msg } from './state'
+import { Storage } from './storage'
+import { mirror, mountUi, setGestureMap, setStatus } from './ui'
 
-const API_KEY = import.meta.env.VITE_STT_API_KEY as string
-if (!API_KEY) {
-  setStatus('error', 'VITE_STT_API_KEY not set — copy .env.example to .env.local')
-  console.warn('VITE_STT_API_KEY is not set.')
+const log = (...args: unknown[]): void => console.log('[g2cc]', ...args)
+
+let state: AppState = initialState()
+let gestures: GestureMap = DEFAULT_GESTURES
+let display: Display | null = null
+let started = false
+
+function paint(): void {
+  const frame = render(state)
+  display?.show(frame)
+  mirror(frame)
+  setStatus(state.link, state.paired)
+  // Dev only: lets simulator automation assert on exactly what was drawn.
+  if (import.meta.env.DEV && started) log('frame', JSON.stringify(frame))
 }
+
+function dispatch(msg: Msg): void {
+  const result = reduce(state, msg)
+  state = result.state
+  paint()
+  for (const effect of result.effects) {
+    if (effect.type === 'exit') void bridge.shutDownPageContainer(1)
+  }
+}
+
+const link = new Link(dispatch)
+
+mountUi({
+  async savePairing(text) {
+    const pairing = await storage.savePairing(text)
+    dispatch({ type: 'paired', paired: true })
+    await link.connect(pairing)
+  },
+  async forgetPairing() {
+    await storage.forgetPairing()
+    link.disconnect()
+    dispatch({ type: 'paired', paired: false })
+  },
+  async saveGestures(map) {
+    await storage.saveGestures(map)
+    gestures = map
+  },
+})
 
 const bridge = await waitForEvenAppBridge()
+const queue = new BridgeQueue()
+const storage = new Storage(bridge, queue)
 
-const transcript = new TextContainerProperty({
-  xPosition: 0,
-  yPosition: 0,
-  width: 576,
-  height: 288,
-  borderWidth: 0,
-  borderColor: 5,
-  paddingLength: 4,
-  containerID: 1,
-  containerName: 'transcript',
-  content: 'Listening…',
-  isEventCapture: 1,
-})
-
-const created = await bridge.createStartUpPageContainer(
-  new CreateStartUpPageContainer({ containerTotalNum: 1, textObject: [transcript] }),
-)
-if (created !== 0) {
-  setStatus('error', `createStartUpPageContainer failed: ${created}`)
-  console.error('Failed to create startup page')
+/** Dev convenience: `#pair=<base64url of the pairing text>` in the app URL pairs on load. */
+async function pairFromFragment(): Promise<void> {
+  const m = /^#pair=([A-Za-z0-9_-]+)$/.exec(location.hash)
+  if (!m?.[1]) return
+  history.replaceState(null, '', location.pathname + location.search) // keep the key out of the URL bar
+  try {
+    await storage.savePairing(new TextDecoder().decode(fromBase64Url(m[1])))
+    log('paired from URL')
+  } catch (err) {
+    log('pairing from URL rejected:', (err as Error).message)
+  }
 }
 
-let lastRender = ''
-let renderTimer: number | null = null
-let currentContent = 'Listening…'
-
-function scheduleGlassesRender() {
-  if (renderTimer !== null) return
-  renderTimer = window.setTimeout(async () => {
-    renderTimer = null
-    if (currentContent === lastRender) return
-    lastRender = currentContent
-    await bridge.textContainerUpgrade(
-      new TextContainerUpgrade({
-        containerID: 1,
-        containerName: 'transcript',
-        content: currentContent,
-      }),
-    )
-  }, 120) // debounce display writes — BLE render queue is slow
-}
-
-// The default stt.ts is a blank stub that throws. Catch the throw so the UI
-// surfaces the "configure stt.ts" error chip instead of hanging on "Connecting…".
-let stt: ReturnType<typeof startSttStream> | null = null
 try {
-  stt = startSttStream(
-    API_KEY,
-    ({ finalText, interimText }) => {
-      const combined = (finalText + interimText).trim()
-      // 240 chars is a rough fit for the 576x288 text container at default font.
-      currentContent = combined ? combined.slice(-240) : 'Listening…'
-      setTranscript(finalText, interimText)
-      scheduleGlassesRender()
-    },
-    err => {
-      setStatus('error', `STT error: ${(err as Error)?.message ?? err}`)
-      console.error('STT error:', err)
-    },
-  )
+  gestures = await storage.loadGestures()
 } catch (err) {
-  setStatus('error', (err as Error)?.message ?? 'STT startup failed')
-  console.error('STT startup failed:', err)
+  log('using default gestures:', (err as Error).message)
 }
+setGestureMap(gestures)
+await pairFromFragment()
+const stored = await storage.loadPairing().catch(() => null)
+state = reduce(state, { type: 'paired', paired: stored !== null }).state
 
-let micOn = false
-if (stt) {
-  await bridge.audioControl(true)
-  micOn = true
-  setStatus('listening', 'Microphone live · tap to pause · double-tap to exit')
+display = new Display(bridge, queue, err => log('render failed:', (err as Error).message))
+try {
+  await display.init(render(state))
+} catch (err) {
+  log((err as Error).message)
 }
-
-// Tap toggles capture. `audioControl(false)` stops the host pushing PCM, so no
-// further frames reach `sendPcm`; the STT client itself is left open. If your
-// provider closes an idle stream, tear it down here and reopen it on resume.
-// No-ops until stt.ts is wired up — there is no capture to pause.
-function toggleMic() {
-  if (!stt) return
-  micOn = !micOn
-  bridge.audioControl(micOn)
-  currentContent = micOn ? 'Listening…' : 'Paused'
-  scheduleGlassesRender()
-  setStatus(
-    micOn ? 'listening' : 'paused',
-    micOn ? 'Microphone live · tap to pause · double-tap to exit' : 'Paused · tap to resume · double-tap to exit',
-  )
-}
+started = true
+paint()
+log('ready')
+if (stored) await link.connect(stored.pairing)
 
 let cleanedUp = false
-function cleanup() {
-  if (cleanedUp) return
-  cleanedUp = true
-  bridge.audioControl(false)
-  stt?.close()
-  unsubscribe()
-}
-
-// Reads the event type out of one envelope.
-//
-// CLICK_EVENT is 0, and protobuf omits zero-value fields on the wire, so a
-// single tap arrives as an envelope whose `eventType` is `undefined`. The
-// default has to be resolved INSIDE the envelope check. Writing
-// `event.sysEvent?.eventType ?? OsEventTypeList.CLICK_EVENT` instead would
-// read CLICK on events that carry no `sysEvent` at all — and in this template
-// that means every incoming audio frame would fire the tap handler.
-function eventTypeOf(envelope?: { eventType?: OsEventTypeList }): OsEventTypeList | null {
-  if (!envelope) return null
-  return envelope.eventType ?? OsEventTypeList.CLICK_EVENT
-}
-
-// Event routing, critical details:
-//   • Taps/double-taps/lifecycle come through `event.sysEvent`.
-//     Audio PCM frames come through `event.audioEvent` — separate branch.
-//   • Double-tap → `shutDownPageContainer(1)` is a root-level check: it
-//     must fire no matter which envelope the event arrives in, so users
-//     can always exit the app. System exit confirmation dialog appears;
-//     SYSTEM_EXIT_EVENT fires on confirm and we clean up there.
-//   • Check DOUBLE_CLICK_EVENT before CLICK_EVENT.
 const unsubscribe = bridge.onEvenHubEvent(event => {
-  const pcm = event.audioEvent?.audioPcm
-  if (pcm) stt?.sendPcm(pcm)
-
-  const sysType = eventTypeOf(event.sysEvent)
-  const textType = eventTypeOf(event.textEvent)
-
-  if (sysType === OsEventTypeList.DOUBLE_CLICK_EVENT || textType === OsEventTypeList.DOUBLE_CLICK_EVENT) {
-    bridge.shutDownPageContainer(1)
-    return
-  }
-
-  if (sysType === OsEventTypeList.CLICK_EVENT || textType === OsEventTypeList.CLICK_EVENT) {
-    toggleMic()
-    return
-  }
-
-  if (sysType === OsEventTypeList.SYSTEM_EXIT_EVENT || sysType === OsEventTypeList.ABNORMAL_EXIT_EVENT) {
-    cleanup()
+  const signal = toSignal(event)
+  if (!signal) return
+  switch (signal.type) {
+    case 'gesture':
+      dispatch({ type: 'gesture', gesture: signal.gesture, map: gestures })
+      return
+    case 'foreground':
+      display?.repaint(render(state))
+      return
+    case 'background':
+      return
+    case 'exit':
+      cleanup()
   }
 })
 
+function cleanup(): void {
+  if (cleanedUp) return
+  cleanedUp = true
+  link.disconnect()
+  unsubscribe()
+}
 window.addEventListener('beforeunload', cleanup)
