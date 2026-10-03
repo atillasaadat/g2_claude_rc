@@ -104,7 +104,7 @@ beforeAll(async () => {
   const wranglerPort = freePort()
   procs.push(
     Bun.spawn(
-      ['./node_modules/.bin/wrangler', 'dev', '--port', String(wranglerPort), '--ip', '127.0.0.1', '--persist-to', join(tmp, 'w'), '--show-interactive-dev-session=false'],
+      ['./node_modules/.bin/wrangler', 'dev', '--port', String(wranglerPort), '--ip', '127.0.0.1', '--persist-to', join(tmp, 'w'), '--show-interactive-dev-session=false', '--var', 'CONNECT_LIMIT_ENABLED:false'],
       { cwd: join(ROOT, 'relay'), stdout: 'ignore', stderr: 'ignore', env: { ...process.env, WRANGLER_SEND_METRICS: 'false' } },
     ),
   )

@@ -13,16 +13,23 @@ import { transcribe } from './asr/stt'
 import { VoiceRecorder } from './recorder'
 import { initialState, isAnimating, micWanted, reduce, type AppState, type Msg } from './state'
 import { Storage } from './storage'
-import { mirror, mountUi, setGestureMap, setStatus } from './ui'
+import { mirror, mountUi, setGestureMap, setStatus, setVoiceStatus } from './ui'
 
 const log = (...args: unknown[]): void => console.log('[g2cc]', ...args)
+
+function setSttKey(key: string): void {
+  sttKey = key
+  setVoiceStatus(Boolean(sttKey || FAKE_STT))
+  if (started) dispatch({ type: 'config', voiceAvailable: Boolean(sttKey || FAKE_STT) })
+}
 
 let state: AppState = initialState()
 let gestures: GestureMap = DEFAULT_GESTURES
 let display: Display | null = null
 let started = false
 
-const STT_KEY = (import.meta.env.VITE_STT_API_KEY as string | undefined) ?? ''
+/** Groq key: from the pairing or the phone UI. The bundle never contains one. */
+let sttKey = ''
 // Dev only: a canned transcript so simulator tests can drive the voice flow without speaking.
 const FAKE_STT = import.meta.env.DEV ? ((import.meta.env.VITE_G2CC_FAKE_STT as string | undefined) ?? '') : ''
 const TICK_MS = 250
@@ -33,7 +40,7 @@ let lastLogged = ''
 
 const recorder = new VoiceRecorder({
   dispatch: msg => dispatch(msg),
-  transcribe: pcm => transcribe(pcm, { apiKey: STT_KEY }),
+  transcribe: pcm => transcribe(pcm, { apiKey: sttKey }),
   ...(FAKE_STT ? { fakeTranscript: FAKE_STT } : {}),
 })
 
@@ -92,8 +99,13 @@ const link = new Link(dispatch)
 mountUi({
   async savePairing(text) {
     const pairing = await storage.savePairing(text)
+    if (pairing.sttKey) setSttKey(pairing.sttKey)
     dispatch({ type: 'paired', paired: true })
     await link.connect(pairing)
+  },
+  async saveSttKey(key) {
+    await storage.saveSttKey(key)
+    setSttKey(key.trim())
   },
   async forgetPairing() {
     await storage.forgetPairing()
@@ -132,7 +144,9 @@ setGestureMap(gestures)
 await pairFromFragment()
 const stored = await storage.loadPairing().catch(() => null)
 state = reduce(state, { type: 'paired', paired: stored !== null }).state
-state = reduce(state, { type: 'config', voiceAvailable: Boolean(STT_KEY || FAKE_STT) }).state
+sttKey = stored?.pairing.sttKey || (await storage.loadSttKey().catch(() => '')) || __DEV_STT_KEY__
+setVoiceStatus(Boolean(sttKey || FAKE_STT))
+state = reduce(state, { type: 'config', voiceAvailable: Boolean(sttKey || FAKE_STT) }).state
 
 display = new Display(bridge, queue, err => log('render failed:', (err as Error).message))
 try {

@@ -24,7 +24,7 @@ beforeAll(async () => {
   const port = freePort()
   stateDir = mkdtempSync(join(tmpdir(), 'g2cc-relay-'))
   proc = Bun.spawn(
-    ['./node_modules/.bin/wrangler', 'dev', '--port', String(port), '--ip', '127.0.0.1', '--persist-to', stateDir, '--show-interactive-dev-session=false'],
+    ['./node_modules/.bin/wrangler', 'dev', '--port', String(port), '--ip', '127.0.0.1', '--persist-to', stateDir, '--show-interactive-dev-session=false', '--var', 'CONNECT_LIMIT_ENABLED:false'],
     { cwd: RELAY_DIR, stdout: 'ignore', stderr: 'ignore', env: { ...process.env, WRANGLER_SEND_METRICS: 'false' } },
   )
   base = `127.0.0.1:${port}`
@@ -109,9 +109,30 @@ async function room() {
 }
 
 describe('relay over wrangler dev', () => {
+  test('serves the setup guide and app under /g2-claude, and redirects the bare paths', async () => {
+    expect((await fetch(`http://${base}/g2-claude/`)).status).toBe(200)
+    const root = await fetch(`http://${base}/`, { redirect: 'manual' })
+    expect([root.status, root.headers.get('location')]).toEqual([302, `http://${base}/g2-claude/`])
+  })
+
+  test('the relay also answers under the /g2-claude prefix', async () => {
+    const { roomId, computer, glasses } = await room()
+    const ws = new WebSocket(`ws://${base}/g2-claude/v1/room/${roomId}?role=glasses`)
+    ws.binaryType = 'arraybuffer'
+    const got = new Promise<Uint8Array>(resolve => {
+      ws.onmessage = ev => typeof ev.data !== 'string' && resolve(new Uint8Array(ev.data as ArrayBuffer))
+    })
+    await new Promise(r => (ws.onopen = r))
+    const c = await Client.connect(roomId, 'computer')
+    c.ws.send(await computer.seal('glance', { text: 'via prefix' }))
+    expect((await glasses.open(await got))?.body).toEqual({ text: 'via prefix' })
+    ws.close()
+    c.close()
+  })
+
   test('rejects bad room ids, roles, and non-upgrade requests', async () => {
     const { roomId } = await room()
-    expect((await fetch(`http://${base}/v1/room/not-hex?role=computer`)).status).toBe(404)
+    expect((await fetch(`http://${base}/v1/room/not-hex?role=computer`)).status).toBe(404) // not a room: falls through to assets
     expect((await fetch(`http://${base}/v1/room/${roomId}?role=admin`, { headers: { Upgrade: 'websocket' } })).status).toBe(400)
     expect((await fetch(`http://${base}/v1/room/${roomId}?role=computer`)).status).toBe(426)
   })

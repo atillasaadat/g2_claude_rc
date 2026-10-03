@@ -9,6 +9,8 @@ export interface Pairing {
   relayUrl: string
   roomId: string
   key: Uint8Array
+  /** Optional Groq API key for voice prompts, so the public app bundle never contains one. */
+  sttKey?: string
 }
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'])
@@ -24,13 +26,15 @@ const wire = z.strictObject({
   relayUrl: z.string().max(500),
   roomId: z.string().regex(/^[0-9a-f]{32}$/),
   key: z.string(),
+  sttKey: z.string().regex(/^[A-Za-z0-9_-]{8,200}$/).optional(),
 })
 
-export async function encodePairing(input: { relayUrl: string; key: Uint8Array }): Promise<string> {
+export async function encodePairing(input: { relayUrl: string; key: Uint8Array; sttKey?: string }): Promise<string> {
   assertRelayUrl(input.relayUrl)
   if (input.key.length !== KEY_BYTES) throw new Error('bad key length')
   const roomId = await deriveRoomId(input.key)
-  return JSON.stringify({ v: 1, relayUrl: input.relayUrl, roomId, key: toBase64Url(input.key) })
+  const payload = { v: 1, relayUrl: input.relayUrl, roomId, key: toBase64Url(input.key), ...(input.sttKey ? { sttKey: input.sttKey } : {}) }
+  return JSON.stringify(wire.parse(payload))
 }
 
 export async function decodePairing(text: string): Promise<Pairing> {
@@ -39,5 +43,5 @@ export async function decodePairing(text: string): Promise<Pairing> {
   const key = fromBase64Url(p.key)
   if (key.length !== KEY_BYTES) throw new Error('bad key length')
   if ((await deriveRoomId(key)) !== p.roomId) throw new Error('room id does not match key')
-  return { relayUrl: p.relayUrl, roomId: p.roomId, key }
+  return { relayUrl: p.relayUrl, roomId: p.roomId, key, ...(p.sttKey ? { sttKey: p.sttKey } : {}) }
 }

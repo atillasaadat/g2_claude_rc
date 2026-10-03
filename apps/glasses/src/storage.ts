@@ -7,6 +7,8 @@ import { DEFAULT_GESTURES, parseGestureMap, type GestureMap } from './gestures'
 
 const PAIRING_KEY = 'g2cc.pairing'
 const GESTURES_KEY = 'g2cc.gestures'
+const STT_KEY = 'g2cc.sttKey'
+const STT_KEY_SHAPE = /^[A-Za-z0-9_-]{8,200}$/
 
 export class Storage {
   constructor(
@@ -38,7 +40,20 @@ export class Storage {
   async savePairing(text: string): Promise<Pairing> {
     const pairing = await decodePairing(text.trim())
     await this.set(PAIRING_KEY, text.trim())
+    if (pairing.sttKey) await this.saveSttKey(pairing.sttKey)
     return pairing
+  }
+
+  /** The Groq key for voice prompts (from the pairing or typed in the phone UI). */
+  async loadSttKey(): Promise<string> {
+    const key = (await this.get(STT_KEY)).trim()
+    return STT_KEY_SHAPE.test(key) ? key : ''
+  }
+
+  async saveSttKey(key: string): Promise<void> {
+    const k = key.trim()
+    if (k && !STT_KEY_SHAPE.test(k)) throw new Error('that does not look like a Groq API key')
+    await this.set(STT_KEY, k)
   }
 
   async forgetPairing(): Promise<void> {

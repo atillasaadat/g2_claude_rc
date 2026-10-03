@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { decodePairing } from '@g2cc/protocol'
-import { loadOrCreatePairing, pairingText } from '../src/pairing-store'
+import { appUrlFor, loadOrCreatePairing, pairingText } from '../src/pairing-store'
 
 let dirs: string[] = []
 afterEach(() => {
@@ -60,5 +60,21 @@ describe('pairing store', () => {
     const p = await loadOrCreatePairing(home, { relayUrl: 'ws://127.0.0.1:8787' })
     const decoded = await decodePairing(await pairingText(p))
     expect(decoded.key).toEqual(p.key)
+  })
+})
+
+describe('stt key and app URL', () => {
+  test('stores the speech-to-text key and keeps it across loads', async () => {
+    const home = tmp()
+    await loadOrCreatePairing(home, { relayUrl: 'ws://127.0.0.1:8787', sttKey: 'gsk_abcdefghij123' })
+    expect((await loadOrCreatePairing(home)).sttKey).toBe('gsk_abcdefghij123')
+    const decoded = await decodePairing(await pairingText(await loadOrCreatePairing(home)))
+    expect(decoded.sttKey).toBe('gsk_abcdefghij123')
+  })
+
+  test('derives the app URL from a deployed relay', () => {
+    expect(appUrlFor('wss://atillasaadat.com/g2-claude')).toBe('https://atillasaadat.com/g2-claude/app/')
+    expect(appUrlFor('wss://relay.example.workers.dev/')).toBe('https://relay.example.workers.dev/app/')
+    expect(appUrlFor('ws://127.0.0.1:8789')).toBeNull()
   })
 })

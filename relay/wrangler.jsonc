@@ -7,6 +7,22 @@
     "bindings": [{ "name": "ROOMS", "class_name": "RelayRoom" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RelayRoom"] }],
+  // The setup guide (public/g2-claude/index.html) and the built glasses app
+  // (public/g2-claude/app/, from `bun run build` in apps/glasses). Relay paths
+  // go to the Worker first; everything else is a static asset.
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page",
+    "run_worker_first": ["/v1/*", "/g2-claude/v1/*", "/", "/g2-claude"]
+  },
+  // Served under the personal site's domain; the Pages site keeps every other path.
+  "routes": [{ "pattern": "atillasaadat.com/g2-claude*", "zone_name": "atillasaadat.com" }],
+  // Per-IP cap on WebSocket connects, checked before a Durable Object wakes up.
+  "ratelimits": [{ "name": "CONNECT_LIMIT", "namespace_id": "2701", "simple": { "limit": 30, "period": 60 } }],
+  // Tests turn the cap off (`--var CONNECT_LIMIT_ENABLED:false`); they open dozens of sockets from one IP.
+  "vars": { "CONNECT_LIMIT_ENABLED": "true" },
   // The relay only ever sees ciphertext, but keep request logging off anyway.
   "observability": { "enabled": false },
   // 8787 is wrangler's default but also fakechat's; stay clear of it.

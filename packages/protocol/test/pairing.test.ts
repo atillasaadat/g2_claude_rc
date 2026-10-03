@@ -27,6 +27,14 @@ describe('pairing payload', () => {
     expect(await encodePairing({ relayUrl: 'ws://localhost:8787', key })).toContain('localhost')
   })
 
+  test('carries an optional speech-to-text key', async () => {
+    const key = generateKey()
+    const text = await encodePairing({ relayUrl: 'wss://r.example', key, sttKey: 'gsk_abcdefghij123' })
+    expect((await decodePairing(text)).sttKey).toBe('gsk_abcdefghij123')
+    expect((await decodePairing(await encodePairing({ relayUrl: 'wss://r.example', key }))).sttKey).toBeUndefined()
+    await expect(encodePairing({ relayUrl: 'wss://r.example', key, sttKey: 'bad key with spaces' })).rejects.toThrow()
+  })
+
   test('rejects garbage', async () => {
     await expect(decodePairing('not json')).rejects.toThrow()
     await expect(decodePairing('{"v":1}')).rejects.toThrow()

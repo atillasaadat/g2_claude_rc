@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>G2 Claude Code: set up hands-free Claude Code on Even Realities G2</title>
+<meta name="description" content="Follow a Claude Code session on Even Realities G2 glasses: watch the feed, speak prompts, approve tools, answer questions, and stop Claude.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Sora:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-0: #05080f; --bg-1: #0a101e; --bg-2: #101a2e;
+    --line: rgba(126, 168, 255, 0.16); --line-strong: rgba(126, 168, 255, 0.35);
+    --text-0: #e8eef9; --text-1: #aab8d4; --text-2: #8796b5;
+    --accent: #5eead4; --accent-dim: rgba(94, 234, 212, 0.14); --warn: #fbbf24;
+    --hud: #3cfa44; --hud-dim: rgba(60, 250, 68, 0.32);
+    --display: 'Sora', system-ui, sans-serif; --body: 'IBM Plex Sans', system-ui, sans-serif; --mono: 'IBM Plex Mono', ui-monospace, monospace;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg-0: #eef2f9; --bg-1: #ffffff; --bg-2: #e2e9f4;
+      --line: rgba(30, 58, 110, 0.18); --line-strong: rgba(30, 58, 110, 0.4);
+      --text-0: #0f1a2e; --text-1: #34466a; --text-2: #52617f;
+      --accent: #0f766e; --accent-dim: rgba(15, 118, 110, 0.12); --warn: #b45309;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg-0); color: var(--text-1); font: 17px/1.6 var(--body); }
+  a { color: var(--accent); text-underline-offset: 3px; }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+  main { max-width: 760px; margin: 0 auto; padding: 56px 24px 96px; }
+  .back { font-size: 15px; color: var(--text-2); text-decoration: none; }
+  .back:hover { color: var(--accent); }
+  h1 { font: 600 clamp(32px, 6vw, 46px)/1.1 var(--display); color: var(--text-0); letter-spacing: -0.02em; margin: 28px 0 14px; }
+  .lede { font-size: 20px; line-height: 1.5; color: var(--text-1); max-width: 34em; margin: 0 0 36px; }
+  h2 { font: 600 26px/1.25 var(--display); color: var(--text-0); letter-spacing: -0.01em; margin: 64px 0 16px; }
+  h3 { font: 500 19px/1.3 var(--display); color: var(--text-0); margin: 0 0 8px; }
+  p { margin: 0 0 16px; max-width: 38em; }
+  strong { color: var(--text-0); font-weight: 600; }
+  code { font: 0.88em var(--mono); color: var(--text-0); background: var(--bg-2); padding: 1px 6px; border-radius: 5px; }
+
+  /* The one bold element: a faithful G2 display (576x288, green on black). */
+  .glasses { position: relative; margin: 0; background: #000; border-radius: 22px; padding: 18px; box-shadow: 0 0 0 1px var(--line-strong), 0 30px 80px -30px rgba(60, 250, 68, 0.25); }
+  .hud { position: relative; aspect-ratio: 2 / 1; width: 100%; container-type: inline-size; font-family: var(--body); color: var(--hud); overflow: hidden; }
+  .hud .header { position: absolute; inset: 0 0 auto 0; height: 11.8%; border: 1px solid var(--hud); border-radius: 1.4cqw; display: flex; justify-content: space-between; align-items: center; padding: 0 1.6cqw; font-size: 3.2cqw; }
+  .hud .timeline { position: absolute; top: 15%; left: 0; right: 0; font-size: 3.2cqw; line-height: 1.66; transition: opacity 400ms; }
+  .hud .timeline div { white-space: nowrap; overflow: hidden; }
+  .hud .card { position: absolute; top: 37%; left: 2.1%; right: 2.1%; border: 2px solid var(--hud); border-radius: 1.8cqw; padding: 1.4cqw 2.4cqw; font-size: 3.2cqw; line-height: 1.66; background: #000; }
+  .hud .dim { opacity: 0.35; }
+  .hud .sel::before { content: '▶ '; }
+  .hud .opt { margin-right: 9cqw; padding-left: 2.6cqw; }
+  .hud .opt.sel { padding-left: 0; }
+  .caption { margin: 14px 2px 0; font-size: 14px; color: var(--text-2); }
+  @media (prefers-reduced-motion: no-preference) {
+    .play .t1, .play .t2, .play .t3, .play .t4 { animation: appear 300ms both; }
+    .play .t2 { animation-delay: 500ms; } .play .t3 { animation-delay: 1000ms; } .play .t4 { animation-delay: 1500ms; }
+    .play .card { animation: appear 450ms 2300ms both; }
+    .play .timeline { animation: dim 450ms 2300ms both; }
+    .play .under { animation: appear 300ms both, hide 300ms 2300ms forwards; }
+    .play .t3.under { animation-delay: 1000ms, 2300ms; }
+    .play .t4.under { animation-delay: 1500ms, 2300ms; }
+  }
+  @media (prefers-reduced-motion: reduce) { .hud .under { visibility: hidden; } .hud .timeline { opacity: 0.35; } }
+  @keyframes hide { to { opacity: 0; } }
+  @keyframes appear { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes dim { to { opacity: 0.35; } }
+
+  .does { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 22px 32px; margin: 40px 0 0; padding: 0; list-style: none; }
+  .does p { font-size: 16px; margin: 0; }
+
+  .flow { margin: 0 0 18px; font: 14px/1.55 var(--mono); color: var(--text-1); background: var(--bg-1); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; overflow-x: auto; white-space: pre; }
+
+  ol.steps { list-style: none; counter-reset: step; padding: 0; margin: 24px 0 0; }
+  ol.steps > li { counter-increment: step; position: relative; padding: 0 0 34px 56px; }
+  ol.steps > li::before { content: counter(step); position: absolute; left: 0; top: -2px; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line-strong); color: var(--accent); font: 500 16px/34px var(--display); text-align: center; }
+  ol.steps > li:not(:last-child)::after { content: ''; position: absolute; left: 18px; top: 40px; bottom: 6px; width: 1px; background: var(--line); }
+
+  .cmd { position: relative; margin: 10px 0 14px; }
+  .cmd pre { margin: 0; font: 14.5px/1.6 var(--mono); color: var(--text-0); background: var(--bg-1); border: 1px solid var(--line); border-radius: 10px; padding: 14px 92px 14px 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .cmd button { position: absolute; top: 9px; right: 9px; font: 500 13px var(--body); color: var(--text-1); background: var(--bg-2); border: 1px solid var(--line); border-radius: 7px; padding: 5px 11px; cursor: pointer; }
+  .cmd button:hover { color: var(--accent); border-color: var(--line-strong); }
+  .note { border-left: 2px solid var(--warn); padding: 2px 0 2px 14px; color: var(--text-1); font-size: 16px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 16px; margin: 8px 0 16px; }
+  th, td { text-align: left; padding: 10px 12px 10px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 600; color: var(--text-0); }
+  td:first-child { white-space: nowrap; color: var(--text-0); }
+  dl { margin: 8px 0 0; }
+  dt { color: var(--text-0); font-weight: 600; margin-top: 18px; }
+  dd { margin: 4px 0 0; max-width: 38em; }
+  footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line); font-size: 15px; color: var(--text-2); }
+  @media (max-width: 560px) {
+    body { font-size: 16px; }
+    ol.steps > li { padding-left: 46px; }
+    .cmd pre { padding-right: 16px; padding-top: 44px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="/">Atilla Saadat</a>
+  <h1>Claude Code, on your glasses</h1>
+  <p class="lede">Follow a Claude Code session on Even Realities G2: see what it is doing, speak a prompt, approve a tool, answer a question, or stop it, without looking at a screen.</p>
+
+  <figure class="glasses" aria-label="What the glasses show: a session feed with a permission card">
+    <div class="hud" id="hud">
+      <div class="header"><span>● repo-a · working ··</span><span>auto</span></div>
+      <div class="timeline">
+        <div class="t1">&gt; run the tests and fix anything failing (voice)</div>
+        <div class="t2">• Bash: bun test → ok, stderr: 2 failed</div>
+        <div class="t3 under">• Edit: src/state.ts → edited state.ts</div>
+        <div class="t4 under">▶ Bash: git commit -am "fix reducer"</div>
+      </div>
+      <div class="card">
+        <div>Allow Bash? &nbsp;Commit the reducer fix</div>
+        <div>git commit -am "fix reducer"</div>
+        <div><span class="opt">Allow</span><span class="opt sel">Deny</span></div>
+      </div>
+    </div>
+    <figcaption class="caption">What the glasses show: the live session, and an approval card waiting for a tap.</figcaption>
+  </figure>
+
+  <ul class="does">
+    <li><h3>Watch</h3><p>Prompts, tool calls and Claude's replies scroll by as one timeline.</p></li>
+    <li><h3>Speak</h3><p>Talk to start a turn. You see the words as you say them and confirm before anything is sent.</p></li>
+    <li><h3>Approve</h3><p>Permission prompts and Claude's questions appear as cards you answer with a tap.</p></li>
+    <li><h3>Stop and switch</h3><p>Halt Claude at the next tool call, and move between sessions from the side menu.</p></li>
+  </ul>
+
+  <h2>How it connects</h2>
+  <p>Nothing on your computer listens to the internet. Claude Code starts a small channel next to each session, and that channel makes one outgoing, end-to-end encrypted connection to a relay on this site. The relay only ever passes ciphertext between your computer and the glasses app.</p>
+  <div class="flow">Claude Code session ── hooks + MCP ──▶ g2 channel (on your computer)
+                                              │ encrypted
+                                              ▼
+                      relay at atillasaadat.com/g2-claude
+                                              ▲ encrypted
+                                              │
+                  glasses app in the Even app ── Bluetooth ──▶ G2</div>
+  <p>Your Claude account never leaves Claude Code: everything goes through Claude Code's own channels, hooks and MCP tools. Remote Control on your phone keeps working at the same time.</p>
+
+  <h2>Set it up</h2>
+  <p>You need Claude Code signed in with a Claude account, <a href="https://bun.sh">Bun</a>, <code>jq</code>, Even Realities G2 with the Even app, and optionally a free <a href="https://console.groq.com/keys">Groq API key</a> for voice.</p>
+  <ol class="steps">
+    <li>
+      <h3>Get the code and install it</h3>
+      <p>This registers the channel with Claude Code for every project and adds the hooks it needs. It backs up your settings first, and <code>--remove</code> undoes it.</p>
+      <div class="cmd"><pre>git clone https://github.com/atillasaadat/g2_claude_rc
+cd g2_claude_rc
+scripts/install.sh</pre><button type="button">Copy</button></div>
+      <p class="note">The repository is private for now. Ask for access if you would like to try it.</p>
+    </li>
+    <li>
+      <h3>Add the launch command</h3>
+      <p>Put this in <code>~/.zshrc</code> or <code>~/.bashrc</code>, then open a new terminal.</p>
+      <div class="cmd"><pre>alias cc-g2='claude --dangerously-load-development-channels server:g2 --rc'</pre><button type="button">Copy</button></div>
+      <p>The flag loads the channel, which is a Claude Code research preview. The first launch shows a warning; choose that you are using it for local development. <code>--rc</code> also turns on Remote Control.</p>
+    </li>
+    <li>
+      <h3>Pair your glasses</h3>
+      <p>Your Groq key travels inside the pairing, so the public app never holds it. Skip <code>GROQ_API_KEY</code> to pair without voice.</p>
+      <div class="cmd"><pre>GROQ_API_KEY=gsk_... bun channel/pair.ts --relay wss://atillasaadat.com/g2-claude</pre><button type="button">Copy</button></div>
+      <p>In the Even app, open Even Hub and scan the QR code it prints. The app loads on your glasses and pairs in one step. The QR holds your secret key, so do not share it; <code>bun channel/pair.ts --rotate</code> makes a new one.</p>
+    </li>
+    <li>
+      <h3>Start a session</h3>
+      <p>In any project, run <code>cc-g2</code> instead of <code>claude</code>. The glasses show the session within a second. Start more sessions the same way; once there are two, the glasses' side menu lists them so you can switch.</p>
+      <div class="cmd"><pre>cd ~/my-project
+cc-g2</pre><button type="button">Copy</button></div>
+    </li>
+    <li>
+      <h3>Get alerts when you are in another app</h3>
+      <p>The glasses app can only draw while it is open. For everything else, Claude Code's own phone notifications do the job, and the Even app mirrors them to your glasses.</p>
+      <p>In a session, run <code>/config</code> and turn on the two Remote Control push settings: <code>inputNeededNotifEnabled</code> (a prompt or question is waiting) and <code>agentPushNotifEnabled</code> (Claude finished). Allow notifications for the Claude app on your phone, then allow the Claude app in the Even app's notification settings.</p>
+    </li>
+  </ol>
+
+  <h2>Using it</h2>
+  <table>
+    <thead><tr><th>Gesture</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td>Swipe up or down</td><td>Scroll the timeline three lines. The R1 ring works the same way.</td></tr>
+      <tr><td>Tap</td><td>Open the menu: Talk, Stop Claude, Exit app. On a card, confirm the highlighted choice.</td></tr>
+      <tr><td>Double tap</td><td>Jump back to the newest line. On a card, leave it for later.</td></tr>
+      <tr><td>Side menu</td><td>Switch between sessions, or clear ones you no longer use.</td></tr>
+    </tbody>
+  </table>
+  <p>While you talk, a few words act straight away instead of being sent: <strong>stop</strong> halts Claude, <strong>cancel</strong> drops the recording, and <strong>approve</strong> or <strong>deny</strong> answer an approval card that is showing. Approval cards start on Deny, so a stray tap never approves anything. Gestures can be remapped in the phone view of the app.</p>
+
+  <h2>If something is off</h2>
+  <dl>
+    <dt>The glasses say waiting for Claude Code</dt>
+    <dd>Start the session with <code>cc-g2</code>, not <code>claude</code>. Its startup banner should mention <code>server:g2</code>. If it does not, rerun <code>scripts/install.sh</code>. If the channel still does not appear, launch with <code>MCP_PROTOCOL_NEGOTIATION=legacy cc-g2</code>.</dd>
+    <dt>No approval cards appear</dt>
+    <dd>In auto mode Claude Code decides permissions itself, so there is nothing to approve. Press Shift+Tab in the session to change the permission mode.</dd>
+    <dt>Talk says no Groq key</dt>
+    <dd>Pair again with <code>GROQ_API_KEY</code> set, or paste the key in the phone view under Voice.</dd>
+    <dt>Stop does not seem to do anything</dt>
+    <dd>Stop takes effect at Claude's next tool call. If Claude is only writing its answer, the turn ends normally.</dd>
+    <dt>Check the connection from your computer</dt>
+    <dd><code>bun channel/tools/feed.ts</code> joins as a pretend pair of glasses and prints what they would see.</dd>
+  </dl>
+
+  <footer>
+    <p>Built by Atilla Saadat with Claude Code. Messages are encrypted end to end with AES-256-GCM using a key that only your computer and your glasses hold; the relay forwards ciphertext and keeps a short buffer so the glasses can catch up after reconnecting.</p>
+    <p><a href="app/">Open the glasses app</a></p>
+  </footer>
+</main>
+<script>
+  // Copy buttons for commands.
+  for (const button of document.querySelectorAll('.cmd button')) {
+    button.addEventListener('click', async () => {
+      const text = button.previousElementSibling.textContent
+      try {
+        await navigator.clipboard.writeText(text)
+        button.textContent = 'Copied'
+      } catch {
+        button.textContent = 'Select and copy'
+      }
+      setTimeout(() => (button.textContent = 'Copy'), 1600)
+    })
+  }
+  // Play the display sequence once, when it scrolls into view.
+  const hud = document.getElementById('hud')
+  new IntersectionObserver((entries, obs) => {
+    if (entries.some(e => e.isIntersecting)) {
+      hud.classList.add('play')
+      obs.disconnect()
+    }
+  }, { threshold: 0.4 }).observe(hud)
+</script>
+</body>
+</html>

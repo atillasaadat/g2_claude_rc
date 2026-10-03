@@ -12,3 +12,7 @@ ruvector.db
 .claude/proven-config*
 .claude/.proven-config-version
 apps/glasses/test/artifacts/
+
+# built glasses app (apps/glasses: bun run build)
+relay/public/g2-claude/app/
+*.ehpk

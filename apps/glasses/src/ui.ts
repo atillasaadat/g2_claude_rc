@@ -10,6 +10,7 @@ export interface UiCallbacks {
   savePairing(text: string): Promise<void>
   forgetPairing(): Promise<void>
   saveGestures(map: GestureMap): Promise<void>
+  saveSttKey(key: string): Promise<void>
 }
 
 const GESTURE_LABELS: Record<(typeof GESTURES)[number], string> = {
@@ -28,6 +29,7 @@ let els: {
   pairMsg: HTMLDivElement
   gestures: HTMLDivElement
   gestureMsg: HTMLDivElement
+  sttStatus: HTMLDivElement
 }
 let currentMap: GestureMap = DEFAULT_GESTURES
 
@@ -57,6 +59,14 @@ export function mountUi(cb: UiCallbacks): void {
         <div id="pair-msg" class="msg"></div>
       </details>
       <details>
+        <summary>Voice (Groq key)</summary>
+        <p class="hint">Talk needs a free Groq API key. It normally arrives with the pairing QR; paste one here to set or replace it. Stored on this device only.</p>
+        <div id="stt-status" class="hint"></div>
+        <input id="stt-input" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="gsk_..." />
+        <div class="row"><button id="stt-save">Save key</button></div>
+        <div id="stt-msg" class="msg"></div>
+      </details>
+      <details>
         <summary>Gestures</summary>
         <div id="gestures" class="gestures"></div>
         <div class="row">
@@ -76,7 +86,19 @@ export function mountUi(cb: UiCallbacks): void {
     pairMsg: app.querySelector('#pair-msg')!,
     gestures: app.querySelector('#gestures')!,
     gestureMsg: app.querySelector('#g-msg')!,
+    sttStatus: app.querySelector('#stt-status')!,
   }
+  const sttInput = app.querySelector<HTMLInputElement>('#stt-input')!
+  const sttMsg = app.querySelector<HTMLDivElement>('#stt-msg')!
+  app.querySelector('#stt-save')!.addEventListener('click', () => {
+    void cb
+      .saveSttKey(sttInput.value)
+      .then(() => {
+        sttInput.value = ''
+        message(sttMsg, 'Saved.', false)
+      })
+      .catch(err => message(sttMsg, (err as Error).message, true))
+  })
 
   app.querySelector('#pair-save')!.addEventListener('click', () => {
     void cb
@@ -129,6 +151,11 @@ export function setStatus(link: Link, paired: boolean): void {
         : ['offline', 'Offline']
   els.status.className = `status status-${cls}`
   els.status.textContent = text
+}
+
+export function setVoiceStatus(available: boolean): void {
+  if (!els) return
+  els.sttStatus.textContent = available ? 'Voice is ready.' : 'No Groq key yet: Talk is off.'
 }
 
 export function mirror(frame: Frame): void {
@@ -208,6 +235,8 @@ function injectStyles(): void {
     details { background: #2E2E2E; border: 1px solid #3E3E3E; border-radius: 12px; padding: 12px 16px; }
     summary { cursor: pointer; font-weight: 600; }
     .hint { font-size: 13px; color: #A7A7A7; }
+    input[type=password] { width: 100%; box-sizing: border-box; background: #232323; color: #E5E5E5;
+      border: 1px solid #3E3E3E; border-radius: 8px; padding: 8px; font: 13px ui-monospace, monospace; }
     textarea { width: 100%; box-sizing: border-box; background: #232323; color: #E5E5E5;
       border: 1px solid #3E3E3E; border-radius: 8px; padding: 8px; font: 12px ui-monospace, monospace; }
     .row { display: flex; gap: 8px; margin-top: 8px; }
