@@ -1,9 +1,10 @@
 // Speech to text via the Groq Whisper API (free tier, chosen in Phase 0).
 // Batch: the whole recording is posted after the user taps done.
 //
-// The key comes from VITE_STT_API_KEY in .env.local and is baked into the
-// bundle, which is acceptable for a personal sideload only: never publish
-// the .ehpk. app.json whitelists https://api.groq.com.
+// The key is the user's own: entered in the phone view and kept in the Even
+// app's storage for this app (docs/decisions.md, Groq key storage). Dev
+// servers may inject one from .env.local; release builds never contain one.
+// The key is only ever sent to GROQ_URL. app.json whitelists https://api.groq.com.
 
 import { pcmToWav } from './wav'
 
@@ -21,7 +22,7 @@ export interface TranscribeOptions {
 }
 
 export async function transcribe(pcm: readonly Uint8Array[], opts: TranscribeOptions): Promise<string> {
-  if (!opts.apiKey) throw new SttError('No Groq API key: set VITE_STT_API_KEY in .env.local')
+  if (!opts.apiKey) throw new SttError('No Groq API key: add yours in the phone view under Voice')
   const form = new FormData()
   form.append('file', new File([pcmToWav(pcm) as BlobPart], 'speech.wav', { type: 'audio/wav' }))
   form.append('model', GROQ_MODEL)

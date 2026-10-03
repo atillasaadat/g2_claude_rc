@@ -7,7 +7,7 @@
 // Additional data binds each frame to its room and direction, so the relay
 // cannot move a frame to another room or reflect it back to its sender.
 
-import { concat, toHex } from './bytes'
+import { concat, toBase64Url, toHex } from './bytes'
 import { FRAME_VERSION, KEY_BYTES, NONCE_BYTES } from './limits'
 
 /** c2g: computer to glasses. g2c: glasses to computer. */
@@ -66,4 +66,16 @@ export async function openFrame(
     frame.slice(1 + NONCE_BYTES) as BufferSource,
   )
   return new Uint8Array(plaintext)
+}
+
+/**
+ * Proof of key possession for joining a relay room. The relay stores a hash
+ * of the first token it sees for a room and turns away anyone without it, so
+ * knowing a room ID is not enough to evict peers or flood its history. It
+ * reveals nothing about the key, and only gates the relay, not the messages.
+ */
+export async function relayAuthToken(raw: Uint8Array, roomId: string): Promise<string> {
+  const k = await crypto.subtle.importKey('raw', raw as BufferSource, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const mac = await crypto.subtle.sign('HMAC', k, enc.encode(`g2cc-relay-auth-v1/${roomId}`) as BufferSource)
+  return toBase64Url(new Uint8Array(mac))
 }

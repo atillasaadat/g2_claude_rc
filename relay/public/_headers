@@ -1,10 +1,25 @@
-# The Even app reloads the glasses app from this URL, so the entry page must
-# never be cached; Vite's hashed assets can be cached forever.
+# Security headers for everything this Worker serves.
+/g2-claude/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  Permissions-Policy: camera=(), geolocation=(), microphone=()
+
+# The landing page: framing forbidden, Google Fonts allowed.
+/g2-claude/
+  Cache-Control: public, max-age=300
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
+# The hosted glasses app (loaded by the Even app's WebView). The Even app may
+# show it in a frame, so framing is not forbidden here. ui.ts injects a <style>
+# element, hence 'unsafe-inline' for styles only.
+# The Even app reloads the app from this URL, so the entry page is never
+# cached; Vite's hashed assets can be cached forever.
+/g2-claude/app/*
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' wss://atillasaadat.com https://api.groq.com; base-uri 'none'; form-action 'none'; object-src 'none'
 /g2-claude/app/
   Cache-Control: no-cache
 /g2-claude/app/index.html
   Cache-Control: no-cache
 /g2-claude/app/assets/*
   Cache-Control: public, max-age=31536000, immutable
-/g2-claude/
-  Cache-Control: public, max-age=300

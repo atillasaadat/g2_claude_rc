@@ -33,19 +33,20 @@ export type Outbound = { kind: 'event'; body: Body<'event'> } | { kind: 'reply';
 type SessionBody = Body<'session'>
 
 /**
- * Plumbing that would only clutter a 4-line feed: tool discovery, and our own
- * channel tools (glance arrives as its own envelope).
+ * Tool names this channel serves: `mcp__g2__*` as a plain MCP server, and
+ * `mcp__plugin_g2_g2__*` from the plugin (Claude Code exports
+ * CLAUDE_PLUGIN_ROOT to plugin servers). Only the form actually in use counts,
+ * so another server that happens to be named g2 gets no special treatment.
  */
-function isHiddenTool(name: string): boolean {
-  return name === 'ToolSearch' || /^mcp__(?:plugin_g2_)?g2__/.test(name)
+export function ownToolPrefix(env: Record<string, string | undefined> = process.env): string {
+  return env.CLAUDE_PLUGIN_ROOT ? 'mcp__plugin_g2_g2__' : 'mcp__g2__'
 }
 
-/**
- * Our display-only tools: `mcp__g2__*` as a plain MCP server and
- * `mcp__plugin_g2_g2__*` from the plugin. `pair` is not one of them: it hands
- * out a pairing code, so it keeps the normal permission prompt.
- */
-export const G2_TOOL = /^mcp__(?:plugin_g2_)?g2__(?:ask|glance)$/
+/** Our display-only tools. `pair` is not one: it keeps its permission prompt and shows in the feed. */
+export const isDisplayTool = (name: string, prefix: string): boolean => name === `${prefix}ask` || name === `${prefix}glance`
+
+/** Plumbing that would only clutter a 4-line feed: tool discovery and our display tools (glance arrives as its own envelope). */
+const isHiddenTool = (name: string, prefix: string): boolean => name === 'ToolSearch' || isDisplayTool(name, prefix)
 
 /** The source tag is "g2" as a plain MCP server and "plugin:g2:g2" from the plugin. */
 const CHANNEL_WRAPPER = /^<channel source="(?:plugin:g2:)?g2"[^>]*>\n?([\s\S]*?)\n?<\/channel>\s*$/
@@ -64,10 +65,12 @@ function displayPath(path: string, cwd: string | undefined): string {
   return rel.startsWith('..') ? path : rel
 }
 
-/** `mcp__server__tool` becomes `server:tool`. */
+/** `mcp__server__tool` becomes `server:tool`; a plugin's `mcp__plugin_p_p__tool` becomes `p:tool`. */
 function toolLabel(name: string): string {
   const m = /^mcp__(.+?)__(.+)$/.exec(name)
-  return m ? `${m[1]}:${m[2]}` : name
+  if (!m) return name
+  const server = (m[1] as string).replace(/^plugin_([A-Za-z0-9-]+)_\1$/, '$1')
+  return `${server}:${m[2]}`
 }
 
 function startSummary(tool: string, input: unknown, cwd: string | undefined): string {
@@ -122,15 +125,15 @@ function endSummary(tool: string, input: unknown, response: unknown, cwd: string
   return 'done'
 }
 
-export function translateHook(p: HookPayload): Outbound[] {
+export function translateHook(p: HookPayload, ownPrefix = 'mcp__g2__'): Outbound[] {
   switch (p.hook_event_name) {
     case 'PreToolUse': {
-      if (!p.tool_name || isHiddenTool(p.tool_name)) return []
+      if (!p.tool_name || isHiddenTool(p.tool_name, ownPrefix)) return []
       const tool = toolLabel(p.tool_name)
       return [{ kind: 'event', body: { type: 'tool_start', tool, summary: summary(startSummary(p.tool_name, p.tool_input, p.cwd)) } }]
     }
     case 'PostToolUse': {
-      if (!p.tool_name || isHiddenTool(p.tool_name)) return []
+      if (!p.tool_name || isHiddenTool(p.tool_name, ownPrefix)) return []
       const tool = toolLabel(p.tool_name)
       return [{ kind: 'event', body: { type: 'tool_end', tool, summary: summary(endSummary(p.tool_name, p.tool_input, p.tool_response, p.cwd)) } }]
     }

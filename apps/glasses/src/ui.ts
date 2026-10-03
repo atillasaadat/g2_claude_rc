@@ -9,7 +9,7 @@ import type { Link } from './state'
 
 export interface UiCallbacks {
   savePairing(text: string): Promise<void>
-  pairWithCode(code: string): Promise<void>
+  pairWithCode(code: string, relayUrl?: string): Promise<void>
   forgetPairing(): Promise<void>
   saveGestures(map: GestureMap): Promise<void>
   saveSttKey(key: string): Promise<void>
@@ -67,6 +67,8 @@ export function mountUi(cb: UiCallbacks): void {
         <details class="sub">
           <summary>Paste pairing text instead</summary>
           <p class="hint">For self-hosting or a local relay: <code>bun channel/pair.ts --text</code> prints it. It contains a secret key.</p>
+          <p class="hint">Or pair by code through your own relay: enter its address, then the code above.</p>
+          <input id="relay-input" type="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="wss://your-relay.example" />
           <textarea id="pair-input" rows="4" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder='{"v":1,"relayUrl":...}'></textarea>
           <div class="row"><button id="pair-save">Save pairing</button></div>
         </details>
@@ -129,7 +131,7 @@ export function mountUi(cb: UiCallbacks): void {
     codeButton.disabled = true
     message(els.pairMsg, 'Pairing...', false)
     void cb
-      .pairWithCode(codeInput.value)
+      .pairWithCode(codeInput.value, app.querySelector<HTMLInputElement>('#relay-input')!.value.trim())
       .then(() => {
         codeInput.value = ''
         message(els.pairMsg, 'Paired.', false)
@@ -275,7 +277,7 @@ function injectStyles(): void {
       border-radius: 8px; padding: 10px; font: 20px ui-monospace, monospace; letter-spacing: 3px; text-transform: uppercase; }
     details.sub { margin-top: 12px; padding: 8px 12px; background: #262626; }
     button:disabled { opacity: 0.5; }
-    input[type=password] { width: 100%; box-sizing: border-box; background: #232323; color: #E5E5E5;
+    #relay-input, input[type=password] { width: 100%; box-sizing: border-box; background: #232323; color: #E5E5E5;
       border: 1px solid #3E3E3E; border-radius: 8px; padding: 8px; font: 13px ui-monospace, monospace; }
     textarea { width: 100%; box-sizing: border-box; background: #232323; color: #E5E5E5;
       border: 1px solid #3E3E3E; border-radius: 8px; padding: 8px; font: 12px ui-monospace, monospace; }

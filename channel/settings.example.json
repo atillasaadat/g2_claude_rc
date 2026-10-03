@@ -5,9 +5,12 @@
         "matcher": "*",
         "hooks": [
           {
-            "type": "http",
-            "url": "http://127.0.0.1:27183/hook",
-            "timeout": 2
+            "type": "command",
+            "command": "bun",
+            "args": [
+              "__G2CC_ROOT__/channel/hook.ts"
+            ],
+            "timeout": 3
           }
         ]
       }
@@ -17,9 +20,12 @@
         "matcher": "*",
         "hooks": [
           {
-            "type": "http",
-            "url": "http://127.0.0.1:27183/hook",
-            "timeout": 2
+            "type": "command",
+            "command": "bun",
+            "args": [
+              "__G2CC_ROOT__/channel/hook.ts"
+            ],
+            "timeout": 3
           }
         ]
       }
@@ -28,9 +34,12 @@
       {
         "hooks": [
           {
-            "type": "http",
-            "url": "http://127.0.0.1:27183/hook",
-            "timeout": 2
+            "type": "command",
+            "command": "bun",
+            "args": [
+              "__G2CC_ROOT__/channel/hook.ts"
+            ],
+            "timeout": 3
           }
         ]
       }
@@ -39,9 +48,12 @@
       {
         "hooks": [
           {
-            "type": "http",
-            "url": "http://127.0.0.1:27183/hook",
-            "timeout": 2
+            "type": "command",
+            "command": "bun",
+            "args": [
+              "__G2CC_ROOT__/channel/hook.ts"
+            ],
+            "timeout": 3
           }
         ]
       }
@@ -50,9 +62,12 @@
       {
         "hooks": [
           {
-            "type": "http",
-            "url": "http://127.0.0.1:27183/hook",
-            "timeout": 2
+            "type": "command",
+            "command": "bun",
+            "args": [
+              "__G2CC_ROOT__/channel/hook.ts"
+            ],
+            "timeout": 3
           }
         ]
       }

@@ -12,6 +12,6 @@ cd "$DIR"
 cat > .mcp.json <<JSON
 { "mcpServers": { "g2": { "command": "bun", "args": ["$ROOT/channel/server.ts"] } } }
 JSON
-cp "$ROOT/channel/settings.example.json" .claude/settings.json
+sed "s|__G2CC_ROOT__|$ROOT|g" "$ROOT/channel/settings.example.json" > .claude/settings.json
 echo "sandbox ready: $DIR"
 echo "launch: cd $DIR && claude --dangerously-load-development-channels server:g2 --rc"

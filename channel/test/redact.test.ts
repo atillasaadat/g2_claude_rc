@@ -69,4 +69,13 @@ describe('clip', () => {
     expect(clip('abcdef', 4)).toBe('abc…')
     expect(clip('abc', 4)).toBe('abc')
   })
+
+  test('JSON-style secrets, quoted values with spaces, curl -u and mysql -p', () => {
+    expect(redact(`curl -d '{"password":"hunter2","user":"a"}' x`)).toBe(`curl -d '{"password":"[REDACTED]","user":"a"}' x`)
+    expect(redact(`{"api_key": "abc 123"}`)).toBe(`{"api_key": "[REDACTED]"}`)
+    expect(redact(`password="my pass phrase" next`)).toBe(`password="[REDACTED]" next`)
+    expect(redact('curl -u alice:s3cret https://x')).toBe('curl -u alice:[REDACTED] https://x')
+    expect(redact('mysql -u root -pS3cret db')).toBe('mysql -u root -p[REDACTED] db')
+    expect(redact('mysql -u root -p db')).toBe('mysql -u root -p db')
+  })
 })

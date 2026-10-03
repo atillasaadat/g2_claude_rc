@@ -1,32 +1,41 @@
 // Pairing by short code: the channel shows an 8-character code, the user
 // types it into the phone app, and the two exchange the pairing over the relay.
 //
-// The code alone never carries the key. Both sides run an ECDH exchange in a
-// one-off relay room, and each side authenticates its public key with an HMAC
-// keyed by the code. The pairing text then travels sealed under the ECDH
-// secret. So someone who only sees the relay traffic learns nothing, and
-// someone who only sees the code cannot recover the key afterwards. To get in
-// the middle you would need the code and an active relay position while the
-// pairing is open. The room ID and HMAC key come from PBKDF2 of the code, so
-// guessing the code from relay traffic costs PBKDF2 work per guess.
+// The code is split in two. The first 3 characters pick a public rendezvous
+// room on the relay (15 bits, only there so the two sides find each other).
+// The last 5 characters (25 bits) are a password for CPace, a balanced PAKE
+// over ristretto255: the shared generator is derived from the password, so
+// the messages give nothing to test guesses against offline. Someone in the
+// middle, the relay included, gets one online guess per attempt, and the
+// channel gives up after MAX_ATTEMPTS failed attempts, so the odds of a
+// successful guess are about 3 in 33 million per code.
 //
-//   computer -> glasses  hello    {pk, mac = HMAC(k, "c|" pk)}
-//   glasses  -> computer join     {pk, mac = HMAC(k, "g|" pkC "|" pkG)}
-//   computer -> glasses  pairing  {iv, ct = AES-GCM(ecdh, pairing text)}
-//   glasses  -> computer done     {mac = HMAC(k, "d|" pkG)}
+//   computer -> phone     hello    {sid, Y: yC * G}               G = H2C(sid, password)
+//   phone    -> computer  join     {sid, Y: yP * G, mac: HMAC(k, "phone"  transcript)}
+//   computer -> phone     pairing  {sid, iv, ct: AES-GCM(k, pairing text, transcript)}
+//   phone    -> computer  done     {sid, mac: HMAC(k, "done" transcript)}
+//
+// k comes from the shared point yC * yP * G and the transcript (sid, both Ys).
+// The pairing frame doubles as the channel's key confirmation: only a party
+// that derived k can seal it.
 
 import { z } from 'zod'
+import { ristretto255, ristretto255_hasher } from '@noble/curves/ed25519.js'
 import { concat, fromBase64Url, toBase64Url, toHex } from './bytes'
 
 /** Crockford base32: no I, L, O or U, so the code reads unambiguously. */
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
 export const PAIR_CODE_CHARS = 8
+const RENDEZVOUS_CHARS = 3
 /** How long a code stays open. */
 export const PAIR_CODE_TTL_MS = 10 * 60 * 1000
-const PBKDF2_ITERATIONS = 200_000
+/** Failed attempts (wrong password) a code survives before the channel closes it. */
+export const MAX_ATTEMPTS = 3
 
 const enc = new TextEncoder()
 const dec = new TextDecoder()
+const Point = ristretto255.Point
+type RPoint = InstanceType<typeof Point>
 
 /** A fresh code, formatted for reading aloud: "ABCD-EFGH". */
 export function newPairCode(): string {
@@ -47,62 +56,70 @@ export function normalizePairCode(input: string): string | null {
   return s
 }
 
-interface CodeSecrets {
-  roomId: string
-  mac: CryptoKey
-  salt: Uint8Array
-}
-
-async function codeSecrets(code: string): Promise<CodeSecrets> {
+function split(code: string): { rendezvous: string; password: string } {
   const norm = normalizePairCode(code)
   if (!norm) throw new Error('not a pairing code')
-  const base = await crypto.subtle.importKey('raw', enc.encode(norm) as BufferSource, 'PBKDF2', false, ['deriveBits'])
-  const bits = new Uint8Array(
-    await crypto.subtle.deriveBits(
-      { name: 'PBKDF2', hash: 'SHA-256', salt: enc.encode('g2cc-pair-v1') as BufferSource, iterations: PBKDF2_ITERATIONS },
-      base,
-      48 * 8,
-    ),
-  )
-  const salt = bits.slice(0, 32)
-  const mac = await crypto.subtle.importKey('raw', salt as BufferSource, { name: 'HMAC', hash: 'SHA-256' }, false, [
-    'sign',
-    'verify',
-  ])
-  return { roomId: toHex(bits.slice(32, 48)), mac, salt }
+  return { rendezvous: norm.slice(0, RENDEZVOUS_CHARS), password: norm.slice(RENDEZVOUS_CHARS) }
 }
 
-const sign = async (key: CryptoKey, label: string): Promise<string> =>
-  toBase64Url(new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(label) as BufferSource)))
+/** The public rendezvous room for a code: depends only on its first 3 characters. */
+export async function pairRoomId(code: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', enc.encode(`g2cc-pair-room-v2/${split(code).rendezvous}`) as BufferSource)
+  return toHex(new Uint8Array(digest).slice(0, 16))
+}
 
-const verify = async (key: CryptoKey, label: string, mac: string): Promise<boolean> => {
+const generator = (sid: Uint8Array, password: string): RPoint =>
+  ristretto255_hasher.hashToCurve(concat(enc.encode('g2cc-cpace-v2/'), sid, enc.encode(`/${password}`)), {
+    DST: 'g2cc-cpace-v2-ristretto255',
+  }) as RPoint
+
+const randomScalar = (): bigint => {
+  const s = ristretto255_hasher.hashToScalar(crypto.getRandomValues(new Uint8Array(64)), { DST: 'g2cc-cpace-v2-scalar' })
+  return s === 0n ? 1n : s
+}
+
+function decodePoint(b64: string): RPoint | null {
   try {
-    return await crypto.subtle.verify('HMAC', key, fromBase64Url(mac) as BufferSource, enc.encode(label) as BufferSource)
+    const p = Point.fromBytes(fromBase64Url(b64))
+    return p.is0() ? null : p
+  } catch {
+    return null
+  }
+}
+
+interface Keys {
+  aes: CryptoKey
+  mac: CryptoKey
+  transcript: Uint8Array
+}
+
+async function deriveKeys(shared: RPoint, sid: Uint8Array, yC: Uint8Array, yP: Uint8Array): Promise<Keys> {
+  const transcript = concat(enc.encode('g2cc-cpace-v2'), sid, yC, yP)
+  const ikm = new Uint8Array(await crypto.subtle.digest('SHA-256', concat(transcript, shared.toBytes()) as BufferSource))
+  const base = await crypto.subtle.importKey('raw', ikm as BufferSource, 'HKDF', false, ['deriveKey'])
+  const hkdf = (info: string) => ({ name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(32) as BufferSource, info: enc.encode(info) as BufferSource })
+  const aes = await crypto.subtle.deriveKey(hkdf('g2cc-pair-aes'), base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
+  const mac = await crypto.subtle.deriveKey(hkdf('g2cc-pair-mac'), base, { name: 'HMAC', hash: 'SHA-256', length: 256 }, false, ['sign', 'verify'])
+  return { aes, mac, transcript }
+}
+
+const sign = async (k: Keys, label: string): Promise<string> =>
+  toBase64Url(new Uint8Array(await crypto.subtle.sign('HMAC', k.mac, concat(enc.encode(label), k.transcript) as BufferSource)))
+
+const verify = async (k: Keys, label: string, mac: string): Promise<boolean> => {
+  try {
+    return await crypto.subtle.verify('HMAC', k.mac, fromBase64Url(mac) as BufferSource, concat(enc.encode(label), k.transcript) as BufferSource)
   } catch {
     return false
   }
 }
 
-async function newEcdh(): Promise<{ pair: CryptoKeyPair; pk: string }> {
-  const pair = (await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits'])) as CryptoKeyPair
-  const pk = toBase64Url(new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey)))
-  return { pair, pk }
-}
-
-async function sharedKey(own: CryptoKeyPair, peerPk: string, salt: Uint8Array): Promise<CryptoKey> {
-  const peer = await crypto.subtle.importKey('raw', fromBase64Url(peerPk) as BufferSource, { name: 'ECDH', namedCurve: 'P-256' }, false, [])
-  const bits = new Uint8Array(await crypto.subtle.deriveBits({ name: 'ECDH', public: peer }, own.privateKey, 256))
-  const digest = await crypto.subtle.digest('SHA-256', concat(salt, bits) as BufferSource)
-  return crypto.subtle.importKey('raw', digest, 'AES-GCM', false, ['encrypt', 'decrypt'])
-}
-
-const AD = enc.encode('g2cc-pair-v1/pairing')
 const b64 = z.string().regex(/^[A-Za-z0-9_-]{1,200}$/)
 const Msg = z.discriminatedUnion('t', [
-  z.strictObject({ t: z.literal('hello'), pk: b64, mac: b64 }),
-  z.strictObject({ t: z.literal('join'), pk: b64, mac: b64 }),
-  z.strictObject({ t: z.literal('pairing'), iv: b64, ct: z.string().regex(/^[A-Za-z0-9_-]{1,8000}$/) }),
-  z.strictObject({ t: z.literal('done'), mac: b64 }),
+  z.strictObject({ t: z.literal('hello'), sid: b64, y: b64 }),
+  z.strictObject({ t: z.literal('join'), sid: b64, y: b64, mac: b64 }),
+  z.strictObject({ t: z.literal('pairing'), sid: b64, iv: b64, ct: z.string().regex(/^[A-Za-z0-9_-]{1,8000}$/) }),
+  z.strictObject({ t: z.literal('done'), sid: b64, mac: b64 }),
 ])
 type Msg = z.infer<typeof Msg>
 
@@ -116,73 +133,121 @@ function parse(f: Uint8Array): Msg | null {
   }
 }
 
+export type ComputerResult = { send?: Uint8Array; done?: true; failed?: true }
+
 /** The channel's side. Send `hello` once connected, then feed it every frame. */
 export class ComputerPairing {
-  private peerPk: string | null = null
+  private keys: Keys | null = null
+  private attempts = 0
+  private closed = false
+  /** Frames are handled one at a time, so two joins can never both be accepted. */
+  private queue: Promise<unknown> = Promise.resolve()
+
   private constructor(
     readonly roomId: string,
     readonly hello: Uint8Array,
-    private readonly secrets: CodeSecrets,
-    private readonly ecdh: { pair: CryptoKeyPair; pk: string },
+    private readonly sid: string,
+    private readonly sidBytes: Uint8Array,
+    private readonly y: bigint,
+    private readonly yBytes: Uint8Array,
     private readonly pairingText: string,
   ) {}
 
   static async create(code: string, pairingText: string): Promise<ComputerPairing> {
-    const secrets = await codeSecrets(code)
-    const ecdh = await newEcdh()
-    const hello = frame({ t: 'hello', pk: ecdh.pk, mac: await sign(secrets.mac, `c|${ecdh.pk}`) })
-    return new ComputerPairing(secrets.roomId, hello, secrets, ecdh, pairingText)
+    const { password } = split(code)
+    const sidBytes = crypto.getRandomValues(new Uint8Array(16))
+    const sid = toBase64Url(sidBytes)
+    const y = randomScalar()
+    const yBytes = generator(sidBytes, password).multiply(y).toBytes()
+    const hello = frame({ t: 'hello', sid, y: toBase64Url(yBytes) })
+    return new ComputerPairing(await pairRoomId(code), hello, sid, sidBytes, y, yBytes, pairingText)
   }
 
-  /** Frames that fail authentication are ignored; `done` means the phone stored the pairing. */
-  async onFrame(f: Uint8Array): Promise<{ send?: Uint8Array; done?: true }> {
+  /**
+   * `done`: the phone stored the pairing. `failed`: too many wrong attempts,
+   * the code is closed. Anything that fails a check is otherwise ignored.
+   */
+  onFrame(f: Uint8Array): Promise<ComputerResult> {
+    const next = this.queue.then(() => this.handle(f))
+    this.queue = next.catch(() => {})
+    return next
+  }
+
+  private async handle(f: Uint8Array): Promise<ComputerResult> {
+    if (this.closed) return {}
     const m = parse(f)
-    if (m?.t === 'join' && !this.peerPk) {
-      if (!(await verify(this.secrets.mac, `g|${this.ecdh.pk}|${m.pk}`, m.mac))) return {}
-      this.peerPk = m.pk
-      const key = await sharedKey(this.ecdh.pair, m.pk, this.secrets.salt)
+    if (!m || m.sid !== this.sid) return {}
+    if (m.t === 'join' && !this.keys) {
+      const peer = decodePoint(m.y)
+      if (!peer) return {}
+      const keys = await deriveKeys(peer.multiply(this.y), this.sidBytes, this.yBytes, fromBase64Url(m.y))
+      if (!(await verify(keys, 'phone', m.mac))) {
+        this.attempts += 1
+        if (this.attempts < MAX_ATTEMPTS) return {}
+        this.closed = true
+        return { failed: true }
+      }
+      this.keys = keys
       const iv = crypto.getRandomValues(new Uint8Array(12))
       const ct = new Uint8Array(
-        await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: AD as BufferSource }, key, enc.encode(this.pairingText) as BufferSource),
+        await crypto.subtle.encrypt(
+          { name: 'AES-GCM', iv, additionalData: keys.transcript as BufferSource },
+          keys.aes,
+          enc.encode(this.pairingText) as BufferSource,
+        ),
       )
-      return { send: frame({ t: 'pairing', iv: toBase64Url(iv), ct: toBase64Url(ct) }) }
+      return { send: frame({ t: 'pairing', sid: this.sid, iv: toBase64Url(iv), ct: toBase64Url(ct) }) }
     }
-    if (m?.t === 'done' && this.peerPk && (await verify(this.secrets.mac, `d|${this.peerPk}`, m.mac))) return { done: true }
+    if (m.t === 'done' && this.keys && (await verify(this.keys, 'done', m.mac))) {
+      this.closed = true
+      return { done: true }
+    }
     return {}
   }
 }
 
-/** The phone's side. Feed it every frame; it answers `hello` and returns the pairing text. */
+/**
+ * The phone's side. Feed it every frame. It answers every hello in the room
+ * (another computer may share the rendezvous room), and returns the pairing
+ * text from the one whose key confirmation checks out.
+ */
 export class GlassesPairing {
-  private ecdh: { pair: CryptoKeyPair; pk: string } | null = null
-  private key: CryptoKey | null = null
+  private readonly sessions = new Map<string, Keys>()
+  private finished = false
+
   private constructor(
     readonly roomId: string,
-    private readonly secrets: CodeSecrets,
+    private readonly password: string,
   ) {}
 
   static async create(code: string): Promise<GlassesPairing> {
-    const secrets = await codeSecrets(code)
-    return new GlassesPairing(secrets.roomId, secrets)
+    return new GlassesPairing(await pairRoomId(code), split(code).password)
   }
 
   async onFrame(f: Uint8Array): Promise<{ send?: Uint8Array; pairingText?: string }> {
+    if (this.finished) return {}
     const m = parse(f)
-    if (m?.t === 'hello' && !this.ecdh) {
-      if (!(await verify(this.secrets.mac, `c|${m.pk}`, m.mac))) return {}
-      const ecdh = await newEcdh()
-      this.ecdh = ecdh
-      this.key = await sharedKey(ecdh.pair, m.pk, this.secrets.salt)
-      return { send: frame({ t: 'join', pk: ecdh.pk, mac: await sign(this.secrets.mac, `g|${m.pk}|${ecdh.pk}`) }) }
+    if (m?.t === 'hello' && !this.sessions.has(m.sid)) {
+      const peer = decodePoint(m.y)
+      if (!peer) return {}
+      const sidBytes = fromBase64Url(m.sid)
+      const y = randomScalar()
+      const yBytes = generator(sidBytes, this.password).multiply(y).toBytes()
+      const keys = await deriveKeys(peer.multiply(y), sidBytes, fromBase64Url(m.y), yBytes)
+      this.sessions.set(m.sid, keys)
+      return { send: frame({ t: 'join', sid: m.sid, y: toBase64Url(yBytes), mac: await sign(keys, 'phone') }) }
     }
-    if (m?.t === 'pairing' && this.key && this.ecdh) {
+    if (m?.t === 'pairing') {
+      const keys = this.sessions.get(m.sid)
+      if (!keys) return {}
       try {
         const pt = await crypto.subtle.decrypt(
-          { name: 'AES-GCM', iv: fromBase64Url(m.iv) as BufferSource, additionalData: AD as BufferSource },
-          this.key,
+          { name: 'AES-GCM', iv: fromBase64Url(m.iv) as BufferSource, additionalData: keys.transcript as BufferSource },
+          keys.aes,
           fromBase64Url(m.ct) as BufferSource,
         )
-        return { pairingText: dec.decode(pt), send: frame({ t: 'done', mac: await sign(this.secrets.mac, `d|${this.ecdh.pk}`) }) }
+        this.finished = true
+        return { pairingText: dec.decode(pt), send: frame({ t: 'done', sid: m.sid, mac: await sign(keys, 'done') }) }
       } catch {
         return {}
       }

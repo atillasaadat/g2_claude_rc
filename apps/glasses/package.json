@@ -11,7 +11,7 @@
     "test": "bun test",
     "test:sim": "G2CC_SIM=1 bun test test/sim.e2e.test.ts",
     "pack:launcher": "mkdir -p ../../build && evenhub pack app.json launcher -o ../../build/g2-claude-launcher.ehpk",
-    "pack:bundled": "rm -rf ../../build/bundled && G2CC_APP_BASE=./ G2CC_OUT_DIR=../../build/bundled vite build && evenhub pack app.json ../../build/bundled -o ../../build/g2-claude-bundled.ehpk",
+    "pack:bundled": "rm -rf ../../build/bundled && G2CC_APP_BASE=./ G2CC_OUT_DIR=../../build/bundled vite build && bun scripts/check-bundle.ts ../../build/bundled && evenhub pack app.json ../../build/bundled -o ../../build/g2-claude-bundled.ehpk",
     "pack": "bun run pack:launcher && bun run pack:bundled"
   },
   "dependencies": {

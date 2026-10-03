@@ -19,8 +19,8 @@
 
 import { z } from 'zod'
 import { REQUEST_ID_RE, type AnyEnvelope, type Body, type C2G_KINDS } from '@g2cc/protocol'
-import type { HookResponse } from './hook-server'
-import { G2_TOOL, SessionTracker, translateHook, type HookPayload } from './hooks'
+import type { HookResponse } from './hook-socket'
+import { isDisplayTool, SessionTracker, translateHook, type HookPayload } from './hooks'
 import { clip, oneLine, redact } from './redact'
 
 type C2GKind = (typeof C2G_KINDS)[number]
@@ -74,9 +74,20 @@ export interface ControllerOptions {
   sendPrompt?: (text: string) => void
   /** Injects the answer to an ask question as a channel event with meta.question_id. */
   sendAnswer?: (content: string, questionId: string) => void
+  /** Prefix of this channel's own tool names (hooks.ts ownToolPrefix). Defaults to mcp__g2__. */
+  ownToolPrefix?: string
+  /**
+   * Allow our own ask and glance from the PreToolUse hook. Only for the
+   * plugin, which cannot ship permission rules; a from-source setup lists them
+   * in settings.json instead.
+   */
+  autoAllowOwnTools?: boolean
 }
 
 export class SessionController {
+  private get prefix(): string {
+    return this.opts.ownToolPrefix ?? 'mcp__g2__'
+  }
   private readonly tracker: SessionTracker
   private stopRequested = false
   /** Insertion-ordered, so the oldest request of a tool resolves first. */
@@ -182,21 +193,22 @@ export class SessionController {
 
     // A plugin cannot add permission rules, so our own display-only tools are
     // allowed here. They never touch files or run commands.
-    if (p.hook_event_name === 'PreToolUse' && p.tool_name && G2_TOOL.test(p.tool_name)) {
+    if (p.hook_event_name === 'PreToolUse' && this.opts.autoAllowOwnTools && p.tool_name && isDisplayTool(p.tool_name, this.prefix)) {
       return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } }
     }
 
     // After a halt, only a new prompt leaves 'stopped' (idle notifications do not).
     const stopped = this.tracker.snapshot().state === 'stopped'
     const session = stopped && p.hook_event_name !== 'UserPromptSubmit' ? null : this.tracker.update(p)
-    for (const out of translateHook(p)) this.opts.emit(out)
+    for (const out of translateHook(p, this.prefix)) this.opts.emit(out)
     this.emitSession(session)
     return {}
   }
 
   onInbound(env: AnyEnvelope): void {
     // Several sessions share the room, so commands must name this session.
-    if (this.opts.sessionId && env.sid !== this.opts.sessionId) return
+    // Fails closed: without a known session id, nothing from the glasses is acted on.
+    if (!this.opts.sessionId || env.sid !== this.opts.sessionId) return
     switch (env.kind) {
       case 'stop': {
         const state = this.tracker.snapshot().state

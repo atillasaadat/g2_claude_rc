@@ -92,3 +92,14 @@ describe('sealFrame / openFrame', () => {
     await expect(openFrame(key, roomId, 'c2g', frame)).rejects.toThrow()
   })
 })
+
+describe('relay auth token', () => {
+  test('is stable per key and room, and differs across rooms and keys', async () => {
+    const { relayAuthToken, generateKey } = await import('../src/crypto')
+    const k = generateKey()
+    expect(await relayAuthToken(k, 'a'.repeat(32))).toBe(await relayAuthToken(k, 'a'.repeat(32)))
+    expect(await relayAuthToken(k, 'a'.repeat(32))).not.toBe(await relayAuthToken(k, 'b'.repeat(32)))
+    expect(await relayAuthToken(generateKey(), 'a'.repeat(32))).not.toBe(await relayAuthToken(k, 'a'.repeat(32)))
+    expect(await relayAuthToken(k, 'a'.repeat(32))).toMatch(/^[A-Za-z0-9_-]{43}$/)
+  })
+})

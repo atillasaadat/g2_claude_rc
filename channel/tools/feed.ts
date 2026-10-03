@@ -5,7 +5,8 @@
 //   bun channel/tools/feed.ts
 
 import { SecureChannel, type AnyEnvelope } from '@g2cc/protocol'
-import { loadConfig, relaySocketUrl } from '../src/config'
+import { relayAuthToken, relayRoomUrl } from '@g2cc/protocol'
+import { loadConfig } from '../src/config'
 import { loadOrCreatePairing } from '../src/pairing-store'
 import { RelayClient } from '@g2cc/protocol'
 
@@ -32,7 +33,7 @@ function line(env: AnyEnvelope): string {
 }
 
 const relay = new RelayClient({
-  url: relaySocketUrl(pairing.relayUrl, glasses.roomId, 'glasses'),
+  url: relayRoomUrl(pairing.relayUrl, glasses.roomId, 'glasses', await relayAuthToken(pairing.key, glasses.roomId)),
   onStatus: s => console.error(`[relay ${s}]`),
   onPresence: p => console.error(`[presence computer=${p.computer} glasses=${p.glasses}]`),
   onFrame: async frame => {

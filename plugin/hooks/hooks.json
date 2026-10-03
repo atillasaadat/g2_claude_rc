@@ -1,14 +1,17 @@
 {
-  "description": "Every hook goes to the g2 channel on 127.0.0.1:27183. A connection error or non-2xx answer is non-blocking, so this fails open when the channel is not running.",
+  "description": "Every hook runs dist/hook.js, which hands the payload to this session's g2 channel over its private Unix socket (~/.g2cc/sessions/<session>.sock). It prints nothing and exits 0 when no channel is running, so it fails open.",
   "hooks": {
     "PreToolUse": [
       {
         "matcher": "*",
         "hooks": [
           {
-            "type": "http",
-            "url": "http://127.0.0.1:27183/hook",
-            "timeout": 2
+            "type": "command",
+            "command": "bun",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/dist/hook.js"
+            ],
+            "timeout": 3
           }
         ]
       }
@@ -18,9 +21,12 @@
         "matcher": "*",
         "hooks": [
           {
-            "type": "http",
-            "url": "http://127.0.0.1:27183/hook",
-            "timeout": 2
+            "type": "command",
+            "command": "bun",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/dist/hook.js"
+            ],
+            "timeout": 3
           }
         ]
       }
@@ -29,9 +35,12 @@
       {
         "hooks": [
           {
-            "type": "http",
-            "url": "http://127.0.0.1:27183/hook",
-            "timeout": 2
+            "type": "command",
+            "command": "bun",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/dist/hook.js"
+            ],
+            "timeout": 3
           }
         ]
       }
@@ -40,9 +49,12 @@
       {
         "hooks": [
           {
-            "type": "http",
-            "url": "http://127.0.0.1:27183/hook",
-            "timeout": 2
+            "type": "command",
+            "command": "bun",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/dist/hook.js"
+            ],
+            "timeout": 3
           }
         ]
       }
@@ -51,9 +63,12 @@
       {
         "hooks": [
           {
-            "type": "http",
-            "url": "http://127.0.0.1:27183/hook",
-            "timeout": 2
+            "type": "command",
+            "command": "bun",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/dist/hook.js"
+            ],
+            "timeout": 3
           }
         ]
       }

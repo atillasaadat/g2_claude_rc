@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { G2_TOOL, SessionTracker, translateHook, type HookPayload } from '../src/hooks'
+import { isDisplayTool, ownToolPrefix, SessionTracker, translateHook, type HookPayload } from '../src/hooks'
 
 const base = { session_id: 's1', cwd: '/home/u/repo', permission_mode: 'default' }
 const pre = (tool_name: string, tool_input: unknown): HookPayload => ({ ...base, hook_event_name: 'PreToolUse', tool_name, tool_input })
@@ -159,15 +159,24 @@ describe('SessionTracker', () => {
 })
 
 describe('plugin naming', () => {
-  test('plugin tool names are hidden from the feed, pair included', () => {
-    expect(translateHook(pre('mcp__plugin_g2_g2__glance', { text: 'hi' }))).toEqual([])
-    expect(translateHook(post('mcp__plugin_g2_g2__pair', {}, { code: 'ABCD-EFGH' }))).toEqual([])
+  const PLUGIN = 'mcp__plugin_g2_g2__'
+
+  test('the prefix follows how the channel was loaded', () => {
+    expect(ownToolPrefix({ CLAUDE_PLUGIN_ROOT: '/x' })).toBe(PLUGIN)
+    expect(ownToolPrefix({})).toBe('mcp__g2__')
   })
 
-  test('G2_TOOL matches only the display tools under both names', () => {
-    for (const n of ['mcp__g2__ask', 'mcp__g2__glance', 'mcp__plugin_g2_g2__ask', 'mcp__plugin_g2_g2__glance'])
-      expect(G2_TOOL.test(n)).toBe(true)
-    for (const n of ['mcp__g2__pair', 'mcp__plugin_g2_g2__pair', 'mcp__evil_g2__ask', 'Bash']) expect(G2_TOOL.test(n)).toBe(false)
+  test('only our own display tools are hidden; pair and look-alikes show in the feed', () => {
+    expect(translateHook(pre(`${PLUGIN}glance`, { text: 'hi' }), PLUGIN)).toEqual([])
+    expect(translateHook(post(`${PLUGIN}pair`, {}, {}), PLUGIN)[0]!.body).toMatchObject({ tool: 'g2:pair' })
+    // A different server that is also named g2, while we run as the plugin.
+    expect(translateHook(pre('mcp__g2__ask', { question: 'x' }), PLUGIN)).toHaveLength(1)
+  })
+
+  test('isDisplayTool matches ask and glance under the given prefix only', () => {
+    expect(isDisplayTool(`${PLUGIN}ask`, PLUGIN)).toBe(true)
+    expect(isDisplayTool(`${PLUGIN}glance`, PLUGIN)).toBe(true)
+    for (const n of [`${PLUGIN}pair`, 'mcp__g2__ask', 'mcp__evil_g2__ask', `${PLUGIN}ask_x`, 'Bash']) expect(isDisplayTool(n, PLUGIN)).toBe(false)
   })
 })
 

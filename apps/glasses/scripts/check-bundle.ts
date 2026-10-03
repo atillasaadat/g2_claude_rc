@@ -2,7 +2,8 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
-const OUT = join(import.meta.dir, '..', '..', '..', 'relay', 'public', 'g2-claude', 'app')
+// The hosted build by default; `pack:bundled` passes the Even Hub package's directory.
+const OUT = process.argv[2] ?? join(import.meta.dir, '..', '..', '..', 'relay', 'public', 'g2-claude', 'app')
 const SECRET = /gsk_[A-Za-z0-9]{20,}|"key":"[A-Za-z0-9_-]{40,}"|sk-[A-Za-z0-9_-]{20,}/
 
 function files(dir: string): string[] {

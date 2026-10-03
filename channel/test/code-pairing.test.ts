@@ -18,7 +18,7 @@ describe('openCodePairing over a relay', () => {
       port: 0,
       fetch(req, srv) {
         const url = new URL(req.url)
-        const room = /\/v1\/room\/([0-9a-f]{32})/.exec(url.pathname)![1]!
+        const room = /\/v1\/pair\/([0-9a-f]{32})/.exec(url.pathname)![1]!
         srv.upgrade(req, { data: { room, role: url.searchParams.get('role') } })
         return undefined
       },
@@ -55,7 +55,7 @@ describe('openCodePairing over a relay', () => {
       await Bun.sleep(100)
       const phone = await GlassesPairing.create(open.code)
       const got = new Promise<string>(resolve => {
-        const ws = new WebSocket(`${relayUrl}/v1/room/${phone.roomId}?role=glasses`)
+        const ws = new WebSocket(`${relayUrl}/v1/pair/${phone.roomId}?role=glasses`)
         ws.binaryType = 'arraybuffer'
         ws.onmessage = async ev => {
           if (typeof ev.data === 'string') return

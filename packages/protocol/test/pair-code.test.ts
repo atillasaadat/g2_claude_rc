@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { ComputerPairing, GlassesPairing, newPairCode, normalizePairCode } from '../src/pair-code'
+import { ComputerPairing, GlassesPairing, MAX_ATTEMPTS, newPairCode, normalizePairCode, pairRoomId } from '../src/pair-code'
 
 const TEXT = '{"v":1,"relayUrl":"wss://example.com","roomId":"00","key":"k"}'
 
@@ -38,10 +38,55 @@ describe('code pairing handshake', () => {
     expect(r.done).toBe(true)
   })
 
-  test('a wrong code lands in another room and never gets the text', async () => {
-    const r = await run('AAAA-AAAA', 'AAAA-AAAB')
-    expect(r.c.roomId).not.toBe(r.g.roomId)
+  test('the room depends only on the first 3 characters', async () => {
+    expect(await pairRoomId('ABCD-EFGH')).toBe(await pairRoomId('ABCZ-ZZZZ'))
+    expect(await pairRoomId('ABCD-EFGH')).not.toBe(await pairRoomId('ABDD-EFGH'))
+  })
+
+  test('a wrong password in the same room never gets the text', async () => {
+    const r = await run('ABCD-EFGH', 'ABCD-EFGJ')
+    expect(r.c.roomId).toBe(r.g.roomId)
     expect(r.text).toBeUndefined()
+  })
+
+  test('the code closes after too many wrong attempts, even for the right password', async () => {
+    const c = await ComputerPairing.create('ABCD-EFGH', TEXT)
+    for (let i = 0; i < MAX_ATTEMPTS; i++) {
+      const wrong = await GlassesPairing.create(`ABCD-EFG${i}`)
+      const join = (await wrong.onFrame(c.hello)).send!
+      const r = await c.onFrame(join)
+      expect(r.send).toBeUndefined()
+      if (i === MAX_ATTEMPTS - 1) expect(r.failed).toBe(true)
+    }
+    const right = await GlassesPairing.create('ABCD-EFGH')
+    expect(await c.onFrame((await right.onFrame(c.hello)).send!)).toEqual({})
+  })
+
+  test('two joins with the right password: only the first gets the pairing', async () => {
+    const c = await ComputerPairing.create('ABCD-EFGH', TEXT)
+    const a = await GlassesPairing.create('ABCD-EFGH')
+    const b = await GlassesPairing.create('ABCD-EFGH')
+    const [ja, jb] = [(await a.onFrame(c.hello)).send!, (await b.onFrame(c.hello)).send!]
+    const [ra, rb] = await Promise.all([c.onFrame(ja), c.onFrame(jb)])
+    expect(ra.send).toBeDefined()
+    expect(rb.send).toBeUndefined()
+  })
+
+  test('a phone answers every computer in a shared room and pairs with the right one', async () => {
+    const other = await ComputerPairing.create('ABCD-ZZZZ', '{"other":true}')
+    const mine = await ComputerPairing.create('ABCD-EFGH', TEXT)
+    const g = await GlassesPairing.create('ABCD-EFGH')
+    expect(await other.onFrame((await g.onFrame(other.hello)).send!)).toEqual({})
+    const pairing = (await mine.onFrame((await g.onFrame(mine.hello)).send!)).send!
+    expect((await g.onFrame(pairing)).pairingText).toBe(TEXT)
+  })
+
+  test('frames carry nothing to test password guesses against offline', async () => {
+    // The hello is a random point: two hellos for the same code share nothing.
+    const a = await ComputerPairing.create('ABCD-EFGH', TEXT)
+    const b = await ComputerPairing.create('ABCD-EFGH', TEXT)
+    expect(new TextDecoder().decode(a.hello)).not.toContain('mac')
+    expect(a.hello).not.toEqual(b.hello)
   })
 
   test('the pairing text is not in any frame in the clear', async () => {
@@ -53,19 +98,10 @@ describe('code pairing handshake', () => {
     expect(new TextDecoder().decode(pairing)).not.toContain('relayUrl')
   })
 
-  test('a join signed with another code is ignored', async () => {
-    const c = await ComputerPairing.create('AAAA-AAAA', TEXT)
-    const forged = await GlassesPairing.create('BBBB-BBBB')
-    // Make the forger accept the hello by giving it a hello from its own code.
-    const own = await ComputerPairing.create('BBBB-BBBB', TEXT)
-    const join = (await forged.onFrame(own.hello)).send!
-    expect(await c.onFrame(join)).toEqual({})
-  })
-
   test('garbage frames are ignored on both sides', async () => {
     const c = await ComputerPairing.create('AAAA-AAAA', TEXT)
     const g = await GlassesPairing.create('AAAA-AAAA')
-    const junk = new TextEncoder().encode('{"t":"pairing","iv":"x","ct":"y"}')
+    const junk = new TextEncoder().encode('{"t":"pairing","sid":"x","iv":"x","ct":"y"}')
     expect(await c.onFrame(junk)).toEqual({})
     expect(await g.onFrame(junk)).toEqual({})
     expect(await g.onFrame(new Uint8Array([1, 2, 3]))).toEqual({})

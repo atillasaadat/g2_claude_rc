@@ -10,7 +10,7 @@ export default defineConfig(({ command }) => {
     base: command === 'build' ? (process.env.G2CC_APP_BASE ?? '/g2-claude/app/') : '/',
     envPrefix: 'VITE_G2CC_',
     define: { __DEV_STT_KEY__: JSON.stringify(command === 'serve' ? (dev.VITE_STT_API_KEY ?? '') : '') },
-    server: { host: true, port: 5173 },
+    server: { host: '127.0.0.1', port: 5173 },
     // G2CC_OUT_DIR / G2CC_APP_BASE build the self-contained .ehpk variant (relative paths).
     build: { target: 'esnext', outDir: process.env.G2CC_OUT_DIR ?? '../../relay/public/g2-claude/app', emptyOutDir: true },
   }

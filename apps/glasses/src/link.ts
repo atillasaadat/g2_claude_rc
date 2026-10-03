@@ -1,6 +1,6 @@
 // The glasses side of the encrypted relay link.
 
-import { RelayClient, SecureChannel, type AnyEnvelope, type Body, type OutKind, type Pairing } from '@g2cc/protocol'
+import { RelayClient, relayAuthToken, relayRoomUrl, SecureChannel, type AnyEnvelope, type Body, type OutKind, type Pairing } from '@g2cc/protocol'
 import type { Msg } from './state'
 
 export class Link {
@@ -13,7 +13,7 @@ export class Link {
     this.disconnect()
     const secure = await SecureChannel.create(pairing.key, 'glasses')
     this.secure = secure
-    const url = `${pairing.relayUrl.replace(/\/+$/, '')}/v1/room/${secure.roomId}?role=glasses`
+    const url = relayRoomUrl(pairing.relayUrl, secure.roomId, 'glasses', await relayAuthToken(pairing.key, secure.roomId))
     this.relay = new RelayClient({
       url,
       onStatus: status => this.dispatch({ type: 'relay', status }),

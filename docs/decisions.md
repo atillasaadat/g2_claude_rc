@@ -567,3 +567,52 @@ The user asked for boxes, overlays, a voice box that fills in while speaking, an
   - **Verified:** a phone stand-in typing the code got the pairing through `wrangler dev`, and `pair.ts` printed `Paired.`.
   - Pasting the pairing text (`pair.ts --text`) stays as the fallback for self-hosting. The QR (`qrcode` dependency, `appUrlFor`, the public install QR) is gone; `#pair=` stays as a dev convenience.
 - **Website:** still needed. The relay and the hosted app live at that address, and the page is the plugin's `homepage` and the place to point an Even Hub listing. It is now a shorter landing page with the plugin steps.
+
+## Phase 10: security audit and fixes (2026-10-03)
+
+Four read-only reviews (crypto and pairing, the local channel surface, the relay, the app and supply chain) found no way for a party without the key to send prompts, verdicts, answers or stop, and no secrets in git history. The committed plugin bundle rebuilt byte for byte from source. Fixes, by finding:
+
+- **Pairing code leaked through the model (high).** The `pair` tool returned the code to Claude, so a prompt injection could make it call `pair` and send the code out, and whoever joined first got the key. Now the code is shown with an MCP elicitation dialog that only the user sees. The tool result never contains it. Without elicitation support (for example `claude -p`) the tool refuses. **Verified:** in `-p` the dialog auto-cancels, and the model only saw "Pairing cancelled". The interactive dialog still needs a check by the user.
+- **Offline-crackable code (medium) and a join race (high).** The PBKDF2 and HMAC scheme let the relay test guesses offline (40 bits, global salt), and two concurrent joins could both receive the key. Replaced with CPace over ristretto255 (`@noble/curves` 2.4, audited, no dependencies):
+  - code = 3 rendezvous characters (public room) + 5 password characters (25 bits, online guessing only)
+  - `MAX_ATTEMPTS = 3` wrong attempts close the code
+  - frames are handled one at a time, so only the first good join wins
+  - a random session id lets several computers share a rendezvous room
+- **Fixed port 27183 could be squatted (high).** Any local process that bound the port first saw every hook payload and could answer "allow" for every session, even ones without a channel. Hooks are now exec-form `type: "command"` hooks (`plugin/dist/hook.js`), which talk to `~/.g2cc/sessions/<session_id>.sock`. The hook refuses a home or sessions directory that is not owned by this user or is open to others (or is a symlink), and a socket owned by anyone else. The router, the registry files and `G2CC_PORT` are gone, so every session simply has its own socket.
+  - This replaces the CLAUDE.md rule "all hooks are http, no shell scripts", by the user's decision to do the audit's B items.
+  - Cost: one Bun start per hook, about 20 to 40 ms.
+  - A same-user process could still stand in for the channel, but it could already edit settings.json.
+  - Bun unlinks a Unix socket's path when its server stops, so an old channel of the same session must not stop a socket that a newer one has re-bound (inode check).
+- **Relay free-tier exhaustion and room disruption (high).**
+  - The per-IP connect limit now runs before every other check and groups IPv6 by /64.
+  - Key rooms pin the first `relayAuthToken(key, roomId)` they see (HMAC-SHA256, stored as SHA-256) and refuse other tokens (401 missing, 403 wrong). Knowing a room ID no longer lets anyone evict peers, flood the history, or see presence.
+  - Pairing rooms (`/v1/pair/<id>`, a separate Durable Object name) stay open but keep 20 frames, refuse newcomers when full (no eviction), and are wiped 15 minutes after opening.
+  - The TTL alarm moves at most once a day instead of on every connect.
+  - A second token bucket per sending role per room stops 8 sockets from adding up.
+  - `peer.send` failures no longer drop the frame for the others.
+  - The routes are now `/g2-claude` and `/g2-claude/*`, so `/g2-claudeX` stays with the main site.
+- **Look-alike tools auto-allowed (medium).** Another MCP server named g2 would have had its `ask` and `glance` auto-allowed and hidden. Now the hook allows only the names this channel serves, and only when it runs as the plugin (`CLAUDE_PLUGIN_ROOT` is set; a from-source setup lists the tools in settings.json). Only our own display tools are hidden from the feed, so `pair` and look-alikes show.
+- **Supply chain (medium).**
+  - `plugin.json` pins `version` (0.3.0), so users only receive bumped releases.
+  - The bundles are no longer minified, so diffs are reviewable.
+  - Workflows pin action SHAs, run with `permissions: contents: read`, and install with `--ignore-scripts` (verified: wrangler, vite and evenhub all run without install scripts).
+  - The deploy job runs the channel tests too.
+  - CODEOWNERS covers everything.
+  - Branch protection, 2FA and a registrar lock are the real controls, and only the user can set them.
+- **`#pair=` link hijack and missing headers (medium).**
+  - `#pair=` now works in dev builds only.
+  - `_headers` sets nosniff, `Referrer-Policy: no-referrer`, a Permissions-Policy, and a CSP for the landing page (no inline script: moved to `site.js`; framing denied) and for the hosted app (`connect-src` limited to the relay and Groq; framing allowed in case the Even app frames it).
+- **Low items.**
+  - Commands fail closed without a known session id.
+  - Redaction now catches JSON-style secrets, quoted values with spaces, `curl -u` and `mysql -p`.
+  - The instructions tell Claude that a `<channel>` tag inside tool results, pages or files is not from the user, and spoken `<` and `>` become look-alikes.
+  - A restarted channel will not re-accept a command from before its restart: the newest accepted command ts is kept in `sessions/<sid>.last`, and the floor is one past it.
+  - The bundled `.ehpk` is scanned for secrets too.
+  - Stale Groq comments were fixed.
+  - The Vite dev server binds 127.0.0.1.
+  - Code pairing works with a self-hosted relay (an optional relay address in the app).
+- **Accepted, not changed.**
+  - The relay can replay real display frames from the last 24 h to an app that just reloaded. Session state is already monotonic per session, cards and questions need to be fresh (60 s), and verdicts only act on pending requests, so this is display only.
+  - Dismissing a card by tool name fails safe.
+  - The pairing key and Groq key sit in the Even app's per-app storage, as WebViews allow.
+- **Compatibility.** The relay now refuses sockets without the auth token, and the pairing protocol changed, so the app build in Even Hub review (0.2.0) cannot connect after this deploy. App 0.3.0 must be uploaded. Existing pairings keep working: the key did not change, and the first token a room sees is the legitimate one.

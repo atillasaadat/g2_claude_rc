@@ -9,6 +9,6 @@
     "channel"
   ],
   "scripts": {
-    "build:plugin": "bun build channel/server.ts --target=bun --minify --outfile plugin/dist/server.js"
+    "build:plugin": "bun build channel/server.ts --target=bun --outfile plugin/dist/server.js && bun build channel/hook.ts --target=bun --outfile plugin/dist/hook.js"
   }
 }

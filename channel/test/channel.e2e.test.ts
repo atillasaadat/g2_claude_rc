@@ -7,7 +7,9 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { SecureChannel, type AnyEnvelope } from '@g2cc/protocol'
-import { relaySocketUrl } from '../src/config'
+import { relayAuthToken, relayRoomUrl } from '@g2cc/protocol'
+import { existsSync } from 'node:fs'
+import { runHook } from './run-hook'
 import { loadOrCreatePairing } from '../src/pairing-store'
 import { RelayClient } from '@g2cc/protocol'
 import { STOP_RESPONSE } from '../src/controller'
@@ -16,7 +18,7 @@ const ROOT = join(import.meta.dir, '..', '..')
 const SESSION = '11111111-2222-3333-4444-555555555555'
 let tmp = ''
 let relayUrl = ''
-let hookUrl = ''
+let home = ''
 const procs: Array<ReturnType<typeof Bun.spawn>> = []
 let channel: ReturnType<typeof Bun.spawn<'pipe', 'pipe', 'pipe'>> | null = null
 
@@ -76,11 +78,7 @@ function mcpSend(msg: unknown): void {
 }
 
 const hook = (payload: Record<string, unknown>) =>
-  fetch(hookUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ session_id: SESSION, cwd: '/tmp/demo-repo', permission_mode: 'default', ...payload }),
-  })
+  runHook(home, { session_id: SESSION, cwd: '/tmp/demo-repo', permission_mode: 'default', ...payload })
 
 beforeAll(async () => {
   tmp = mkdtempSync(join(tmpdir(), 'g2cc-chan-'))
@@ -94,9 +92,7 @@ beforeAll(async () => {
   )
   await waitFor(`http://127.0.0.1:${wranglerPort}/`)
 
-  const hookPort = freePort()
-  hookUrl = `http://127.0.0.1:${hookPort}/hook`
-  const home = join(tmp, 'home')
+  home = join(tmp, 'home')
   channel = Bun.spawn(['bun', 'server.ts'], {
     cwd: join(ROOT, 'channel'),
     stdin: 'pipe',
@@ -105,7 +101,6 @@ beforeAll(async () => {
     env: {
       ...process.env,
       G2CC_HOME: home,
-      G2CC_PORT: String(hookPort),
       G2CC_RELAY_URL: relayUrl,
       CLAUDE_CODE_SESSION_ID: SESSION,
       CLAUDE_PROJECT_DIR: '/tmp/demo-repo',
@@ -116,12 +111,9 @@ beforeAll(async () => {
   mcpSend({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' } } })
   mcpSend({ jsonrpc: '2.0', method: 'notifications/initialized' })
 
-  // Wait for the channel to create the pairing and bind the hook port.
+  // Wait for the channel to create the pairing and its hook socket.
   const end = Date.now() + 15_000
-  for (;;) {
-    try {
-      if ((await fetch(hookUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).ok) break
-    } catch {}
+  while (!existsSync(join(home, 'sessions', `${SESSION}.sock`))) {
     if (Date.now() > end) throw new Error('channel did not start')
     await Bun.sleep(100)
   }
@@ -129,7 +121,7 @@ beforeAll(async () => {
   const pairing = await loadOrCreatePairing(home)
   glasses = await SecureChannel.create(pairing.key, 'glasses')
   glassesRelay = new RelayClient({
-    url: relaySocketUrl(relayUrl, glasses.roomId, 'glasses'),
+    url: relayRoomUrl(relayUrl, glasses.roomId, 'glasses', await relayAuthToken(pairing.key, glasses.roomId)),
     onFrame: async f => {
       const env = await glasses.open(f)
       if (env) received.push(env)
@@ -172,7 +164,11 @@ describe('channel feed end to end', () => {
 
   test('hooks from other sessions are ignored', async () => {
     received.length = 0
-    await fetch(hookUrl, {
+    // Another session has no socket here, and a payload naming another session
+    // that reaches this socket anyway is dropped by the controller.
+    await runHook(home, { session_id: 'someone-else', hook_event_name: 'UserPromptSubmit', prompt: 'not mine' })
+    await fetch('http://g2/hook', {
+      unix: join(home, 'sessions', `${SESSION}.sock`),
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session_id: 'someone-else', hook_event_name: 'UserPromptSubmit', prompt: 'not mine' }),

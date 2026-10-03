@@ -6,15 +6,22 @@ const root = join(import.meta.dir, '..', '..')
 const json = (p: string) => JSON.parse(readFileSync(join(root, p), 'utf8'))
 
 describe('plugin package', () => {
-  test('plugin hooks match the settings snippet', () => {
-    expect(json('plugin/hooks/hooks.json').hooks).toEqual(json('channel/settings.example.json').hooks)
+  test('plugin hooks match the from-source settings snippet, apart from the script path', () => {
+    const plugin = JSON.stringify(json('plugin/hooks/hooks.json').hooks).replaceAll('${CLAUDE_PLUGIN_ROOT}/dist/hook.js', 'HOOK')
+    const source = JSON.stringify(json('channel/settings.example.json').hooks).replaceAll('__G2CC_ROOT__/channel/hook.ts', 'HOOK')
+    expect(plugin).toBe(source)
   })
 
-  test('every hook is an http hook to the fixed port with a short timeout', () => {
-    const hooks = json('plugin/hooks/hooks.json').hooks as Record<string, { hooks: { type: string; url: string; timeout: number }[] }[]>
+  test('every hook runs the bundled command hook in exec form, with a short timeout', () => {
+    const hooks = json('plugin/hooks/hooks.json').hooks as Record<string, { hooks: unknown[] }[]>
     expect(Object.keys(hooks).sort()).toEqual(['Notification', 'PostToolUse', 'PreToolUse', 'Stop', 'UserPromptSubmit'])
     for (const groups of Object.values(hooks))
-      for (const h of groups.flatMap(g => g.hooks)) expect(h).toEqual({ type: 'http', url: 'http://127.0.0.1:27183/hook', timeout: 2 })
+      for (const h of groups.flatMap(g => g.hooks))
+        expect(h).toEqual({ type: 'command', command: 'bun', args: ['${CLAUDE_PLUGIN_ROOT}/dist/hook.js'], timeout: 3 })
+  })
+
+  test('the plugin pins a version, so users update on releases rather than on every push', () => {
+    expect(json('plugin/.claude-plugin/plugin.json').version).toMatch(/^\d+\.\d+\.\d+$/)
   })
 
   test('the MCP server is named g2 and runs the bundle', () => {

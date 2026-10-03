@@ -10,7 +10,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PNG } from 'pngjs'
-import { encodePairing, generateKey, RelayClient, SecureChannel, toBase64Url, type AnyEnvelope, type Body } from '@g2cc/protocol'
+import { encodePairing, generateKey, RelayClient, relayAuthToken, relayRoomUrl, SecureChannel, toBase64Url, type AnyEnvelope, type Body } from '@g2cc/protocol'
 
 const RUN = process.env.G2CC_SIM === '1'
 const FAKE_TRANSCRIPT = 'Run the unit tests and tell me what failed.'
@@ -118,7 +118,7 @@ beforeAll(async () => {
   const pairing = await encodePairing({ relayUrl: `ws://127.0.0.1:${wranglerPort}`, key })
   computer = await SecureChannel.create(key, 'computer')
   relay = new RelayClient({
-    url: `ws://127.0.0.1:${wranglerPort}/v1/room/${computer.roomId}?role=computer`,
+    url: relayRoomUrl(`ws://127.0.0.1:${wranglerPort}`, computer.roomId, 'computer', await relayAuthToken(key, computer.roomId)),
     onFrame: async f => {
       const env = await computer.open(f)
       if (env) inbound.push(env)

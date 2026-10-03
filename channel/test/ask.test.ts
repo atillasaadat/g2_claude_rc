@@ -107,15 +107,26 @@ describe('AskUserQuestion redirect', () => {
 describe('own tools under the plugin', () => {
   const pre = (tool_name: string) => ({ ...base, hook_event_name: 'PreToolUse', tool_name, tool_input: {} })
   const ALLOW = { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } }
+  const plugin = (glasses: boolean) => {
+    const out: Emitted[] = []
+    const c = new SessionController({ sessionId: SID, name: 'repo', cwd: '/r', emit: e => out.push(e), ownToolPrefix: 'mcp__plugin_g2_g2__', autoAllowOwnTools: true })
+    c.setGlassesPresent(glasses)
+    return c
+  }
 
-  test('ask and glance are allowed without a prompt, under both names', () => {
-    const { c } = setup(true)
-    for (const n of ['mcp__g2__ask', 'mcp__plugin_g2_g2__ask', 'mcp__plugin_g2_g2__glance']) expect(c.onHook(pre(n))).toEqual(ALLOW)
+  test('the plugin allows its own ask and glance without a prompt', () => {
+    const c = plugin(true)
+    for (const n of ['mcp__plugin_g2_g2__ask', 'mcp__plugin_g2_g2__glance']) expect(c.onHook(pre(n))).toEqual(ALLOW)
   })
 
-  test('pair keeps the normal permission prompt', () => {
+  test('look-alike tools from another server named g2, and pair, keep the normal prompt', () => {
+    const c = plugin(true)
+    for (const n of ['mcp__g2__ask', 'mcp__g2__glance', 'mcp__plugin_g2_g2__pair']) expect(c.onHook(pre(n))).toEqual({})
+  })
+
+  test('a from-source channel never auto-allows (settings.json lists the tools)', () => {
     const { c } = setup(true)
-    expect(c.onHook(pre('mcp__plugin_g2_g2__pair'))).toEqual({})
+    expect(c.onHook(pre('mcp__g2__ask'))).toEqual({})
   })
 
   test('the deny reason names the plugin tool too', () => {

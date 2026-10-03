@@ -104,8 +104,8 @@ mountUi({
     dispatch({ type: 'paired', paired: true })
     await link.connect(pairing)
   },
-  async pairWithCode(code) {
-    await this.savePairing(await pairWithCode(code))
+  async pairWithCode(code, relayUrl) {
+    await this.savePairing(await pairWithCode(code, relayUrl || undefined))
   },
   async saveSttKey(key) {
     await storage.saveSttKey(key)
@@ -126,8 +126,13 @@ const bridge = await waitForEvenAppBridge()
 const queue = new BridgeQueue()
 const storage = new Storage(bridge, queue)
 
-/** Dev convenience: `#pair=<base64url of the pairing text>` in the app URL pairs on load. */
+/**
+ * Dev convenience: `#pair=<base64url of the pairing text>` in the app URL pairs
+ * on load. Dev builds only: in a release, a crafted link could silently swap
+ * the user's pairing for someone else's.
+ */
 async function pairFromFragment(): Promise<void> {
+  if (!import.meta.env.DEV) return
   const m = /^#pair=([A-Za-z0-9_-]+)$/.exec(location.hash)
   if (!m?.[1]) return
   history.replaceState(null, '', location.pathname + location.search) // keep the key out of the URL bar

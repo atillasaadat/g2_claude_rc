@@ -5,8 +5,9 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { generateKey, SecureChannel } from '@g2cc/protocol'
-import { BURST, HISTORY_MAX, HISTORY_MAX_BYTES, MAX_FRAME_BYTES, MAX_SOCKETS_PER_ROLE } from '../src/limits'
+import { generateKey, relayAuthToken, SecureChannel } from '@g2cc/protocol'
+import { BURST, HISTORY_MAX, HISTORY_MAX_BYTES, MAX_FRAME_BYTES, MAX_SOCKETS_PER_ROLE, PAIR_HISTORY_MAX } from '../src/limits'
+import { ipKey } from '../src/ip'
 
 const RELAY_DIR = join(import.meta.dir, '..')
 let base = ''
@@ -42,6 +43,11 @@ afterAll(() => {
   if (stateDir) rmSync(stateDir, { recursive: true, force: true })
 })
 
+/** Auth token per key room, filled by room(). */
+const AUTH = new Map<string, string>()
+const roomUrl = (roomId: string, role: string, auth = AUTH.get(roomId) ?? '') =>
+  `ws://${base}/v1/room/${roomId}?role=${role}&auth=${auth}`
+
 type Presence = { t: 'presence'; computer: number; glasses: number }
 
 class Client {
@@ -71,8 +77,8 @@ class Client {
     }
   }
 
-  static async connect(roomId: string, role: 'computer' | 'glasses'): Promise<Client> {
-    const ws = new WebSocket(`ws://${base}/v1/room/${roomId}?role=${role}`)
+  static async connect(roomId: string, role: 'computer' | 'glasses', path?: string): Promise<Client> {
+    const ws = new WebSocket(path ?? roomUrl(roomId, role))
     await new Promise<void>((resolve, reject) => {
       ws.onopen = () => resolve()
       ws.onerror = () => reject(new Error('connect failed'))
@@ -105,7 +111,8 @@ async function room() {
   const key = generateKey()
   const computer = await SecureChannel.create(key, 'computer')
   const glasses = await SecureChannel.create(key, 'glasses')
-  return { roomId: computer.roomId, computer, glasses }
+  AUTH.set(computer.roomId, await relayAuthToken(key, computer.roomId))
+  return { roomId: computer.roomId, computer, glasses, key }
 }
 
 describe('relay over wrangler dev', () => {
@@ -117,7 +124,7 @@ describe('relay over wrangler dev', () => {
 
   test('the relay also answers under the /g2-claude prefix', async () => {
     const { roomId, computer, glasses } = await room()
-    const ws = new WebSocket(`ws://${base}/g2-claude/v1/room/${roomId}?role=glasses`)
+    const ws = new WebSocket(`ws://${base}/g2-claude/v1/room/${roomId}?role=glasses&auth=${AUTH.get(roomId)}`)
     ws.binaryType = 'arraybuffer'
     const got = new Promise<Uint8Array>(resolve => {
       ws.onmessage = ev => typeof ev.data !== 'string' && resolve(new Uint8Array(ev.data as ArrayBuffer))
@@ -135,6 +142,44 @@ describe('relay over wrangler dev', () => {
     expect((await fetch(`http://${base}/v1/room/not-hex?role=computer`)).status).toBe(404) // not a room: falls through to assets
     expect((await fetch(`http://${base}/v1/room/${roomId}?role=admin`, { headers: { Upgrade: 'websocket' } })).status).toBe(400)
     expect((await fetch(`http://${base}/v1/room/${roomId}?role=computer`)).status).toBe(426)
+  })
+
+  test('a key room turns away sockets without the pinned auth token', async () => {
+    const { roomId } = await room()
+    const up = { headers: { Upgrade: 'websocket' } }
+    expect((await fetch(`http://${base}/v1/room/${roomId}?role=computer`, up)).status).toBe(401)
+    const c = await Client.connect(roomId, 'computer') // pins the token
+    const forged = await relayAuthToken(generateKey(), roomId)
+    expect((await fetch(`http://${base}/v1/room/${roomId}?role=glasses&auth=${forged}`, up)).status).toBe(403)
+    const g = await Client.connect(roomId, 'glasses')
+    await g.until(() => g.presence.some(p => p.computer === 1))
+    c.close()
+    g.close()
+  })
+
+  test('pairing rooms need no token, keep a short history, and refuse newcomers when full', async () => {
+    const id = crypto.randomUUID().replace(/-/g, '')
+    const pairUrl = (role: string) => `ws://${base}/v1/pair/${id}?role=${role}`
+    const c = await Client.connect(id, 'computer', pairUrl('computer'))
+    for (let i = 0; i < PAIR_HISTORY_MAX + 5; i++) c.ws.send(new Uint8Array([i]))
+    await Bun.sleep(300)
+    const g = await Client.connect(id, 'glasses', pairUrl('glasses'))
+    await g.until(() => g.frames.length >= PAIR_HISTORY_MAX)
+    await Bun.sleep(200)
+    expect(g.frames.length).toBe(PAIR_HISTORY_MAX)
+    const rest: Client[] = []
+    for (let i = 1; i < MAX_SOCKETS_PER_ROLE; i++) rest.push(await Client.connect(id, 'computer', pairUrl('computer')))
+    expect((await fetch(`http://${base}/v1/pair/${id}?role=computer`, { headers: { Upgrade: 'websocket' } })).status).toBe(409)
+    expect(c.closed).toBeNull()
+    for (const x of [c, g, ...rest]) x.close()
+  })
+
+  test('IPv6 clients are rate limited per /64', () => {
+    expect(ipKey('203.0.113.7')).toBe('203.0.113.7')
+    expect(ipKey('2001:db8:1:2:aaaa:bbbb:cccc:dddd')).toBe('2001:db8:1:2::/64')
+    expect(ipKey('2001:db8:1:2::1')).toBe('2001:db8:1:2::/64')
+    expect(ipKey('2001:0db8:0001:0002:ffff::')).toBe('2001:db8:1:2::/64')
+    expect(ipKey('2001:db8::1')).toBe('2001:db8:0:0::/64')
   })
 
   test('exchanges encrypted envelopes both ways', async () => {

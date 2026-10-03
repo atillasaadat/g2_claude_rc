@@ -27,9 +27,16 @@ const BEARER = /\b(Bearer)\s+[A-Za-z0-9._~+/=-]{6,}/gi
 const AUTH_HEADER = /(\bAuthorization\s*:\s*)(?:(Basic|Bearer|Token)\s+)?([^\s"']{4,})/gi
 const URL_CREDENTIALS = /(\b[a-z][a-z0-9+.-]*:\/\/[^\s:/@]+:)[^\s@/]+@/gi
 
-// NAME=value, NAME: value, --name value, --name=value, with optional quotes.
+// NAME=value, NAME: value, "name": "value" (JSON), --name value, --name=value.
+// A quoted value may contain spaces; it is masked whole.
 const SECRET_NAME = String.raw`[A-Za-z0-9_-]*(?:password|passwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|auth)[A-Za-z0-9_-]*`
-const ASSIGNMENT = new RegExp(String.raw`(\b${SECRET_NAME}\s*[=:]\s*|--${SECRET_NAME}[=\s]+)(["']?)([^\s"']+)\2`, 'gi')
+const ASSIGNMENT = new RegExp(
+  String.raw`(\b${SECRET_NAME}["']?\s*[=:]\s*|--${SECRET_NAME}[=\s]+)(?:"([^"]*)"|'([^']*)'|([^\s"',;}]+))`,
+  'gi',
+)
+// curl -u user:password, and mysql/mysqldump -pPASSWORD.
+const CURL_USER = /(\s(?:-u|--user)\s+[^\s:]+:)(\S+)/g
+const MYSQL_PASS = /(\bmysql(?:dump|admin)?\b[^\n]*?\s-p)([^\s-]\S*)/g
 
 export function redact(text: string): string {
   let out = text.replace(PRIVATE_KEY, '[REDACTED PRIVATE KEY]')
@@ -39,9 +46,14 @@ export function redact(text: string): string {
     value === R ? m : `${prefix}${scheme ? `${scheme} ` : ''}${R}`,
   )
   out = out.replace(URL_CREDENTIALS, `$1${R}@`)
-  out = out.replace(ASSIGNMENT, (m, prefix: string, quote: string, value: string) =>
-    value === R || /^authorization/i.test(prefix) ? m : `${prefix}${quote}${R}${quote}`,
-  )
+  out = out.replace(ASSIGNMENT, (m, prefix: string, dq?: string, sq?: string, bare?: string) => {
+    const value = dq ?? sq ?? bare ?? ''
+    if (value === R || value === '' || /^authorization/i.test(prefix)) return m
+    const q = dq !== undefined ? '"' : sq !== undefined ? "'" : ''
+    return `${prefix}${q}${R}${q}`
+  })
+  out = out.replace(CURL_USER, `$1${R}`)
+  out = out.replace(MYSQL_PASS, `$1${R}`)
   return out
 }
 

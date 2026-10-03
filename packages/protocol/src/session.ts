@@ -25,6 +25,7 @@ export class SecureChannel<S extends Side = Side> {
     readonly side: S,
     readonly roomId: string,
     private readonly key: CryptoKey,
+    notBefore: number | undefined,
   ) {
     // The computer receives commands (strict window). The glasses receive
     // display data, which the relay may replay from history.
@@ -32,11 +33,15 @@ export class SecureChannel<S extends Side = Side> {
       maxAgeMs: side === 'computer' ? COMMAND_MAX_AGE_MS : DISPLAY_MAX_AGE_MS,
       maxSkewMs: MAX_SKEW_MS,
     })
-    this.notBefore = side === 'computer' ? Date.now() - RESTART_MARGIN_MS : 0
+    this.notBefore = side === 'computer' ? Math.max(Date.now() - RESTART_MARGIN_MS, notBefore ?? 0) : 0
   }
 
-  static async create<S extends Side>(rawKey: Uint8Array, side: S): Promise<SecureChannel<S>> {
-    return new SecureChannel(side, await deriveRoomId(rawKey), await importKey(rawKey))
+  /**
+   * `notBefore` (computer only) raises the floor further, for a channel that
+   * restarts within a session: pass one past the last command it accepted.
+   */
+  static async create<S extends Side>(rawKey: Uint8Array, side: S, opts: { notBefore?: number } = {}): Promise<SecureChannel<S>> {
+    return new SecureChannel(side, await deriveRoomId(rawKey), await importKey(rawKey), opts.notBefore)
   }
 
   private get outDir(): Direction {

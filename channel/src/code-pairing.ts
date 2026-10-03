@@ -2,8 +2,7 @@
 // one-off relay room for the code and hands the pairing to the phone that
 // types it. Used by `pair.ts` and by the channel's `pair` tool.
 
-import { ComputerPairing, newPairCode, PAIR_CODE_TTL_MS, RelayClient } from '@g2cc/protocol'
-import { relaySocketUrl } from './config'
+import { ComputerPairing, newPairCode, PAIR_CODE_TTL_MS, RelayClient, relayPairUrl } from '@g2cc/protocol'
 import { pairingText, type StoredPairing } from './pairing-store'
 
 export interface OpenCodePairing {
@@ -24,11 +23,12 @@ export async function openCodePairing(
   let finish: (ok: boolean) => void = () => {}
   const done = new Promise<boolean>(resolve => (finish = resolve))
   const relay: RelayClient = new RelayClient({
-    url: relaySocketUrl(pairing.relayUrl, session.roomId, 'computer'),
+    url: relayPairUrl(pairing.relayUrl, session.roomId, 'computer'),
     onFrame: async frame => {
       const r = await session.onFrame(frame)
       if (r.send) relay.send(r.send)
       if (r.done) end(true)
+      if (r.failed) end(false)
     },
   })
   const timer = setTimeout(() => end(false), ttlMs)

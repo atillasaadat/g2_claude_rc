@@ -17,12 +17,12 @@ Claude Code session ── hooks + MCP ──▶ g2 channel (Bun, spawned by Cla
 ```
 
 - **No inbound ports, no VPN, no daemon.** The only local process is the channel, which Claude Code starts over stdio. Its hook server binds `127.0.0.1` only.
-- **No claude.ai credentials outside Claude Code.** Everything uses official extension points: a channel (`notifications/claude/channel`, permission relay), http hooks, and MCP tools (`ask`, `glance`). Remote Control keeps working alongside.
+- **No claude.ai credentials outside Claude Code.** Everything uses official extension points: a channel (`notifications/claude/channel`, permission relay), command hooks, and MCP tools (`ask`, `glance`). Remote Control keeps working alongside.
 - **End-to-end encryption.**
   - AES-256-GCM with a 32-byte key made at pairing time. Each frame is bound to its room and direction.
   - The relay forwards ciphertext only.
   - The channel drops anything that fails decryption, schema checks, or replay checks (duplicate IDs, older than 60 s, or sent before the channel started) before Claude Code sees it.
-- **Several sessions.** Each channel serves its own hooks on a private port. Whichever channel holds the fixed port 27183 routes hooks to the right session, and another takes over when it exits.
+- **No listening ports.** Each channel serves its own session's hooks on a private Unix socket (`~/.g2cc/sessions/<session>.sock`, owner-only). The hook checks the directory and socket owner before connecting, so another program cannot stand in for the channel. Any number of sessions run side by side.
 
 ## Repository
 
@@ -58,13 +58,15 @@ Then run `cc-g2` instead of `claude` in any project.
 
 **Alerts while you are in another app:** in `/config`, enable `inputNeededNotifEnabled` and `agentPushNotifEnabled` (Remote Control push notifications). Allow notifications for the Claude app on your phone, then enable the Claude app in the Even app's notification mirroring.
 
-**Updates:** run `/plugin marketplace update g2cc`, or turn on auto-update for the marketplace under `/plugin`. The plugin has no pinned version, so each commit to `main` is an update.
+**Updates:** run `/plugin marketplace update g2cc`, or turn on auto-update for the marketplace under `/plugin`. The plugin pins a version, so only a release (a version bump in `plugin/.claude-plugin/plugin.json`) reaches users, not every commit.
 
-**Coming from `scripts/install.sh`?** Run `scripts/install.sh --remove` first, or the hooks fire twice.
+**Coming from the old `scripts/install.sh` setup?** Run `scripts/install.sh --remove` (from a clone) to drop its http hooks, or they fire alongside the plugin. Existing pairings keep working.
 
 ### How pairing works
 
-`/g2:pair` asks the channel for a one-time code (8 characters, 40 bits). The phone and the channel derive a one-off relay room and an HMAC key from the code with PBKDF2, run an ECDH (P-256) exchange there with each public key authenticated by the HMAC, and the channel sends the pairing sealed under the ECDH secret. The code never carries the key, and seeing relay traffic alone reveals nothing. For self-hosting or a local relay, `bun channel/pair.ts --text` prints the pairing text to paste instead.
+`/g2:pair` asks the channel for a one-time code and shows it in a Claude Code dialog, so it never enters Claude's context, where a prompt injection could leak it. The first 3 characters pick a rendezvous room on the relay. The last 5 are the password for CPace, a PAKE over ristretto255 (@noble/curves): the messages give nothing to test guesses against offline, the channel closes the code after 3 wrong attempts, and the pairing travels sealed under the PAKE key. For self-hosting, `bun channel/pair.ts --text` prints the pairing text to paste instead, or enter your relay's address in the app and pair by code.
+
+The relay admits a socket to a room only with the room's auth token (an HMAC of the room ID under the pairing key), so knowing a room ID is not enough to join, evict, or flood it.
 
 ### Before the Even Hub listing (private build)
 
