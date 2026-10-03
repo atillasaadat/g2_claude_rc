@@ -1,56 +1,37 @@
-# asr
+# G2 Claude Code: glasses app
 
-Live speech-to-text demo on G2. Mic audio → your chosen STT provider → transcript rendered on the glasses and mirrored in the companion WebView. Includes double-tap-to-exit wiring.
+Even Hub app for the G2 glasses. It shows a live feed of a Claude Code session, the final reply, permission cards, and a menu to stop Claude. See the repo `CLAUDE.md` and `docs/decisions.md` for the design.
 
-**The STT client itself is a blank stub.** This template has zero vendor code baked in. You pick your own provider (Deepgram, AssemblyAI, Whisper, Soniox, self-hosted, etc.) and wire it up in `src/asr/stt.ts`.
-
-## Run
+## Run in the simulator
 
 ```bash
-cp .env.example .env.local   # paste your STT provider's API key into VITE_STT_API_KEY
-npm install
-npm run dev
+bun install                      # from the repo root
+cd relay && bunx wrangler dev    # local relay on ws://127.0.0.1:8789
+cd apps/glasses && bun run dev   # Vite on http://127.0.0.1:5173
+bun run simulate                 # Even Hub simulator, automation API on 9898
 ```
 
-Then `npm run simulate` (desktop simulator) or `npx evenhub qr --url http://<your-ip>:5173` to test on real glasses.
+Pair by pasting the output of `bun channel/pair.ts` into the Pairing section of the companion UI. For development you can also open the app with `#pair=<base64url of the pairing text>`.
 
-## First-run expectation
+## Tests
 
-Until you implement `src/asr/stt.ts`, the companion WebView shows a red error chip: *"STT provider not implemented — open src/asr/stt.ts and wire up your chosen STT service."* That's by design — the scaffold compiles and runs, but the STT handoff throws on startup so you know exactly where to go.
+```bash
+bun test                         # unit tests (layout, reducer, render, gestures, cards)
+bun run test:sim                 # real app in the simulator against wrangler dev
+```
 
-## What's in here
+## Layout
 
 | File | Purpose |
 |---|---|
-| `src/main.ts` | App entry. Creates the transcript container, starts the mic, routes PCM chunks to `stt.ts`, renders snapshots with a 120ms debounce, handles double-tap exit. |
-| `src/asr/stt.ts` | **Blank stub.** Provider-agnostic `SttClient` interface + `startSttStream()` function. Implement your STT provider here. |
-| `src/ui.ts` | Companion-app UI — status chip, live transcript mirror, dark theme. |
-| `index.html` | WebView host with zoom-locked viewport. |
-| `app.json` | Manifest with `g2-microphone` permission. **No `network` permission by default** — add yours when you pick a provider. |
-| `.env.example` | `VITE_STT_API_KEY=` placeholder for your provider's key. |
-
-## Wiring your STT provider
-
-1. Open `src/asr/stt.ts`. Replace the `throw` inside `startSttStream` with your provider's logic:
-   - Connect to the provider (WebSocket for streaming, HTTP for batch).
-   - Send the authentication / session-start message.
-   - On each inbound transcript message, build a `SttSnapshot { finalText, interimText, finished }` and call `onSnapshot()`.
-   - Implement `sendPcm(chunk)` to forward each mic chunk. The input is PCM s16le @ 16 kHz, mono — most providers accept this directly; resample if yours doesn't.
-   - Implement `close()` to signal end-of-stream.
-
-2. Paste your API key into `.env.local` as `VITE_STT_API_KEY=...`.
-
-3. Add a `network` permission to `app.json` with your provider's hosts:
-
-   ```json
-   { "name": "network", "desc": "Stream audio to STT.", "whitelist": ["https://api.yourprovider.com", "wss://stream.yourprovider.com"] }
-   ```
-
-   `evenhub pack` rejects an empty whitelist, which is why this entry isn't in `app.json` by default.
-
-## G2 specifics
-
-- Mic format: PCM s16le, 16 kHz, mono. Delivered via `event.audioEvent.audioPcm` as `Uint8Array`.
-- Glasses render is debounced to 120 ms — the BLE queue can't keep up with per-token writes.
-- Transcript is trimmed to the last 240 characters to fit the 576x288 text container at default font.
-- **Double-tap the temple** → `shutDownPageContainer(1)` → system exit confirmation dialog.
+| `src/main.ts` | Entry: wires the bridge, display, storage, relay link, and input. |
+| `src/state.ts` | Pure reducer: feed, reply, menu, permission cards. |
+| `src/render.ts` | Pure renderer: state to the text of the two containers. |
+| `src/layout.ts` | Geometry and pixel-accurate fitting with `@evenrealities/pretext`. |
+| `src/gestures.ts` | Configurable (screen, gesture) to action map with validation. |
+| `src/display.ts` | Creates the containers once, then upgrades them in place. |
+| `src/bridge-queue.ts` | Serializes every bridge call with a timeout. |
+| `src/link.ts` | Encrypted relay connection (`@g2cc/protocol`). |
+| `src/storage.ts` | Pairing and gesture map in SDK local storage. |
+| `src/ui.ts` | Companion phone UI: status, mirror, pairing, gesture editor. |
+| `src/asr/stt.ts` | Speech to text stub, wired to Groq Whisper in Phase 6. |

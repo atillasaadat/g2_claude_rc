@@ -235,7 +235,7 @@ The difference is that auto mode opens no permission dialogs, so the channel get
   - 0.0.16 has `zOrderIndex` but **no `setBackgroundState`**; the background-state skill is ahead of the published SDK.
   - We don't need it: when the phone backgrounds the WebView and the host reloads it headless, the relay's history replay rebuilds the feed on connect.
 - **Font glyphs** were checked with pretext `getAdvW`.
-  - Present: `● ○ · … ↑ ↓ ▶ × • → ━ ─ ■ □ —`.
+  - Present: `● ○ · … ↑ ↓ ▶ × • → ━ ─ ■ □ »` (the em dash also exists, but the writing rule forbids it in UI text).
   - Missing, rendered as a 4 px blank: `► ✓ ✗ ⏸`.
 - **Two containers for every screen:** a header (1 line, 576x35) and a body (9 lines, 576x253, event capture), both with padding 4.
   - Switching screens is always `textContainerUpgrade`, which is flicker-free, never `rebuildPageContainer`.
@@ -322,3 +322,11 @@ The difference is that auto mode opens no permission dialogs, so the channel get
   - Channel end to end: a real `permission_request` on stdin, a card at the glasses client, an Allow over `wrangler dev`, the exact `notifications/claude/channel/permission` on stdout, and a replayed verdict is not relayed twice.
   - 14 glasses card tests.
   - A simulator test: card, swipe up, tap, verdict at the computer; `permission_resolved` closes the card.
+- **Live check (2026-10-03): pass.**
+  - A real sandbox session in manual mode (`permission_mode: default`) was asked to run `touch perm-test-3.txt`.
+  - The card `Allow Bash?` appeared in the simulator, and the simulator approved it (swipe up, tap). The terminal dialog closed, and the command ran. The feed showed `! Allowed Bash from glasses` and `• Bash: touch perm-test-3.txt → ok`, then the reply opened. The file exists.
+- **Writing-rule fix:**
+  - The glance prefix was an em dash; it is now `»`.
+  - The em dashes in the template leftovers (`apps/glasses/README.md`, now rewritten for this app, and `src/asr/stt.ts`) were removed too.
+  - The only remaining em dashes are in generated Cloudflare types (`relay/worker-configuration.d.ts`).
+- **Phase 5 status: done.**

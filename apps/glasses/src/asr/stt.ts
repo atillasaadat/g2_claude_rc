@@ -6,8 +6,8 @@
 // ─────────────────────────────────────────────────────────────────────
 // choose your own implementation here
 // ─────────────────────────────────────────────────────────────────────
-// Pick whichever STT provider you prefer — streaming or batch, hosted
-// or self-hosted — and implement the three functions below. The rest
+// Pick whichever STT provider you prefer (streaming or batch, hosted
+// or self-hosted) and implement the three functions below. The rest
 // of the scaffold (main.ts, ui.ts) already wires the mic into
 // `sendPcm` and renders whatever `onSnapshot` emits.
 //
@@ -40,6 +40,6 @@ export function startSttStream(
   _onError?: (err: unknown) => void,
 ): SttClient {
   throw new Error(
-    'STT provider not implemented — open src/asr/stt.ts and wire up your chosen STT service.',
+    'STT provider not implemented: open src/asr/stt.ts and wire up your chosen STT service.',
   )
 }

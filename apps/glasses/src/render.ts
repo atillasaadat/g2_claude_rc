@@ -46,7 +46,7 @@ function feedBody(s: AppState): string {
   const visible = s.events.slice(Math.max(0, end - FEED_LINES), end)
   const lines = visible.length ? visible.map(eventLine) : ['No activity yet.']
   if (s.feedOffset > 0) lines.push(fitLine(`↑↓ ${s.feedOffset} newer`))
-  if (s.glance) lines.push('', fitLine(`— ${s.glance}`))
+  if (s.glance) lines.push('', fitLine(`» ${s.glance}`))
   if (s.reply && s.feedOffset === 0) {
     const n = s.reply.pages.length
     lines.push(fitLine(`↓ reply (${n} page${n === 1 ? '' : 's'})`))
