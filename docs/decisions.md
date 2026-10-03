@@ -399,3 +399,8 @@ The difference is that auto mode opens no permission dialogs, so the channel get
   - Claude called `ask`, the question card appeared (08:36:22), and Claude ended its turn as told. Its final reply then opened the reply view **on top of the question card** (08:36:29), and the user lost the options.
   - Fix: screen priority is enforced. A fresh reply opens only from the feed or reply view, and a fresh prompt returns to the feed only from those screens. Neither ever buries a permission card, question, voice capture or the menu.
   - Recovery worked as designed: when the app reloaded, the channel's presence-triggered resync re-sent the pending question with a fresh timestamp, and the card reappeared.
+- **Live check (2026-10-03): pass.**
+  - Prompt: "Ask me whether to write hello or goodbye into greeting.txt, then do what I pick." Claude called `ask`, and after the reload it was re-sent at 1:38:20 (`q794c9b5f`).
+  - The user picked `hello` in the simulator at 1:40:31. The answer arrived as a g2 channel message (`origin: glasses` in the feed), and Claude ran `echo hello > greeting.txt` and replied.
+  - The file contains `hello`.
+- **Phase 7 status: done.**
