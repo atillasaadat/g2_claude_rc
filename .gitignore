@@ -19,3 +19,6 @@ relay/public/g2-claude/app/
 
 # Even Hub packages (apps/glasses: bun run pack)
 build/
+
+# The plugin runs this committed bundle (bun run build:plugin).
+!plugin/dist/

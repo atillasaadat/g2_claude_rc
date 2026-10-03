@@ -2,7 +2,7 @@
 
 Hands-free Claude Code on Even Realities G2 glasses. See what a Claude Code session is doing, speak prompts into it, stop it, approve tool use, answer Claude's questions, and switch between sessions, all from the glasses.
 
-Setup guide: **https://atillasaadat.com/g2-claude/**
+Website: **https://atillasaadat.com/g2-claude/**
 
 ## How it works
 
@@ -28,39 +28,47 @@ Claude Code session ── hooks + MCP ──▶ g2 channel (Bun, spawned by Cla
 
 | Path | What it is |
 |---|---|
-| `channel/` | The g2 channel (`server.ts`), pairing (`pair.ts`), and a CLI glasses stand-in (`tools/feed.ts`) |
+| `plugin/` | The Claude Code plugin: MCP server (bundled channel in `dist/`), hooks, and `/g2:pair` |
+| `.claude-plugin/` | The `g2cc` plugin marketplace |
+| `channel/` | The g2 channel source (`server.ts`), terminal pairing (`pair.ts`), and a CLI glasses stand-in (`tools/feed.ts`) |
 | `apps/glasses/` | The Even Hub app (Vite + TypeScript + Even Hub SDK) |
 | `relay/` | Cloudflare Worker + Durable Object relay. Also serves the setup page and the built app |
 | `packages/protocol/` | Shared envelope schemas (zod), crypto, replay guard, pairing, relay client |
-| `scripts/` | `install.sh` (global setup), `make-sandbox.sh` (throwaway test repo) |
+| `scripts/` | `make-sandbox.sh` (throwaway test repo), `install.sh` (developer setup from a clone) |
 | `docs/decisions.md` | Every design decision and what was verified, phase by phase |
 
 ## Set up
 
-Requirements: Claude Code signed in with a claude.ai account, [Bun](https://bun.sh), `jq`, Even Realities G2 with the Even app, and optionally a free [Groq API key](https://console.groq.com/keys) for voice.
+Requirements: Claude Code signed in with a claude.ai account, [Bun](https://bun.sh), Even Realities G2 with the Even app, and optionally a free [Groq API key](https://console.groq.com/keys) for voice. No clone needed.
 
-```bash
-git clone https://github.com/atillasaadat/g2_claude_rc && cd g2_claude_rc
-scripts/install.sh                     # user-scope MCP server + http hooks (backs up settings; --remove undoes)
-echo "alias cc-g2='claude --dangerously-load-development-channels server:g2 --rc'" >> ~/.zshrc
-GROQ_API_KEY=gsk_... bun channel/pair.ts --relay wss://atillasaadat.com/g2-claude
-```
-
-Scan the printed QR code in the Even app (Even Hub). It loads the app and pairs it in one step. The QR contains your secret key and Groq key, so don't share it. `bun channel/pair.ts --rotate` issues a new key.
+1. **Install the plugin.** In Claude Code:
+   ```
+   /plugin marketplace add atillasaadat/g2_claude_rc
+   /plugin install g2@g2cc
+   ```
+2. **Add the launch command** to your shell profile, then open a new terminal:
+   ```bash
+   alias cc-g2='claude --dangerously-load-development-channels plugin:g2@g2cc --rc'
+   ```
+3. **Install the glasses app** from Even Hub in the Even app (G2 Claude).
+4. **Pair.** In a `cc-g2` session, run `/g2:pair`. Type the code it shows in the app's phone view under Pairing. A code works once, for 10 minutes.
+5. **Voice:** paste your Groq key in the app under Voice. It stays on the phone.
 
 Then run `cc-g2` instead of `claude` in any project.
 
 **Alerts while you are in another app:** in `/config`, enable `inputNeededNotifEnabled` and `agentPushNotifEnabled` (Remote Control push notifications). Allow notifications for the Claude app on your phone, then enable the Claude app in the Even app's notification mirroring.
 
-### Keep the app installed (private build)
+**Updates:** run `/plugin marketplace update g2cc`, or turn on auto-update for the marketplace under `/plugin`. The plugin has no pinned version, so each commit to `main` is an update.
 
-A QR-loaded app only lasts until you leave it. To keep it installed without publishing:
+**Coming from `scripts/install.sh`?** Run `scripts/install.sh --remove` first, or the hooks fire twice.
 
-1. Run `cd apps/glasses && bun run pack`. It writes `build/g2-claude-launcher.ehpk` (opens the hosted app, so it updates from `main`) and `build/g2-claude-bundled.ehpk` (self-contained). CI attaches both to every run.
-2. At hub.evenrealities.com, open your project's **Private builds** tab and upload one of them.
-3. In the Even app: Even Hub (Developer Mode), then Me, Apps, Private builds, then Install.
+### How pairing works
 
-If the installed app says it is not paired, run `bun channel/pair.ts --text` and paste the text in the app's phone view under Pairing.
+`/g2:pair` asks the channel for a one-time code (8 characters, 40 bits). The phone and the channel derive a one-off relay room and an HMAC key from the code with PBKDF2, run an ECDH (P-256) exchange there with each public key authenticated by the HMAC, and the channel sends the pairing sealed under the ECDH secret. The code never carries the key, and seeing relay traffic alone reveals nothing. For self-hosting or a local relay, `bun channel/pair.ts --text` prints the pairing text to paste instead.
+
+### Before the Even Hub listing (private build)
+
+Until the app is listed, install it as a private build: run `cd apps/glasses && bun run pack`, upload `build/g2-claude-bundled.ehpk` in your project's **Private builds** tab at hub.evenrealities.com, then in the Even app open Even Hub (Developer Mode), Me, Apps, Private builds, and Install. CI attaches the packages to every run.
 
 ## Using it
 
@@ -81,12 +89,14 @@ If the installed app says it is not paired, run `bun channel/pair.ts --text` and
 
 ```bash
 bun install
+bun run build:plugin                       # after channel or protocol changes; commit plugin/dist
 bun test                                   # in packages/protocol, channel, relay, apps/glasses
 cd relay && bunx wrangler dev              # local relay on ws://127.0.0.1:8789
 cd apps/glasses && bun run dev             # Vite on :5173
 cd apps/glasses && bun run simulate        # Even Hub simulator, automation API on :9898
 G2CC_SIM=1 bun test test/sim.e2e.test.ts   # simulator end to end (opens a window)
-scripts/make-sandbox.sh                    # throwaway repo wired to the channel
+scripts/make-sandbox.sh                    # throwaway repo wired to the channel source
+claude plugin validate . && claude plugin validate ./plugin
 ```
 
 For development, put a Groq key in `apps/glasses/.env.local` (`VITE_STT_API_KEY=...`). The dev server uses it, and production builds never include it: `bun run build` fails if anything secret-shaped lands in the bundle.
@@ -95,7 +105,7 @@ For development, put a Groq key in `apps/glasses/.env.local` (`VITE_STT_API_KEY=
 
 Every push to `main` that touches the app, relay, or protocol deploys automatically (`.github/workflows/deploy.yml`). It needs the repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
 
-The Even app loads the glasses app from `https://atillasaadat.com/g2-claude/app/` every time, and that entry page is served with `Cache-Control: no-cache`, so the glasses get each deploy on their next launch. The channel on your computer updates with `git pull`.
+The Even app loads the glasses app from `https://atillasaadat.com/g2-claude/app/` every time, and that entry page is served with `Cache-Control: no-cache`, so the hosted app gets each deploy on its next launch. A store-installed app is self-contained and updates with each Even Hub release. The plugin updates through `/plugin`.
 
 Manual deploy:
 
@@ -104,7 +114,7 @@ cd apps/glasses && bun run build           # writes relay/public/g2-claude/app/
 cd relay && bunx wrangler deploy           # Worker route atillasaadat.com/g2-claude*
 ```
 
-The Worker serves `/g2-claude/` (the setup guide), `/g2-claude/app/` (the glasses app), and `/g2-claude/v1/room/<id>` (the relay). Rate limits apply to WebSocket connects per IP, to frames per socket, and to the history size.
+The Worker serves `/g2-claude/` (the landing page), `/g2-claude/app/` (the glasses app), and `/g2-claude/v1/room/<id>` (the relay). Rate limits apply to WebSocket connects per IP, to frames per socket, and to the history size.
 
 ## Limits
 

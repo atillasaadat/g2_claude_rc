@@ -3,7 +3,7 @@ import { defineConfig, loadEnv } from 'vite'
 // Production builds are served publicly from the relay Worker, so they must
 // contain no secrets: only VITE_G2CC_* variables are exposed, and the dev
 // Groq key from .env.local is injected while serving only. The Groq key
-// reaches real devices inside the pairing (see channel/pair.ts).
+// is entered in the app on real devices (docs/decisions.md, Groq key storage).
 export default defineConfig(({ command }) => {
   const dev = loadEnv('development', process.cwd(), 'VITE_')
   return {

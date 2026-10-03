@@ -1,0 +1,10 @@
+{
+  "name": "g2",
+  "displayName": "G2 Claude Code",
+  "description": "Follow and drive Claude Code from Even Realities G2 glasses: live feed, voice prompts, stop, tool approvals, and questions.",
+  "author": { "name": "Atilla Saadat", "url": "https://atillasaadat.com" },
+  "homepage": "https://atillasaadat.com/g2-claude/",
+  "repository": "https://github.com/atillasaadat/g2_claude_rc",
+  "keywords": ["even-realities", "g2", "smart-glasses", "channel", "voice"],
+  "channels": [{ "server": "g2", "displayName": "G2 glasses" }]
+}

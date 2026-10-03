@@ -1,0 +1,23 @@
+# The Claude Code plugin runs the committed bundle plugin/dist/server.js, so
+# every change to the channel must ship a rebuilt bundle. This fails if it is stale.
+name: plugin
+on:
+  push:
+    branches: [main]
+    paths: ['channel/**', 'packages/protocol/**', 'plugin/**', '.claude-plugin/**', '.github/workflows/plugin.yml']
+  pull_request:
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version: 1.3.14 }
+      - run: bun install --frozen-lockfile
+      - name: Channel tests
+        run: cd channel && bun test
+      - name: Bundle is up to date (run `bun run build:plugin` and commit)
+        run: |
+          bun run build:plugin
+          git diff --exit-code -- plugin/dist

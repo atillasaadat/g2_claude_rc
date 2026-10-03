@@ -1,5 +1,5 @@
-// Setup guide for the phone view: the website's instructions
-// (https://atillasaadat.com/g2-claude/), condensed for a phone screen.
+// Setup guide for the phone view, condensed from the website
+// (https://atillasaadat.com/g2-claude/) for a phone screen.
 // Static content only; nothing dynamic is ever interpolated into this HTML.
 
 export const GUIDE_URL = 'https://atillasaadat.com/g2-claude/'
@@ -8,34 +8,30 @@ const cmd = (text: string): string =>
   `<div class="g-cmd"><pre>${text}</pre><button type="button" class="g-copy secondary">Copy</button></div>`
 
 export const GUIDE_HTML = `
-  <p class="hint">Follow a Claude Code session on your glasses: watch it, talk to it, approve tools, answer questions, and stop it. The steps below run on your computer, except the last two.</p>
+  <p class="hint">Follow a Claude Code session on your glasses: watch it, talk to it, approve tools, answer questions, and stop it. You need Claude Code signed in with a Claude account, and <a href="https://bun.sh">Bun</a>, on your computer.</p>
   <ol class="g-steps">
     <li>
-      <strong>Install on your computer.</strong>
-      You need Claude Code signed in with a Claude account, <a href="https://bun.sh">Bun</a>, and <code>jq</code>.
-      ${cmd('git clone https://github.com/atillasaadat/g2_claude_rc\ncd g2_claude_rc\nscripts/install.sh')}
-      This registers the channel with Claude Code for every project and adds its hooks. <code>scripts/install.sh --remove</code> undoes it.
+      <strong>Install the plugin.</strong> In Claude Code on your computer, run:
+      ${cmd('/plugin marketplace add atillasaadat/g2_claude_rc\n/plugin install g2@g2cc')}
     </li>
     <li>
       <strong>Add the launch command</strong> to <code>~/.zshrc</code> or <code>~/.bashrc</code>, then open a new terminal.
-      ${cmd("alias cc-g2='claude --dangerously-load-development-channels server:g2 --rc'")}
-      The first launch shows a warning; choose that you are using it for local development.
+      ${cmd("alias cc-g2='claude --dangerously-load-development-channels plugin:g2@g2cc --rc'")}
+      Run <code>cc-g2</code> instead of <code>claude</code>. The first launch shows a warning; choose that you are using it for local development.
     </li>
     <li>
-      <strong>Pair this app.</strong>
-      ${cmd('bun channel/pair.ts --relay wss://atillasaadat.com/g2-claude --text')}
-      Scan the QR code it prints in Even Hub, or paste the pairing text it prints into <em>Pairing</em> below. The pairing holds a secret key: keep it to yourself.
+      <strong>Pair this app.</strong> In that session, run
+      ${cmd('/g2:pair')}
+      and type the code it shows under <em>Pairing</em> below. Each code works once, for 10 minutes.
     </li>
     <li>
       <strong>Add your Groq key</strong> for voice under <em>Voice</em> below. A free key from <a href="https://console.groq.com/keys">console.groq.com/keys</a> works. It is stored on this phone only.
     </li>
     <li>
-      <strong>Start a session.</strong> In any project on your computer, run <code>cc-g2</code> instead of <code>claude</code>. It appears on your glasses within a second. With two or more sessions, the glasses' side menu lists them.
-    </li>
-    <li>
       <strong>Get alerts in other apps.</strong> In a session, run <code>/config</code> and turn on <code>inputNeededNotifEnabled</code> and <code>agentPushNotifEnabled</code>. Allow notifications for the Claude app, then allow it in the Even app's notification settings.
     </li>
   </ol>
+  <p class="hint">Every <code>cc-g2</code> session shows up on your glasses within a second. With two or more, the glasses' side menu lists them. To update the plugin, run <code>/plugin marketplace update g2cc</code>, or turn on auto-update for it under <code>/plugin</code>.</p>
   <h3 class="g-h">On the glasses</h3>
   <table class="g-table">
     <tr><th>Swipe</th><td>Scroll the timeline (the R1 ring works too)</td></tr>
@@ -47,6 +43,7 @@ export const GUIDE_HTML = `
   <h3 class="g-h">If something is off</h3>
   <ul class="g-trouble">
     <li><strong>Waiting for Claude Code:</strong> start the session with <code>cc-g2</code>, not <code>claude</code>.</li>
+    <li><strong>Code not accepted:</strong> codes work once and expire after 10 minutes. Run <code>/g2:pair</code> again for a new one.</li>
     <li><strong>No approval cards:</strong> in auto mode Claude decides itself. Press Shift+Tab in the session to change the mode.</li>
     <li><strong>Talk is off:</strong> add your Groq key under Voice.</li>
     <li><strong>Stop seems slow:</strong> it takes effect at Claude's next tool call.</li>

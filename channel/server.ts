@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 // g2 channel: spawned by Claude Code over stdio. See CLAUDE.md and
-// docs/decisions.md. Launch with:
-//   claude --dangerously-load-development-channels server:g2 --rc
+// docs/decisions.md. Installed as the g2 plugin and launched with:
+//   claude --dangerously-load-development-channels plugin:g2@g2cc --rc
+// From source (scripts/make-sandbox.sh): server:g2 in place of plugin:g2@g2cc.
 
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { runChannel } from './src/channel'

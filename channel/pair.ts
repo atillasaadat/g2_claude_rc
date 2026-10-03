@@ -1,62 +1,49 @@
 #!/usr/bin/env bun
-// Pairs the glasses with this computer.
+// Pairs the phone app with this computer from a terminal. Inside Claude Code,
+// /g2:pair does the same through the channel's `pair` tool.
 //
-//   bun channel/pair.ts                                  show the current pairing
-//   bun channel/pair.ts --relay wss://host/g2-claude     use a deployed relay (keeps the key)
-//   bun channel/pair.ts --rotate                         new key: unpairs the glasses
-//   bun channel/pair.ts --text                           also print the pairing text (installed app)
+//   bun channel/pair.ts                      show a one-time code, wait for the phone
+//   bun channel/pair.ts --text               print the pairing text instead (paste it in the app)
+//   bun channel/pair.ts --relay <wss-url>    use another relay (self-hosting, or ws://127.0.0.1:8789)
+//   bun channel/pair.ts --rotate             new key: unpairs every phone first
 //
-// The Groq key for voice prompts travels inside the pairing (never in the
-// public app). It is read from GROQ_API_KEY, or on first use from the dev
-// file apps/glasses/.env.local, and stored in ~/.g2cc/pairing.json (0600).
-//
-// For a deployed relay this prints one QR: the app URL with the pairing in
-// the #fragment. Scan it in the Even app to load the app and pair in one step.
-// The fragment never reaches the server. Treat the QR like a password.
+// The pairing lives in ~/.g2cc/pairing.json (0600). The Groq key for voice is
+// entered in the phone app. For self-hosting, GROQ_API_KEY here puts it in the
+// pairing instead.
 
-import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync } from 'node:fs'
 import { parseArgs } from 'node:util'
-import QRCode from 'qrcode'
-import { toBase64Url } from '@g2cc/protocol'
 import { DEFAULT_RELAY_URL, loadConfig } from './src/config'
-import { appUrlFor, loadOrCreatePairing, pairingPath, pairingText } from './src/pairing-store'
+import { openCodePairing } from './src/code-pairing'
+import { loadOrCreatePairing, pairingPath, pairingText } from './src/pairing-store'
 
 const { values } = parseArgs({
   options: {
     relay: { type: 'string' },
     rotate: { type: 'boolean', default: false },
-    'no-groq': { type: 'boolean', default: false },
-    // Also print the pairing text, to paste into an installed app's phone view.
     text: { type: 'boolean', default: false },
   },
 })
 
-function groqKey(): string | undefined {
-  if (values['no-groq']) return undefined
-  if (process.env.GROQ_API_KEY) return process.env.GROQ_API_KEY.trim()
-  const devEnv = join(import.meta.dir, '..', 'apps', 'glasses', '.env.local')
-  if (!existsSync(devEnv)) return undefined
-  return /^VITE_STT_API_KEY=(.+)$/m.exec(readFileSync(devEnv, 'utf8'))?.[1]?.trim() || undefined
-}
-
 const cfg = loadConfig()
-const relayUrl = values.relay ?? (existsSync(pairingPath(cfg.home)) ? undefined : DEFAULT_RELAY_URL)
-const sttKey = groqKey()
+const relayUrl = values.relay ?? cfg.relayUrlOverride ?? (existsSync(pairingPath(cfg.home)) ? undefined : DEFAULT_RELAY_URL)
+const sttKey = process.env.GROQ_API_KEY?.trim()
 const pairing = await loadOrCreatePairing(cfg.home, { relayUrl, rotate: values.rotate, ...(sttKey ? { sttKey } : {}) })
-const text = await pairingText(pairing)
-const appUrl = appUrlFor(pairing.relayUrl)
 
 console.log(`relay:  ${pairing.relayUrl}`)
 console.log(`file:   ${pairingPath(cfg.home)}`)
-console.log(`voice:  ${pairing.sttKey ? 'Groq key included' : 'no Groq key (set GROQ_API_KEY and rerun to enable Talk)'}`)
-if (appUrl) {
-  const link = `${appUrl}#pair=${toBase64Url(new TextEncoder().encode(text))}`
-  console.log('\nScan with the Even app (Even Hub > scan) to load the app and pair. Contains your secret key:\n')
-  console.log(await QRCode.toString(link, { type: 'terminal', small: true }))
-  if (values.text) console.log(`\nPairing text for an installed app (phone view > Pairing):\n\n${text}`)
-} else {
-  console.log('\nLocal relay: open the app from your dev server, then paste this pairing text (contains your secret key):\n')
-  console.log(await QRCode.toString(text, { type: 'terminal', small: true }))
-  console.log(text)
+
+if (values.text) {
+  console.log(`\nPairing text (contains your secret key). In the phone app: Pairing > Paste text.\n\n${await pairingText(pairing)}`)
+  process.exit(0)
 }
+
+const open = await openCodePairing(pairing)
+const minutes = Math.round((open.expiresAt - Date.now()) / 60_000)
+console.log(`\n  Pairing code:  ${open.code}\n`)
+console.log(`In the G2 Claude app on your phone, open Pairing and enter the code.`)
+console.log(`It works once and expires in ${minutes} minutes. Waiting...`)
+process.on('SIGINT', () => open.cancel())
+const ok = await open.done
+console.log(ok ? 'Paired.' : 'The code expired or was cancelled. Run this again for a new one.')
+process.exit(ok ? 0 : 1)

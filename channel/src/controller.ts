@@ -20,7 +20,7 @@
 import { z } from 'zod'
 import { REQUEST_ID_RE, type AnyEnvelope, type Body, type C2G_KINDS } from '@g2cc/protocol'
 import type { HookResponse } from './hook-server'
-import { SessionTracker, translateHook, type HookPayload } from './hooks'
+import { G2_TOOL, SessionTracker, translateHook, type HookPayload } from './hooks'
 import { clip, oneLine, redact } from './redact'
 
 type C2GKind = (typeof C2G_KINDS)[number]
@@ -50,7 +50,7 @@ export const PREVIEW_MAX = 2000
 export const OPTION_MAX = 100
 
 export const ASK_DENY_REASON =
-  'The user is following this session on smart glasses and cannot see this dialog. Call the mcp__g2__ask tool with the question and 2 to 4 short options instead, then end your turn: the answer arrives as a channel message.'
+  'The user is following this session on smart glasses and cannot see this dialog. Call the g2 ask tool (mcp__g2__ask, or mcp__plugin_g2_g2__ask when g2 is installed as a plugin) with the question and 2 to 4 short options instead, then end your turn: the answer arrives as a channel message.'
 
 const AskInput = z.object({
   question: z.string().trim().min(1),
@@ -127,7 +127,7 @@ export class SessionController {
       ok: true,
       text:
         `Asked on the user's glasses (question_id=${question_id}). Do not wait or call ask again: end your turn now. ` +
-        `The answer arrives later as a <channel source="g2"> message with question_id="${question_id}".`,
+        `The answer arrives later as a g2 channel message with question_id="${question_id}".`,
     }
   }
 
@@ -178,6 +178,12 @@ export class SessionController {
       return {
         hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: ASK_DENY_REASON },
       }
+    }
+
+    // A plugin cannot add permission rules, so our own display-only tools are
+    // allowed here. They never touch files or run commands.
+    if (p.hook_event_name === 'PreToolUse' && p.tool_name && G2_TOOL.test(p.tool_name)) {
+      return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } }
     }
 
     // After a halt, only a new prompt leaves 'stopped' (idle notifications do not).

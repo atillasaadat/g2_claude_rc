@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { SessionTracker, translateHook, type HookPayload } from '../src/hooks'
+import { G2_TOOL, SessionTracker, translateHook, type HookPayload } from '../src/hooks'
 
 const base = { session_id: 's1', cwd: '/home/u/repo', permission_mode: 'default' }
 const pre = (tool_name: string, tool_input: unknown): HookPayload => ({ ...base, hook_event_name: 'PreToolUse', tool_name, tool_input })
@@ -156,4 +156,23 @@ describe('SessionTracker', () => {
     t.update({ ...base, hook_event_name: 'UserPromptSubmit', prompt: 'x' })
     expect(t.update({ ...base, hook_event_name: 'Notification', notification_type: 'idle_prompt', message: 'm' })?.state).toBe('idle')
   })
+})
+
+describe('plugin naming', () => {
+  test('plugin tool names are hidden from the feed, pair included', () => {
+    expect(translateHook(pre('mcp__plugin_g2_g2__glance', { text: 'hi' }))).toEqual([])
+    expect(translateHook(post('mcp__plugin_g2_g2__pair', {}, { code: 'ABCD-EFGH' }))).toEqual([])
+  })
+
+  test('G2_TOOL matches only the display tools under both names', () => {
+    for (const n of ['mcp__g2__ask', 'mcp__g2__glance', 'mcp__plugin_g2_g2__ask', 'mcp__plugin_g2_g2__glance'])
+      expect(G2_TOOL.test(n)).toBe(true)
+    for (const n of ['mcp__g2__pair', 'mcp__plugin_g2_g2__pair', 'mcp__evil_g2__ask', 'Bash']) expect(G2_TOOL.test(n)).toBe(false)
+  })
+})
+
+test('a channel prompt from the g2 plugin is unwrapped and marked as glasses', () => {
+  const prompt = '<channel source="plugin:g2:g2" source_kind="voice">\nrun the tests\n</channel>'
+  const p: HookPayload = { ...base, hook_event_name: 'UserPromptSubmit', prompt }
+  expect(translateHook(p)).toEqual([{ kind: 'event', body: { type: 'prompt', summary: 'run the tests', origin: 'glasses' } }])
 })

@@ -1,4 +1,4 @@
-// Pairing payload shown as a QR code by the channel and scanned by the glasses app.
+// Pairing payload the channel hands to the phone app, by code (pair-code.ts) or pasted.
 
 import { z } from 'zod'
 import { fromBase64Url, toBase64Url } from './bytes'

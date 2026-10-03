@@ -1,0 +1,12 @@
+{
+  "name": "g2cc",
+  "owner": { "name": "Atilla Saadat", "url": "https://atillasaadat.com" },
+  "metadata": { "description": "G2 Claude Code: Claude Code on Even Realities G2 glasses" },
+  "plugins": [
+    {
+      "name": "g2",
+      "source": "./plugin",
+      "description": "Follow and drive Claude Code from Even Realities G2 glasses: live feed, voice prompts, stop, tool approvals, and questions."
+    }
+  ]
+}

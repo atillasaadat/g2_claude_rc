@@ -9,6 +9,7 @@ import type { Link } from './state'
 
 export interface UiCallbacks {
   savePairing(text: string): Promise<void>
+  pairWithCode(code: string): Promise<void>
   forgetPairing(): Promise<void>
   saveGestures(map: GestureMap): Promise<void>
   saveSttKey(key: string): Promise<void>
@@ -56,17 +57,23 @@ export function mountUi(cb: UiCallbacks): void {
       </details>
       <details>
         <summary>Pairing</summary>
-        <p class="hint">On your computer run <code>bun channel/pair.ts --text</code> and paste the pairing text here. It contains a secret key.</p>
-        <textarea id="pair-input" rows="4" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder='{"v":1,"relayUrl":...}'></textarea>
+        <p class="hint">In Claude Code on your computer, run <code>/g2:pair</code>. Type the code it shows here.</p>
+        <input id="code-input" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD-EFGH" maxlength="12" />
         <div class="row">
-          <button id="pair-save">Save pairing</button>
+          <button id="code-pair">Pair</button>
           <button id="pair-forget" class="secondary">Forget</button>
         </div>
         <div id="pair-msg" class="msg"></div>
+        <details class="sub">
+          <summary>Paste pairing text instead</summary>
+          <p class="hint">For self-hosting or a local relay: <code>bun channel/pair.ts --text</code> prints it. It contains a secret key.</p>
+          <textarea id="pair-input" rows="4" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder='{"v":1,"relayUrl":...}'></textarea>
+          <div class="row"><button id="pair-save">Save pairing</button></div>
+        </details>
       </details>
       <details>
         <summary>Voice (Groq key)</summary>
-        <p class="hint">Talk needs a free Groq API key from console.groq.com/keys. Paste it here (a pairing QR may already include one). It is stored on this phone only.</p>
+        <p class="hint">Talk needs a free Groq API key from console.groq.com/keys. Paste it here. It is stored on this phone only.</p>
         <div id="stt-status" class="hint"></div>
         <input id="stt-input" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="gsk_..." />
         <div class="row"><button id="stt-save">Save key</button></div>
@@ -115,6 +122,20 @@ export function mountUi(cb: UiCallbacks): void {
         message(els.pairMsg, 'Paired.', false)
       })
       .catch(err => message(els.pairMsg, `Not saved: ${(err as Error).message}`, true))
+  })
+  const codeInput = app.querySelector<HTMLInputElement>('#code-input')!
+  const codeButton = app.querySelector<HTMLButtonElement>('#code-pair')!
+  codeButton.addEventListener('click', () => {
+    codeButton.disabled = true
+    message(els.pairMsg, 'Pairing...', false)
+    void cb
+      .pairWithCode(codeInput.value)
+      .then(() => {
+        codeInput.value = ''
+        message(els.pairMsg, 'Paired.', false)
+      })
+      .catch(err => message(els.pairMsg, `Not paired: ${(err as Error).message}`, true))
+      .finally(() => (codeButton.disabled = false))
   })
   app.querySelector('#pair-forget')!.addEventListener('click', () => {
     void cb
@@ -250,6 +271,10 @@ function injectStyles(): void {
     details { background: #2E2E2E; border: 1px solid #3E3E3E; border-radius: 12px; padding: 12px 16px; }
     summary { cursor: pointer; font-weight: 600; }
     .hint { font-size: 13px; color: #A7A7A7; }
+    #code-input { width: 100%; box-sizing: border-box; background: #232323; color: #E5E5E5; border: 1px solid #3E3E3E;
+      border-radius: 8px; padding: 10px; font: 20px ui-monospace, monospace; letter-spacing: 3px; text-transform: uppercase; }
+    details.sub { margin-top: 12px; padding: 8px 12px; background: #262626; }
+    button:disabled { opacity: 0.5; }
     input[type=password] { width: 100%; box-sizing: border-box; background: #232323; color: #E5E5E5;
       border: 1px solid #3E3E3E; border-radius: 8px; padding: 8px; font: 13px ui-monospace, monospace; }
     textarea { width: 100%; box-sizing: border-box; background: #232323; color: #E5E5E5;

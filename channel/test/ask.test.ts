@@ -103,3 +103,22 @@ describe('AskUserQuestion redirect', () => {
     expect(c.onHook(ask)).toEqual({})
   })
 })
+
+describe('own tools under the plugin', () => {
+  const pre = (tool_name: string) => ({ ...base, hook_event_name: 'PreToolUse', tool_name, tool_input: {} })
+  const ALLOW = { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } }
+
+  test('ask and glance are allowed without a prompt, under both names', () => {
+    const { c } = setup(true)
+    for (const n of ['mcp__g2__ask', 'mcp__plugin_g2_g2__ask', 'mcp__plugin_g2_g2__glance']) expect(c.onHook(pre(n))).toEqual(ALLOW)
+  })
+
+  test('pair keeps the normal permission prompt', () => {
+    const { c } = setup(true)
+    expect(c.onHook(pre('mcp__plugin_g2_g2__pair'))).toEqual({})
+  })
+
+  test('the deny reason names the plugin tool too', () => {
+    expect(ASK_DENY_REASON).toContain('mcp__plugin_g2_g2__ask')
+  })
+})

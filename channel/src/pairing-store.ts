@@ -60,17 +60,7 @@ export async function loadOrCreatePairing(
   return next
 }
 
-/**
- * Where the glasses app is served for a deployed relay: the relay URL
- * wss://host/prefix maps to https://host/prefix/app/. Null for a local relay.
- */
-export function appUrlFor(relayUrl: string): string | null {
-  const u = new URL(relayUrl)
-  if (u.protocol !== 'wss:') return null
-  return `https://${u.host}${u.pathname.replace(/\/+$/, '')}/app/`
-}
-
-/** The text the glasses app pastes or scans. Contains the key. */
+/** The text the phone app receives (by code) or pastes. Contains the key. */
 export function pairingText(p: StoredPairing): Promise<string> {
   return encodePairing(p)
 }

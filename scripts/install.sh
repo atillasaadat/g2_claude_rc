@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
+# Developer setup from a clone. Most people should install the plugin instead
+# (see README): it does all of this without a clone.
+#
 # Makes every Claude Code session on this computer reachable from the glasses.
+# Use --remove before switching to the plugin, so hooks do not fire twice.
 #
 #   scripts/install.sh            install (idempotent; backs up settings first)
 #   scripts/install.sh --remove   undo
@@ -63,5 +67,5 @@ Add this to your shell profile (~/.zshrc or ~/.bashrc):
   alias cc-g2='claude --dangerously-load-development-channels server:g2 --rc'
 
 Then start sessions in any repo with:  cc-g2
-Pair the glasses with:                  bun $ROOT/channel/pair.ts --relay wss://atillasaadat.com/g2-claude
+Pair the phone app with:                bun $ROOT/channel/pair.ts
 EOF

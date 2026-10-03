@@ -11,7 +11,7 @@ cd apps/glasses && bun run dev   # Vite on http://127.0.0.1:5173
 bun run simulate                 # Even Hub simulator, automation API on 9898
 ```
 
-Pair by pasting the output of `bun channel/pair.ts` into the Pairing section of the companion UI. For development you can also open the app with `#pair=<base64url of the pairing text>`.
+Pair by typing the code from `G2CC_RELAY_URL=ws://127.0.0.1:8789 bun channel/pair.ts` into the Pairing section of the companion UI, with `VITE_G2CC_RELAY_URL=ws://127.0.0.1:8789` in `.env.local` so the app looks for it on the local relay. Or paste the output of `pair.ts --text`. For development you can also open the app with `#pair=<base64url of the pairing text>`.
 
 ## Tests
 

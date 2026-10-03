@@ -14,6 +14,7 @@ import { DEFAULT_RELAY_URL, relaySocketUrl, type ChannelConfig } from './config'
 import { startHookServer, type HookResponse, type HookServer } from './hook-server'
 import { SessionController } from './controller'
 import type { HookPayload } from './hooks'
+import { openCodePairing, type OpenCodePairing } from './code-pairing'
 import { loadOrCreatePairing, pairingPath } from './pairing-store'
 import { routeHook, SessionRegistry } from './router'
 import { clip, oneLine, redact } from './redact'
@@ -23,9 +24,9 @@ type C2GKind = (typeof C2G_KINDS)[number]
 
 export const INSTRUCTIONS = [
   'The user may be following this session on Even Realities G2 smart glasses, which show a live feed of your tool calls and your final reply.',
-  'Messages wrapped in <channel source="g2"> were spoken by the user through the glasses and transcribed by speech recognition, so they can contain transcription errors.',
+  'Messages wrapped in a <channel> tag whose source is "g2" (or "plugin:g2:g2") were spoken by the user through the glasses and transcribed by speech recognition, so they can contain transcription errors.',
   'Treat them as the user\'s own prompts. If a spoken request is ambiguous, or would do something destructive or hard to undo, confirm with the ask tool before acting.',
-  'When you need the user to make a decision, call the ask tool (a question and 2 to 4 short options) instead of AskUserQuestion, then end your turn. The answer arrives as a <channel source="g2"> message with a question_id attribute.',
+  'When you need the user to make a decision, call the ask tool (a question and 2 to 4 short options) instead of AskUserQuestion, then end your turn. The answer arrives as a g2 channel message with a question_id attribute.',
   `At the end of each turn, call the glance tool with a one-line plain-text summary (at most ${GLANCE_MAX} characters) of what you did or what you need from the user.`,
 ].join(' ')
 
@@ -140,6 +141,8 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
   // Take over routing if the router's session ends.
   const claimTimer = setInterval(claimRouter, ROUTER_RETRY_MS)
 
+  let pairingCode: OpenCodePairing | null = null
+
   const mcp = new Server(
     { name: 'g2', version: '0.1.0' },
     {
@@ -164,6 +167,12 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
         },
       },
       {
+        name: 'pair',
+        description:
+          'Show a one-time code for pairing the G2 Claude phone app with this computer. Call it only when the user asks to pair (for example through /g2:pair). Show the user the code exactly as returned.',
+        inputSchema: { type: 'object', properties: {} },
+      },
+      {
         name: 'glance',
         description: `Show a one-line status (at most ${GLANCE_MAX} characters) on the user's smart glasses. Call it at the end of each turn.`,
         inputSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
@@ -175,6 +184,27 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
       const r = controller.onAsk(req.params.arguments)
       return { content: [{ type: 'text', text: r.ok && !relay.isOpen ? `${r.text} (Relay offline: delivered when it reconnects.)` : r.text }], isError: !r.ok }
     }
+    if (req.params.name === 'pair') {
+      pairingCode?.cancel()
+      const open = await openCodePairing(pairing)
+      pairingCode = open
+      void open.done.then(ok => {
+        if (pairingCode === open) pairingCode = null
+        log(ok ? 'phone paired by code' : 'pairing code expired')
+      })
+      const minutes = Math.round((open.expiresAt - Date.now()) / 60_000)
+      return {
+        content: [
+          {
+            type: 'text',
+            text:
+              `Pairing code: ${open.code}\n` +
+              `In the G2 Claude app on the phone, open Pairing, type it, and tap Pair. ` +
+              `It works once and expires in ${minutes} minutes. Anyone with the code can pair until then, so show it only to the user.`,
+          },
+        ],
+      }
+    }
     if (req.params.name !== 'glance') throw new Error(`unknown tool ${req.params.name}`)
     const text = (req.params.arguments as { text?: unknown } | undefined)?.text
     if (typeof text !== 'string' || !text.trim()) throw new Error('glance needs non-empty text')
@@ -185,6 +215,7 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
   const stop = async (): Promise<void> => {
     if (stopped) return
     stopped = true
+    pairingCode?.cancel()
     clearInterval(claimTimer)
     router?.stop()
     own?.stop()

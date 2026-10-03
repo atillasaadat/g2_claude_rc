@@ -2,5 +2,13 @@
   "name": "g2-claude-code",
   "private": true,
   "type": "module",
-  "workspaces": ["apps/*", "packages/*", "relay", "channel"]
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "relay",
+    "channel"
+  ],
+  "scripts": {
+    "build:plugin": "bun build channel/server.ts --target=bun --minify --outfile plugin/dist/server.js"
+  }
 }

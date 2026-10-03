@@ -4,8 +4,8 @@
 // Payload fields verified in Phase 0 (docs/decisions.md): PreToolUse has
 // tool_name and tool_input; PostToolUse adds tool_response (Bash has stdout,
 // stderr, interrupted, and no exit code); UserPromptSubmit has prompt (wrapped
-// in <channel source="g2"> for channel messages); Notification has message and
-// notification_type; Stop has last_assistant_message.
+// in <channel source="g2"> or source="plugin:g2:g2" for channel messages);
+// Notification has message and notification_type; Stop has last_assistant_message.
 
 import { relative, isAbsolute } from 'node:path'
 import type { Body } from '@g2cc/protocol'
@@ -37,10 +37,18 @@ type SessionBody = Body<'session'>
  * channel tools (glance arrives as its own envelope).
  */
 function isHiddenTool(name: string): boolean {
-  return name === 'ToolSearch' || name.startsWith('mcp__g2__')
+  return name === 'ToolSearch' || /^mcp__(?:plugin_g2_)?g2__/.test(name)
 }
 
-const CHANNEL_WRAPPER = /^<channel source="g2"[^>]*>\n?([\s\S]*?)\n?<\/channel>\s*$/
+/**
+ * Our display-only tools: `mcp__g2__*` as a plain MCP server and
+ * `mcp__plugin_g2_g2__*` from the plugin. `pair` is not one of them: it hands
+ * out a pairing code, so it keeps the normal permission prompt.
+ */
+export const G2_TOOL = /^mcp__(?:plugin_g2_)?g2__(?:ask|glance)$/
+
+/** The source tag is "g2" as a plain MCP server and "plugin:g2:g2" from the plugin. */
+const CHANNEL_WRAPPER = /^<channel source="(?:plugin:g2:)?g2"[^>]*>\n?([\s\S]*?)\n?<\/channel>\s*$/
 
 const summary = (text: string): string => clip(oneLine(redact(text)), SUMMARY_MAX)
 

@@ -2,10 +2,22 @@ import { describe, expect, test } from 'bun:test'
 import { GUIDE_HTML, GUIDE_URL } from '../src/guide'
 
 describe('phone setup guide', () => {
-  test('covers the setup steps from the website', () => {
-    for (const needle of ['scripts/install.sh', 'cc-g2', 'pair.ts --relay wss://atillasaadat.com/g2-claude --text', 'console.groq.com/keys', 'inputNeededNotifEnabled', GUIDE_URL]) {
+  test('covers the plugin setup steps', () => {
+    for (const needle of [
+      '/plugin marketplace add atillasaadat/g2_claude_rc',
+      '/plugin install g2@g2cc',
+      'plugin:g2@g2cc --rc',
+      '/g2:pair',
+      'console.groq.com/keys',
+      'inputNeededNotifEnabled',
+      GUIDE_URL,
+    ]) {
       expect(GUIDE_HTML).toContain(needle)
     }
+  })
+
+  test('no longer asks for a clone, an install script, or a QR code', () => {
+    for (const gone of ['git clone', 'install.sh', 'QR']) expect(GUIDE_HTML).not.toContain(gone)
   })
 
   test('follows the writing rule (no em dashes) and has no scripts', () => {

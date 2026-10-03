@@ -81,9 +81,6 @@
   .cmd pre { margin: 0; font: 14.5px/1.6 var(--mono); color: var(--text-0); background: var(--bg-1); border: 1px solid var(--line); border-radius: 10px; padding: 14px 92px 14px 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .cmd button { position: absolute; top: 9px; right: 9px; font: 500 13px var(--body); color: var(--text-1); background: var(--bg-2); border: 1px solid var(--line); border-radius: 7px; padding: 5px 11px; cursor: pointer; }
   .cmd button:hover { color: var(--accent); border-color: var(--line-strong); }
-  .install { display: flex; gap: 18px; align-items: center; margin: 6px 0 0; }
-  .install img { flex: none; border-radius: 8px; background: #fff; }
-  .install p { margin: 0; font-size: 15px; }
   .note { border-left: 2px solid var(--warn); padding: 2px 0 2px 14px; color: var(--text-1); font-size: 16px; }
 
   table { width: 100%; border-collapse: collapse; font-size: 16px; margin: 8px 0 16px; }
@@ -144,37 +141,34 @@
   <p>Your Claude account never leaves Claude Code: everything goes through Claude Code's own channels, hooks and MCP tools. Remote Control on your phone keeps working at the same time.</p>
 
   <h2>Set it up</h2>
-  <p>You need Claude Code signed in with a Claude account, <a href="https://bun.sh">Bun</a>, <code>jq</code>, Even Realities G2 with the Even app, and optionally a free <a href="https://console.groq.com/keys">Groq API key</a> for voice.</p>
+  <p>You need Claude Code signed in with a Claude account and <a href="https://bun.sh">Bun</a> on your computer, Even Realities G2 with the Even app on your phone, and optionally a free <a href="https://console.groq.com/keys">Groq API key</a> for voice.</p>
   <ol class="steps">
     <li>
-      <h3>Get the code and install it</h3>
-      <p>This registers the channel with Claude Code for every project and adds the hooks it needs. It backs up your settings first, and <code>--remove</code> undoes it.</p>
-      <div class="cmd"><pre>git clone https://github.com/atillasaadat/g2_claude_rc
-cd g2_claude_rc
-scripts/install.sh</pre><button type="button">Copy</button></div>
+      <h3>Install the Claude Code plugin</h3>
+      <p>In Claude Code, add this marketplace and install the plugin. It brings the channel and the hooks it needs, for every project.</p>
+      <div class="cmd"><pre>/plugin marketplace add atillasaadat/g2_claude_rc
+/plugin install g2@g2cc</pre><button type="button">Copy</button></div>
       <p class="note">The repository is private for now. Ask for access if you would like to try it.</p>
     </li>
     <li>
       <h3>Add the launch command</h3>
       <p>Put this in <code>~/.zshrc</code> or <code>~/.bashrc</code>, then open a new terminal.</p>
-      <div class="cmd"><pre>alias cc-g2='claude --dangerously-load-development-channels server:g2 --rc'</pre><button type="button">Copy</button></div>
+      <div class="cmd"><pre>alias cc-g2='claude --dangerously-load-development-channels plugin:g2@g2cc --rc'</pre><button type="button">Copy</button></div>
       <p>The flag loads the channel, which is a Claude Code research preview. The first launch shows a warning; choose that you are using it for local development. <code>--rc</code> also turns on Remote Control.</p>
     </li>
     <li>
-      <h3>Pair your glasses</h3>
-      <p>This prints a private QR code. Your Groq key travels inside it, so the public app never holds one; leave out <code>GROQ_API_KEY</code> to pair without voice.</p>
-      <div class="cmd"><pre>GROQ_API_KEY=gsk_... bun channel/pair.ts --relay wss://atillasaadat.com/g2-claude</pre><button type="button">Copy</button></div>
-      <p>In the Even app, open Even Hub and scan it. The app loads on your glasses and pairs in one step. The code holds your secret key, so keep it to yourself; <code>bun channel/pair.ts --rotate</code> makes a new one.</p>
-      <div class="install">
-        <img src="install-qr.svg" width="132" height="132" alt="QR code for https://atillasaadat.com/g2-claude/app/">
-        <p>Already paired, or setting up a second phone? This public code only installs the app. Scan it in Even Hub, then paste the pairing text from <code>pair.ts</code> in the app's phone view.</p>
-      </div>
+      <h3>Install the glasses app</h3>
+      <p>In the Even app, open Even Hub and install <strong>G2 Claude</strong>.</p>
     </li>
     <li>
-      <h3>Start a session</h3>
+      <h3>Pair</h3>
+      <p>Start a session with <code>cc-g2</code> and run <code>/g2:pair</code>. It shows a code like <code>K7PM-4QXD</code>. Open G2 Claude on your phone, type the code under Pairing, and tap Pair. A code works once and expires after 10 minutes, and it never contains your key: the two sides use it to agree on the key through an encrypted exchange.</p>
+      <div class="cmd"><pre>/g2:pair</pre><button type="button">Copy</button></div>
+      <p>For voice, paste your Groq key in the app under Voice. It is stored on your phone only.</p>
+    </li>
+    <li>
+      <h3>Use it</h3>
       <p>In any project, run <code>cc-g2</code> instead of <code>claude</code>. The glasses show the session within a second. Start more sessions the same way; once there are two, the glasses' side menu lists them so you can switch.</p>
-      <div class="cmd"><pre>cd ~/my-project
-cc-g2</pre><button type="button">Copy</button></div>
     </li>
     <li>
       <h3>Get alerts when you are in another app</h3>
@@ -198,21 +192,20 @@ cc-g2</pre><button type="button">Copy</button></div>
   <h2>If something is off</h2>
   <dl>
     <dt>The glasses say waiting for Claude Code</dt>
-    <dd>Start the session with <code>cc-g2</code>, not <code>claude</code>. Its startup banner should mention <code>server:g2</code>. If it does not, rerun <code>scripts/install.sh</code>. If the channel still does not appear, launch with <code>MCP_PROTOCOL_NEGOTIATION=legacy cc-g2</code>.</dd>
+    <dd>Start the session with <code>cc-g2</code>, not <code>claude</code>. Its startup banner should mention <code>plugin:g2@g2cc</code>. Run <code>/mcp</code> to check that the g2 server is connected.</dd>
+    <dt>The pairing code is not accepted</dt>
+    <dd>Codes work once and expire after 10 minutes, and only while the session that made them is open. Run <code>/g2:pair</code> again.</dd>
     <dt>No approval cards appear</dt>
     <dd>In auto mode Claude Code decides permissions itself, so there is nothing to approve. Press Shift+Tab in the session to change the permission mode.</dd>
     <dt>Talk says no Groq key</dt>
-    <dd>Pair again with <code>GROQ_API_KEY</code> set, or paste the key in the phone view under Voice.</dd>
+    <dd>Paste your key in the app under Voice.</dd>
     <dt>Stop does not seem to do anything</dt>
     <dd>Stop takes effect at Claude's next tool call. If Claude is only writing its answer, the turn ends normally.</dd>
-    <dt>Check the connection from your computer</dt>
-    <dd><code>bun channel/tools/feed.ts</code> joins as a pretend pair of glasses and prints what they would see.</dd>
   </dl>
 
   <footer>
-    <p>Built by Atilla Saadat with Claude Code. Messages are encrypted end to end with AES-256-GCM using a key that only your computer and your glasses hold; the relay forwards ciphertext and keeps a short buffer so the glasses can catch up after reconnecting.</p>
-    <p>The glasses app always loads the latest version from this site, so updates arrive on your glasses the next time you open it. To update the part on your computer, run <code>git pull</code> in the repository; new sessions use it.</p>
-    <p><a href="app/">Open the glasses app</a></p>
+    <p>Built by Atilla Saadat with Claude Code. Messages are encrypted end to end with AES-256-GCM using a key that only your computer and your phone hold; the relay forwards ciphertext and keeps a short buffer so the glasses can catch up after reconnecting.</p>
+    <p>To update the plugin, run <code>/plugin marketplace update g2cc</code>, or turn on auto-update for the g2cc marketplace under <code>/plugin</code>. New sessions use the update.</p>
   </footer>
 </main>
 <script>

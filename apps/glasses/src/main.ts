@@ -8,6 +8,7 @@ import { Display } from './display'
 import { DEFAULT_GESTURES, type GestureMap } from './gestures'
 import { toSignal } from './input'
 import { Link } from './link'
+import { pairWithCode } from './code-pair'
 import { frameOf, render } from './render'
 import { transcribe } from './asr/stt'
 import { VoiceRecorder } from './recorder'
@@ -102,6 +103,9 @@ mountUi({
     if (pairing.sttKey) setSttKey(pairing.sttKey)
     dispatch({ type: 'paired', paired: true })
     await link.connect(pairing)
+  },
+  async pairWithCode(code) {
+    await this.savePairing(await pairWithCode(code))
   },
   async saveSttKey(key) {
     await storage.saveSttKey(key)
