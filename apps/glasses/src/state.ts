@@ -16,11 +16,22 @@ export const FRESH_MS = 60_000
 
 export type Link = 'offline' | 'relay' | 'online'
 
+/** Taps this soon after a permission card appears are ignored (it may have preempted another tap). */
+export const CARD_GUARD_MS = 500
+
+export interface MenuItem {
+  id: 'review' | 'talk' | 'stop'
+  label: string
+  available: boolean
+}
+
 /** Feed menu (feed tap). Talk arrives with voice prompts in Phase 6. */
-export const MENU_ITEMS = [
-  { id: 'talk', label: 'Talk', available: false },
-  { id: 'stop', label: 'Stop Claude', available: true },
-] as const
+export function menuItems(s: AppState): MenuItem[] {
+  const review: MenuItem[] = s.cards[0] ? [{ id: 'review', label: `Review: ${s.cards[0].tool_name}`, available: true }] : []
+  return [...review, { id: 'talk', label: 'Talk', available: false }, { id: 'stop', label: 'Stop Claude', available: true }]
+}
+
+export type PermissionCard = Body<'permission'> & { ts: number }
 
 export interface FeedLine {
   id: string
@@ -42,8 +53,13 @@ export interface AppState {
   events: readonly FeedLine[]
   glance?: string
   reply?: { text: string; ts: number; pages: readonly string[] }
-  screen: Extract<Screen, 'feed' | 'reply'> | 'menu'
+  screen: Extract<Screen, 'feed' | 'reply' | 'card'> | 'menu'
   menuIndex: number
+  /** Pending permission requests, oldest first. The first one is on screen. */
+  cards: readonly PermissionCard[]
+  /** Starts on deny, so a stray tap never approves anything. */
+  cardChoice: 'allow' | 'deny'
+  cardShownAt: number
   /** A stop was sent and the channel has not yet reported idle or stopped. */
   stopPending: boolean
   replyPage: number
@@ -55,10 +71,13 @@ export type Msg =
   | { type: 'envelope'; env: AnyEnvelope; now: number }
   | { type: 'relay'; status: 'connecting' | 'open' | 'closed' }
   | { type: 'presence'; computers: number }
-  | { type: 'gesture'; gesture: Gesture; map: GestureMap }
+  | { type: 'gesture'; gesture: Gesture; map: GestureMap; now?: number }
   | { type: 'paired'; paired: boolean }
 
-export type Effect = { type: 'exit' } | { type: 'send'; kind: 'stop'; body: Record<string, never> }
+export type Effect =
+  | { type: 'exit' }
+  | { type: 'send'; kind: 'stop'; body: Record<string, never> }
+  | { type: 'send'; kind: 'verdict'; body: Body<'verdict'> }
 
 export interface Result {
   state: AppState
@@ -75,6 +94,9 @@ export function initialState(): AppState {
     events: [],
     screen: 'feed',
     menuIndex: 0,
+    cards: [],
+    cardChoice: 'deny',
+    cardShownAt: 0,
     stopPending: false,
     replyPage: 0,
     feedOffset: 0,
@@ -133,13 +155,36 @@ function onEnvelope(s: AppState, env: AnyEnvelope, now: number): AppState {
       const fresh = now - env.ts <= FRESH_MS
       return fresh ? { ...s, reply, screen: 'reply', replyPage: 0 } : { ...s, reply }
     }
+    case 'permission': {
+      // Stale cards come from history replay; the channel re-sends live ones fresh on connect.
+      if (now - env.ts > FRESH_MS) return s
+      if (s.cards.some(c => c.request_id === env.body.request_id)) return s
+      const cards = [...s.cards, { ...env.body, ts: env.ts }]
+      return s.screen === 'card' ? { ...s, cards } : showCard({ ...s, cards }, now)
+    }
+    case 'permission_resolved':
+      return dropCard(s, env.body.request_id, now)
     default:
-      // permission, permission_resolved, question: later phases.
+      // question: Phase 7.
       return s
   }
 }
 
-function onGesture(s: AppState, gesture: Gesture, map: GestureMap): Result {
+function showCard(s: AppState, now: number): AppState {
+  return { ...s, screen: 'card', cardChoice: 'deny', cardShownAt: now }
+}
+
+/** Removes a card; if it was on screen, shows the next one or returns to the feed. */
+function dropCard(s: AppState, requestId: string, now: number): AppState {
+  const wasShown = s.screen === 'card' && s.cards[0]?.request_id === requestId
+  const cards = s.cards.filter(c => c.request_id !== requestId)
+  if (cards.length === s.cards.length) return s
+  const next = { ...s, cards }
+  if (!wasShown) return next
+  return cards.length ? showCard(next, now) : { ...next, screen: 'feed' }
+}
+
+function onGesture(s: AppState, gesture: Gesture, map: GestureMap, now: number): Result {
   const action = resolveGesture(map, s.screen, gesture)
   const maxOffset = Math.max(0, s.events.length - FEED_LINES)
   const lastPage = Math.max(0, (s.reply?.pages.length ?? 1) - 1)
@@ -162,18 +207,35 @@ function onGesture(s: AppState, gesture: Gesture, map: GestureMap): Result {
     case 'menu.open':
       return done({ ...s, screen: 'menu', menuIndex: 0 })
     case 'card.prev':
+      if (s.screen === 'card') return done({ ...s, cardChoice: 'allow' })
       return done(s.screen === 'menu' ? { ...s, menuIndex: Math.max(0, s.menuIndex - 1) } : s)
     case 'card.next':
-      return done(s.screen === 'menu' ? { ...s, menuIndex: Math.min(MENU_ITEMS.length - 1, s.menuIndex + 1) } : s)
-    case 'card.confirm': {
-      if (s.screen !== 'menu') return done(s)
-      const item = MENU_ITEMS[s.menuIndex]
-      if (item?.id !== 'stop') return done(s) // Talk: not available yet
-      return done({ ...s, screen: 'feed', stopPending: true }, [{ type: 'send', kind: 'stop', body: {} }])
-    }
+      if (s.screen === 'card') return done({ ...s, cardChoice: 'deny' })
+      return done(s.screen === 'menu' ? { ...s, menuIndex: Math.min(menuItems(s).length - 1, s.menuIndex + 1) } : s)
+    case 'card.confirm':
+      return s.screen === 'card' ? confirmCard(s, now) : confirmMenu(s, now)
     default:
       // 'none', and actions for screens added in later phases (voice, cards).
       return done(s)
+  }
+}
+
+function confirmCard(s: AppState, now: number): Result {
+  const card = s.cards[0]
+  if (!card || now - s.cardShownAt < CARD_GUARD_MS) return done(s)
+  const verdict: Effect = { type: 'send', kind: 'verdict', body: { request_id: card.request_id, behavior: s.cardChoice } }
+  return done(dropCard(s, card.request_id, now), [verdict])
+}
+
+function confirmMenu(s: AppState, now: number): Result {
+  if (s.screen !== 'menu') return done(s)
+  switch (menuItems(s)[s.menuIndex]?.id) {
+    case 'review':
+      return done(showCard(s, now))
+    case 'stop':
+      return done({ ...s, screen: 'feed', stopPending: true }, [{ type: 'send', kind: 'stop', body: {} }])
+    default:
+      return done(s) // Talk: not available yet
   }
 }
 
@@ -189,7 +251,8 @@ export function reduce(s: AppState, msg: Msg): Result {
     case 'presence':
       return done({ ...s, computers: msg.computers, link: link(s.relayOpen, msg.computers) })
     case 'gesture':
-      return onGesture(s, msg.gesture, msg.map)
+      // Without a clock (tests of non-card screens) the card guard is not applied.
+      return onGesture(s, msg.gesture, msg.map, msg.now ?? Number.POSITIVE_INFINITY)
     case 'paired':
       return done({ ...s, paired: msg.paired })
   }

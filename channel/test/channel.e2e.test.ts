@@ -41,6 +41,24 @@ async function waitFor(url: string, ms = 60_000): Promise<void> {
 }
 
 const received: AnyEnvelope[] = []
+const stdoutLines: string[] = []
+
+async function collectStdout(stream: ReadableStream<Uint8Array>): Promise<void> {
+  const dec = new TextDecoder()
+  let buf = ''
+  const reader = stream.getReader()
+  for (;;) {
+    const { value, done } = await reader.read()
+    if (done) return
+    buf += dec.decode(value, { stream: true })
+    let i: number
+    while ((i = buf.indexOf('\n')) >= 0) {
+      stdoutLines.push(buf.slice(0, i))
+      buf = buf.slice(i + 1)
+    }
+  }
+}
+const mcpOut = () => stdoutLines.map(l => JSON.parse(l) as Record<string, unknown>)
 let glassesRelay: RelayClient | null = null
 let glasses: SecureChannel<'glasses'>
 
@@ -94,6 +112,7 @@ beforeAll(async () => {
     },
   })
   procs.push(channel)
+  void collectStdout(channel.stdout)
   mcpSend({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' } } })
   mcpSend({ jsonrpc: '2.0', method: 'notifications/initialized' })
 
@@ -185,12 +204,34 @@ describe('channel feed end to end', () => {
     expect(await next.json()).toEqual({})
   })
 
-  test('the MCP side advertises the channel capability and instructions', async () => {
-    const reader = channel!.stdout.getReader()
-    const { value } = await reader.read()
-    reader.releaseLock()
-    const first = JSON.parse(new TextDecoder().decode(value).split('\n')[0]!)
-    expect(first.result.capabilities.experimental['claude/channel']).toEqual({})
-    expect(first.result.instructions).toContain('glance')
+  test('the MCP side advertises the channel and permission capabilities and instructions', async () => {
+    const init = mcpOut().find(m => m.id === 1) as { result: { capabilities: { experimental: Record<string, unknown> }; instructions: string } }
+    expect(init.result.capabilities.experimental['claude/channel']).toEqual({})
+    expect(init.result.capabilities.experimental['claude/channel/permission']).toEqual({})
+    expect(init.result.instructions).toContain('glance')
+  })
+
+  test('a permission request reaches the glasses, and Allow goes back to Claude Code', async () => {
+    await hook({ hook_event_name: 'UserPromptSubmit', prompt: 'make a file' })
+    received.length = 0
+    mcpSend({
+      jsonrpc: '2.0',
+      method: 'notifications/claude/channel/permission_request',
+      params: { request_id: 'wokkv', tool_name: 'Bash', description: 'Create empty test file', input_preview: '{ "command": "touch x" }' },
+    })
+    await until(() => received.some(e => e.kind === 'permission'))
+    const card = received.find(e => e.kind === 'permission')!
+    expect(card.body).toEqual({ request_id: 'wokkv', tool_name: 'Bash', description: 'Create empty test file', input_preview: '{ "command": "touch x" }' })
+
+    glassesRelay!.send(await glasses.seal('verdict', { request_id: 'wokkv', behavior: 'allow' }))
+    const isVerdict = (m: Record<string, unknown>) => m.method === 'notifications/claude/channel/permission'
+    await until(() => mcpOut().some(isVerdict))
+    expect(mcpOut().find(isVerdict)!.params).toEqual({ request_id: 'wokkv', behavior: 'allow' })
+    await until(() => received.some(e => e.kind === 'permission_resolved'))
+
+    // A replayed verdict is never relayed twice.
+    glassesRelay!.send(await glasses.seal('verdict', { request_id: 'wokkv', behavior: 'deny' }))
+    await Bun.sleep(500)
+    expect(mcpOut().filter(isVerdict)).toHaveLength(1)
   })
 })

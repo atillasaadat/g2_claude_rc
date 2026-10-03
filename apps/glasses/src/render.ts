@@ -2,8 +2,8 @@
 // measured with pretext so nothing ever wraps or overflows on the glasses.
 
 import { getTextWidth } from '@evenrealities/pretext'
-import { BODY_LINES, INNER_WIDTH, fitLine } from './layout'
-import { FEED_LINES, MENU_ITEMS, type AppState, type FeedLine, type Link } from './state'
+import { BODY_LINES, INNER_WIDTH, fitLine, wrapLines } from './layout'
+import { FEED_LINES, menuItems, type AppState, type FeedLine, type Link, type PermissionCard } from './state'
 
 export interface Frame {
   header: string
@@ -19,6 +19,9 @@ function header(s: AppState): string {
     return fitLine(`Reply ${s.replyPage + 1}/${s.reply.pages.length} · ↑↓ pages${s.session ? ` · ${s.session.name}` : ''}`)
   }
   if (s.screen === 'menu') return fitLine(`Menu${s.session ? ` · ${s.session.name}` : ''}`)
+  if (s.screen === 'card' && s.cards[0]) {
+    return fitLine(`Allow ${s.cards[0].tool_name}?${s.cards.length > 1 ? ` · 1/${s.cards.length}` : ''}`)
+  }
   if (!s.session) return fitLine(`${DOT[s.link]} waiting for Claude Code`)
   const { name, state, mode } = s.session
   const status = s.stopPending ? '■ stopping…' : `${state}${mode ? ` · ${mode}` : ''}`
@@ -64,17 +67,55 @@ function unpairedBody(): string {
 }
 
 function menuBody(s: AppState): string {
-  const items = MENU_ITEMS.map((item, i) => {
+  const items = menuItems(s).map((item, i) => {
     const label = item.available ? item.label : `${item.label} (coming soon)`
     // fitLine trims, so the indent goes outside it and the label gets the remaining width.
-    const prefix = i === s.menuIndex ? '▶ ' : '   '
-    return prefix + fitLine(label, INNER_WIDTH - getTextWidth(prefix))
+    return indent(i === s.menuIndex, label)
   })
   return [...items, '', fitLine('tap: select · double tap: back')].join('\n')
 }
 
+const PREVIEW_LINES = 4
+const indent = (selected: boolean, label: string): string => {
+  const prefix = selected ? '▶ ' : '   '
+  return prefix + fitLine(label, INNER_WIDTH - getTextWidth(prefix))
+}
+
+/** The preview is JSON text from Claude Code. Show its fields, minus a repeat of the description. */
+function previewLines(card: PermissionCard): string[] {
+  let text = card.input_preview
+  try {
+    const obj = JSON.parse(card.input_preview) as unknown
+    if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+      text = Object.entries(obj as Record<string, unknown>)
+        .filter(([k, v]) => !(k === 'description' && v === card.description))
+        .map(([k, v]) => (k === 'command' ? String(v) : `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`))
+        .join('\n')
+    }
+  } catch {
+    // Not JSON (or truncated by Claude Code): show it as is.
+  }
+  const lines = wrapLines(text)
+  if (lines.length <= PREVIEW_LINES) return lines
+  // Joining the next line forces pxTruncate to cut the last kept line with '...'.
+  const kept = lines.slice(0, PREVIEW_LINES - 1)
+  return [...kept, fitLine(`${lines[PREVIEW_LINES - 1]} ${lines[PREVIEW_LINES]}`)]
+}
+
+function cardBody(s: AppState, card: PermissionCard): string {
+  return [
+    fitLine(card.description || card.tool_name),
+    '',
+    ...previewLines(card),
+    '',
+    indent(s.cardChoice === 'allow', 'Allow'),
+    indent(s.cardChoice === 'deny', 'Deny'),
+  ].join('\n')
+}
+
 export function render(s: AppState): Frame {
   if (!s.paired) return { header: header(s), body: unpairedBody() }
+  if (s.screen === 'card' && s.cards[0]) return { header: header(s), body: cardBody(s, s.cards[0]) }
   if (s.screen === 'menu') return { header: header(s), body: menuBody(s) }
   if (s.screen === 'reply' && s.reply) return { header: header(s), body: s.reply.pages[s.replyPage] ?? '' }
   return { header: header(s), body: feedBody(s) }

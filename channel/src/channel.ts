@@ -2,9 +2,10 @@
 // server, and the encrypted relay connection to the glasses.
 //
 // Inbound envelopes from the glasses are decrypted and validated before the
-// controller sees them. Phase 4 acts on `stop`; other commands come later.
+// controller sees them: `stop` (Phase 4) and `verdict` (Phase 5) so far.
 
 import { existsSync } from 'node:fs'
+import { z } from 'zod'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
@@ -23,6 +24,12 @@ export const INSTRUCTIONS = [
   'The user may be following this session on Even Realities G2 smart glasses, which show a live feed of your tool calls and your final reply.',
   `At the end of each turn, call the glance tool with a one-line plain-text summary (at most ${GLANCE_MAX} characters) of what you did or what you need from the user.`,
 ].join(' ')
+
+const PermissionRequestNotification = z.object({
+  method: z.literal('notifications/claude/channel/permission_request'),
+  // Validated in the controller; display text in it is untrusted.
+  params: z.unknown(),
+})
 
 const log = (msg: string): void => {
   // stdout is the MCP transport, so diagnostics go to stderr. Never log content.
@@ -48,11 +55,18 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
       .catch(err => log(`dropped ${kind}: ${(err as Error).message}`))
   }
 
+  let glassesPresent = 0
   const relay: RelayClient = new RelayClient({
     url: relaySocketUrl(pairing.relayUrl, secure.roomId, 'computer'),
     onStatus: s => {
       log(`relay ${s}`)
-      if (s === 'open') emit('session', controller.snapshot())
+      if (s === 'open') controller.resync()
+    },
+    onPresence: p => {
+      // A glasses socket joined: re-send state and pending requests with fresh
+      // timestamps, since the glasses ignore stale permission cards from history.
+      if (p.glasses > glassesPresent) controller.resync()
+      glassesPresent = p.glasses
     },
     onRateLimited: () => log('relay rate limit hit'),
     onFrame: async frame => {
@@ -69,6 +83,11 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
     name: cfg.sessionName,
     cwd: cfg.projectDir,
     emit: e => emit(e.kind, e.body as never),
+    sendVerdict: (request_id, behavior) => {
+      void mcp
+        .notification({ method: 'notifications/claude/channel/permission', params: { request_id, behavior } })
+        .catch(err => log(`verdict not delivered: ${(err as Error).message}`))
+    },
   })
   const onHook = (raw: Record<string, unknown>): HookResponse => controller.onHook(raw as HookPayload)
 
@@ -82,8 +101,12 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
 
   const mcp = new Server(
     { name: 'g2', version: '0.1.0' },
-    { capabilities: { experimental: { 'claude/channel': {} }, tools: {} }, instructions: INSTRUCTIONS },
+    {
+      capabilities: { experimental: { 'claude/channel': {}, 'claude/channel/permission': {} }, tools: {} },
+      instructions: INSTRUCTIONS,
+    },
   )
+  mcp.setNotificationHandler(PermissionRequestNotification, n => controller.onPermissionRequest(n.params))
   mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [
       {

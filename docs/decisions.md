@@ -296,3 +296,29 @@ The difference is that auto mode opens no permission dialogs, so the channel get
   - The channel posted "Stop requested" at 12:58:02. At 12:58:04 the PreToolUse for `echo two` was halted, and the session went to `stopped` with "Stopped from glasses". Commands two through six never ran.
   - The glasses header went from `■ stopping…` to `stopped · auto`.
 - **Phase 4 status: done.**
+
+## Phase 5: permission relay (2026-10-03)
+
+- **Channel** now declares `claude/channel/permission`. `notifications/claude/channel/permission_request` goes to `SessionController.onPermissionRequest`, which validates the request (IDs must match `[a-km-z]{5}`). Malformed requests are dropped.
+  - The display fields are untrusted. They are redacted and clipped: description to 300 characters, preview to 2000. They are never executed.
+  - The session goes to `waiting`.
+- **Verdicts** are relayed as `notifications/claude/channel/permission` **only while the request is pending**, and at most once.
+  - A verdict for an unknown or already-settled ID is never relayed, but the channel answers with `permission_resolved` so the glasses drop the card.
+- **Settled elsewhere** (terminal or the RC phone app; Claude Code sends no signal):
+  - A PostToolUse of the same `tool_name` resolves the oldest pending request for that tool.
+  - The end of the turn (Stop) or a new prompt resolves everything, which also covers denials made elsewhere.
+- **Stop denies open permission prompts** first. Otherwise the dialog would block and the halt could never happen.
+- **Resync:** on relay reconnect, and whenever a new glasses socket joins (presence count goes up), the channel re-sends the session and every pending request with fresh timestamps.
+- **Glasses:**
+  - A permission card has the highest priority and preempts any screen.
+  - Requests older than 60 s are ignored, since they come from history. Duplicate IDs are ignored too, which covers resync.
+  - Cards queue, and the header shows `Allow Bash? · 1/2`.
+  - **The highlight starts on Deny**, and **taps within 500 ms of a card appearing are ignored**. A card can preempt the screen at the moment the user taps for something else, so an accidental tap must never approve.
+  - The card uses the card gesture row: swipe up for Allow, swipe down for Deny, tap to confirm, double tap to leave it pending.
+  - With a card pending, the menu gains `Review: <tool>` as its first item. Stop stays in the menu.
+- **Preview rendering:** the JSON `input_preview` is shown as its fields, with `command` shown bare and the `description` key dropped when it repeats the description line. It gets up to 4 wrapped lines, and the last one is cut with `...`.
+- **Tests:**
+  - 9 permission controller unit tests.
+  - Channel end to end: a real `permission_request` on stdin, a card at the glasses client, an Allow over `wrangler dev`, the exact `notifications/claude/channel/permission` on stdout, and a replayed verdict is not relayed twice.
+  - 14 glasses card tests.
+  - A simulator test: card, swipe up, tap, verdict at the computer; `permission_resolved` closes the card.

@@ -92,7 +92,7 @@ function litPixels(png: Uint8Array, y0: number, y1: number): number {
   return n
 }
 
-async function send<K extends 'session' | 'event' | 'reply' | 'glance'>(kind: K, body: Body<K>): Promise<void> {
+async function send<K extends 'session' | 'event' | 'reply' | 'glance' | 'permission' | 'permission_resolved'>(kind: K, body: Body<K>): Promise<void> {
   relay.send(await computer.seal(kind, body))
 }
 
@@ -205,5 +205,32 @@ describe.skipIf(!RUN)('glasses app in the simulator', () => {
     await send('session', { name: 'g2cc-sandbox', cwd: '/x', state: 'stopped', mode: 'auto' })
     const stopped = await frameWhere(f => f.header === '● g2cc-sandbox · stopped · auto', 'stopped header')
     expect(stopped.header).not.toContain('stopping')
+  })
+
+  test('a permission card appears, Allow sends the verdict, and resolved cards close', async () => {
+    await send('permission', {
+      request_id: 'wokkv',
+      tool_name: 'Bash',
+      description: 'Create empty test file',
+      input_preview: '{ "command": "touch perm-test-3.txt", "description": "Create empty test file" }',
+    })
+    const card = await frameWhere(f => f.header === 'Allow Bash?', 'permission card')
+    expect(card.body.split('\n').at(-1)).toBe('▶ Deny')
+    expect(card.body).toContain('touch perm-test-3.txt')
+    await screenshot('permission')
+
+    await Bun.sleep(700) // past the input guard
+    await input('up')
+    await frameWhere(f => f.header === 'Allow Bash?' && f.body.includes('▶ Allow'), 'allow highlighted')
+    await input('click')
+    await waitFor(async () => inbound.some(e => e.kind === 'verdict'), 'verdict at the computer', 5_000)
+    expect(inbound.find(e => e.kind === 'verdict')!.body).toEqual({ request_id: 'wokkv', behavior: 'allow' })
+    await frameWhere(f => f.header.startsWith('●'), 'back to feed')
+
+    // Answered elsewhere: the channel's permission_resolved closes the card.
+    await send('permission', { request_id: 'fghij', tool_name: 'Write', description: 'Write a file', input_preview: '{}' })
+    await frameWhere(f => f.header === 'Allow Write?', 'second card')
+    await send('permission_resolved', { request_id: 'fghij' })
+    await frameWhere(f => f.header.startsWith('●'), 'card closed by resolution')
   })
 })

@@ -1,5 +1,5 @@
-// G2 Claude Code: glasses app entry. Feed, reply view, and a feed menu with
-// Stop (Phase 4). Voice (Phase 6), permission and question cards (5, 7) come later.
+// G2 Claude Code: glasses app entry. Feed, reply view, feed menu with Stop
+// (Phase 4), permission cards (Phase 5). Voice (6) and questions (7) come later.
 
 import { waitForEvenAppBridge } from '@evenrealities/even_hub_sdk'
 import { fromBase64Url } from '@g2cc/protocol'
@@ -104,7 +104,7 @@ const unsubscribe = bridge.onEvenHubEvent(event => {
   if (!signal) return
   switch (signal.type) {
     case 'gesture':
-      dispatch({ type: 'gesture', gesture: signal.gesture, map: gestures })
+      dispatch({ type: 'gesture', gesture: signal.gesture, map: gestures, now: Date.now() })
       return
     case 'foreground':
       display?.repaint(render(state))
