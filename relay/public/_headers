@@ -1,0 +1,10 @@
+# The Even app reloads the glasses app from this URL, so the entry page must
+# never be cached; Vite's hashed assets can be cached forever.
+/g2-claude/app/
+  Cache-Control: no-cache
+/g2-claude/app/index.html
+  Cache-Control: no-cache
+/g2-claude/app/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+/g2-claude/
+  Cache-Control: public, max-age=300

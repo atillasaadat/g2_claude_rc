@@ -81,6 +81,9 @@
   .cmd pre { margin: 0; font: 14.5px/1.6 var(--mono); color: var(--text-0); background: var(--bg-1); border: 1px solid var(--line); border-radius: 10px; padding: 14px 92px 14px 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .cmd button { position: absolute; top: 9px; right: 9px; font: 500 13px var(--body); color: var(--text-1); background: var(--bg-2); border: 1px solid var(--line); border-radius: 7px; padding: 5px 11px; cursor: pointer; }
   .cmd button:hover { color: var(--accent); border-color: var(--line-strong); }
+  .install { display: flex; gap: 18px; align-items: center; margin: 6px 0 0; }
+  .install img { flex: none; border-radius: 8px; background: #fff; }
+  .install p { margin: 0; font-size: 15px; }
   .note { border-left: 2px solid var(--warn); padding: 2px 0 2px 14px; color: var(--text-1); font-size: 16px; }
 
   table { width: 100%; border-collapse: collapse; font-size: 16px; margin: 8px 0 16px; }
@@ -159,9 +162,13 @@ scripts/install.sh</pre><button type="button">Copy</button></div>
     </li>
     <li>
       <h3>Pair your glasses</h3>
-      <p>Your Groq key travels inside the pairing, so the public app never holds it. Skip <code>GROQ_API_KEY</code> to pair without voice.</p>
+      <p>This prints a private QR code. Your Groq key travels inside it, so the public app never holds one; leave out <code>GROQ_API_KEY</code> to pair without voice.</p>
       <div class="cmd"><pre>GROQ_API_KEY=gsk_... bun channel/pair.ts --relay wss://atillasaadat.com/g2-claude</pre><button type="button">Copy</button></div>
-      <p>In the Even app, open Even Hub and scan the QR code it prints. The app loads on your glasses and pairs in one step. The QR holds your secret key, so do not share it; <code>bun channel/pair.ts --rotate</code> makes a new one.</p>
+      <p>In the Even app, open Even Hub and scan it. The app loads on your glasses and pairs in one step. The code holds your secret key, so keep it to yourself; <code>bun channel/pair.ts --rotate</code> makes a new one.</p>
+      <div class="install">
+        <img src="install-qr.svg" width="132" height="132" alt="QR code for https://atillasaadat.com/g2-claude/app/">
+        <p>Already paired, or setting up a second phone? This public code only installs the app. Scan it in Even Hub, then paste the pairing text from <code>pair.ts</code> in the app's phone view.</p>
+      </div>
     </li>
     <li>
       <h3>Start a session</h3>
@@ -204,6 +211,7 @@ cc-g2</pre><button type="button">Copy</button></div>
 
   <footer>
     <p>Built by Atilla Saadat with Claude Code. Messages are encrypted end to end with AES-256-GCM using a key that only your computer and your glasses hold; the relay forwards ciphertext and keeps a short buffer so the glasses can catch up after reconnecting.</p>
+    <p>The glasses app always loads the latest version from this site, so updates arrive on your glasses the next time you open it. To update the part on your computer, run <code>git pull</code> in the repository; new sessions use it.</p>
     <p><a href="app/">Open the glasses app</a></p>
   </footer>
 </main>

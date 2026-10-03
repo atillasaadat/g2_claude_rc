@@ -83,6 +83,12 @@ For development, put a Groq key in `apps/glasses/.env.local` (`VITE_STT_API_KEY=
 
 ## Deploy
 
+Every push to `main` that touches the app, relay, or protocol deploys automatically (`.github/workflows/deploy.yml`). It needs the repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
+
+The Even app loads the glasses app from `https://atillasaadat.com/g2-claude/app/` every time, and that entry page is served with `Cache-Control: no-cache`, so the glasses get each deploy on their next launch. The channel on your computer updates with `git pull`.
+
+Manual deploy:
+
 ```bash
 cd apps/glasses && bun run build           # writes relay/public/g2-claude/app/
 cd relay && bunx wrangler deploy           # Worker route atillasaadat.com/g2-claude*
