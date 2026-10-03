@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.env
+.env.local
+.wrangler/
+*.ehpk
+.DS_Store
+
+# local agent tooling
+.claude-flow/
+ruvector.db
+.claude/proven-config*
+.claude/.proven-config-version

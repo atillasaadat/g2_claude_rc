@@ -1,0 +1,6 @@
+{
+  "name": "g2-claude-code",
+  "private": true,
+  "type": "module",
+  "workspaces": ["apps/*", "packages/*", "relay", "channel"]
+}
