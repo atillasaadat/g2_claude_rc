@@ -50,4 +50,16 @@ describe('Display', () => {
     const later = reduce(menu, { type: 'tick', now: NOW + 10_000 }).state
     expect(layoutKey(render(menu))).toBe(layoutKey(render(later)))
   })
+
+  test('after a reload (page already created) init falls back to a rebuild', async () => {
+    const { bridge, calls } = fakeBridge()
+    ;(bridge as unknown as { createStartUpPageContainer: (a: unknown) => Promise<number> }).createStartUpPageContainer = async arg => (
+      calls.push({ fn: 'create', arg }), 1
+    )
+    const d = new Display(bridge, new BridgeQueue(), e => {
+      throw e
+    })
+    await d.init(render(paired()))
+    expect(calls.map(c => c.fn)).toEqual(['create', 'rebuild'])
+  })
 })

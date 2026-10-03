@@ -63,7 +63,9 @@ export class Display {
         new CreateStartUpPageContainer({ containerTotalNum: scene.containers.length, textObject: scene.containers.map(property) }),
       ),
     )
-    if (result !== 0) throw new Error(`createStartUpPageContainer failed: ${result}`)
+    // Creation is allowed once per app run. After a WebView reload the page
+    // already exists and creation fails, so rebuild it instead.
+    if (result !== 0) await this.rebuild(scene)
     this.shown = scene
   }
 
