@@ -360,3 +360,12 @@ The difference is that auto mode opens no permission dialogs, so the channel get
 - **Known gaps:**
   - The on-screen hints ("tap: send") are fixed text and do not follow a remapped gesture map.
   - The `ask` tool for clarifications arrives in Phase 7. For now Claude confirms in its reply.
+- **Simulator mic under WSL:**
+  - Install `libasound2-plugins` and route ALSA to WSLg's PulseAudio with `~/.asoundrc` (`pcm.!default { type pulse }`, `ctl.!default { type pulse }`).
+  - Then launch with `evenhub-simulator --aid alsa:pulse`. `--list-audio-input-devices` shows `alsa:pulse`.
+- **Dev pairing note:** relaunching the simulator wipes its local storage, so the dev launch passes `#pair=` on the command line. That puts the key in the local `ps` output, which is acceptable only on a single-user dev box. Real devices pair by paste.
+- **Live check (2026-10-03): pass, with real speech.**
+  - In the simulator the user chose Menu → Talk, said "List the files in this repo.", then tapped twice.
+  - Timeline: `Listening…` 08:19:59, `Transcribing…` 08:20:08.4, `Send to Claude?` with the exact text at 08:20:08.9 (about 0.5 s on Groq).
+  - Send: the channel injected the prompt, the hooks reported it with `origin: glasses`, and Claude ran `ls -la` and replied. The reply opened on the glasses.
+- **Phase 6 status: done.**
