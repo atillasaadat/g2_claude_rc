@@ -2,7 +2,9 @@
 // display, pairing, and the gesture map editor. Dynamic values only ever go
 // through textContent, never innerHTML.
 
+import { normalizePairCode } from '@g2cc/protocol'
 import { GUIDE_CSS, GUIDE_HTML, wireGuide } from './guide'
+import { dismissKeyboard, keyboardFriendly, onEnter } from './keyboard'
 import { ACTIONS, DEFAULT_GESTURES, GESTURES, SCREENS, validateGestureMap, type GestureMap } from './gestures'
 import type { Frame } from './render'
 import type { Link } from './state'
@@ -58,7 +60,8 @@ export function mountUi(cb: UiCallbacks): void {
       <details>
         <summary>Pairing</summary>
         <p class="hint">In Claude Code on your computer, run <code>/g2:pair</code>. Type the code it shows here.</p>
-        <input id="code-input" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD-EFGH" maxlength="12" />
+        <input id="code-input" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD-EFGH" maxlength="12" />
+        <p class="hint">It pairs as soon as all 8 characters are in.</p>
         <div class="row">
           <button id="code-pair">Pair</button>
           <button id="pair-forget" class="secondary">Forget</button>
@@ -127,7 +130,11 @@ export function mountUi(cb: UiCallbacks): void {
   })
   const codeInput = app.querySelector<HTMLInputElement>('#code-input')!
   const codeButton = app.querySelector<HTMLButtonElement>('#code-pair')!
-  codeButton.addEventListener('click', () => {
+  let lastTried = ''
+  const pairNow = (): void => {
+    if (codeButton.disabled) return
+    dismissKeyboard()
+    lastTried = normalizePairCode(codeInput.value) ?? codeInput.value
     codeButton.disabled = true
     message(els.pairMsg, 'Pairing...', false)
     void cb
@@ -138,7 +145,16 @@ export function mountUi(cb: UiCallbacks): void {
       })
       .catch(err => message(els.pairMsg, `Not paired: ${(err as Error).message}`, true))
       .finally(() => (codeButton.disabled = false))
+  }
+  codeButton.addEventListener('click', pairNow)
+  onEnter(codeInput, pairNow)
+  // A complete code pairs on its own, so the keyboard never has to be got out of the way.
+  codeInput.addEventListener('input', () => {
+    const code = normalizePairCode(codeInput.value)
+    if (code && code !== lastTried) pairNow()
   })
+  onEnter(sttInput, () => app.querySelector<HTMLButtonElement>('#stt-save')!.click())
+  onEnter(app.querySelector<HTMLInputElement>('#relay-input')!, () => codeInput.focus())
   app.querySelector('#pair-forget')!.addEventListener('click', () => {
     void cb
       .forgetPairing()
@@ -163,6 +179,7 @@ export function mountUi(cb: UiCallbacks): void {
   })
 
   wireGuide(els.guide)
+  keyboardFriendly(app)
   injectStyles()
 }
 
@@ -251,7 +268,7 @@ function injectStyles(): void {
     html, body { margin: 0; min-height: 100%; background: #232323; color: #E5E5E5;
       font: 16px/1.4 -apple-system, BlinkMacSystemFont, 'Helvetica Neue', system-ui, sans-serif;
       touch-action: manipulation; -webkit-text-size-adjust: 100%; overscroll-behavior: none; }
-    .panel { display: flex; flex-direction: column; gap: 16px; max-width: 640px; margin: 0 auto;
+    .panel { scroll-padding-bottom: 40vh; display: flex; flex-direction: column; gap: 16px; max-width: 640px; margin: 0 auto;
       padding: 24px; box-sizing: border-box; }
     header { display: flex; align-items: center; justify-content: space-between; }
     h1 { font-size: 18px; font-weight: 600; margin: 0; }
