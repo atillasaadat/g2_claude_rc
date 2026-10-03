@@ -137,3 +137,30 @@ describe('questions: render', () => {
     expect(out.body.split('\n').length).toBeLessThanOrEqual(BODY_LINES)
   })
 })
+
+describe('screen priority', () => {
+  const reply = env('reply', { text: 'I sent the question to your glasses.' })
+  const prompt = env('event', { type: 'prompt', summary: 'next', origin: 'local' })
+
+  test('a fresh reply does not bury a question card', () => {
+    const s = recv(recv(paired(), env('question', q())), reply)
+    expect(s.screen).toBe('question')
+    expect(s.reply?.text).toBe('I sent the question to your glasses.')
+  })
+
+  test('a fresh reply does not bury a permission card, voice capture, or the menu', () => {
+    expect(recv(recv(paired(), env('permission', perm)), reply).screen).toBe('card')
+    const voice = g(g(paired(), 'tap').state, 'tap').state
+    expect(recv(voice, reply).screen).toBe('voice')
+    const menu = g(paired(), 'tap').state
+    expect(recv(menu, reply).screen).toBe('menu')
+  })
+
+  test('a fresh prompt does not pull the user off a question card', () => {
+    expect(recv(recv(paired(), env('question', q())), prompt).screen).toBe('question')
+  })
+
+  test('a fresh reply still opens from the feed', () => {
+    expect(recv(paired(), reply).screen).toBe('reply')
+  })
+})

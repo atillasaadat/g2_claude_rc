@@ -395,3 +395,7 @@ The difference is that auto mode opens no permission dialogs, so the channel get
   - Channel end to end: `tools/call ask`, then a question at the glasses, an answer, and a channel notification with `meta.question_id`, plus the redirect.
   - 26 glasses question and matching tests.
   - A simulator test: question card, swipe down, tap, answer at the computer.
+- **Bug found in the live check:**
+  - Claude called `ask`, the question card appeared (08:36:22), and Claude ended its turn as told. Its final reply then opened the reply view **on top of the question card** (08:36:29), and the user lost the options.
+  - Fix: screen priority is enforced. A fresh reply opens only from the feed or reply view, and a fresh prompt returns to the feed only from those screens. Neither ever buries a permission card, question, voice capture or the menu.
+  - Recovery worked as designed: when the app reloaded, the channel's presence-triggered resync re-sent the pending question with a fresh timestamp, and the card reappeared.

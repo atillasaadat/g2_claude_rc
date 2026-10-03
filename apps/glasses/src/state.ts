@@ -140,6 +140,13 @@ export function initialState(): AppState {
   }
 }
 
+/**
+ * Screen priority (CLAUDE.md): permission card > question > voice > reply > feed,
+ * and the menu is the user's own action. Live replies and new prompts only
+ * move the user between the passive screens; they never bury anything above.
+ */
+const isPassive = (screen: AppState['screen']): boolean => screen === 'feed' || screen === 'reply'
+
 const link = (relayOpen: boolean, computers: number): Link => (!relayOpen ? 'offline' : computers > 0 ? 'online' : 'relay')
 const done = (state: AppState, effects: Effect[] = []): Result => ({ state, effects })
 
@@ -167,7 +174,9 @@ function onEvent(s: AppState, env: Extract<AnyEnvelope, { kind: 'event' }>, now:
         : { id: env.id, ts: env.ts, type: 'notify', summary: b.summary }
   const next = { ...s, events: appendEvent(s.events, line) }
   // A new turn takes the user back to the live feed. Replayed history does not.
-  return b.type === 'prompt' && now - env.ts <= FRESH_MS ? { ...next, screen: 'feed', feedOffset: 0, stopPending: false } : next
+  if (b.type !== 'prompt' || now - env.ts > FRESH_MS) return next
+  const cleared = { ...next, stopPending: false }
+  return isPassive(s.screen) ? { ...cleared, screen: 'feed', feedOffset: 0 } : cleared
 }
 
 function onEnvelope(s: AppState, env: AnyEnvelope, now: number): AppState {
@@ -190,7 +199,7 @@ function onEnvelope(s: AppState, env: AnyEnvelope, now: number): AppState {
       const text = toPlainText(env.body.text)
       const reply = { text, ts: env.ts, pages: paginate(text) }
       const fresh = now - env.ts <= FRESH_MS
-      return fresh ? { ...s, reply, screen: 'reply', replyPage: 0 } : { ...s, reply }
+      return fresh && isPassive(s.screen) ? { ...s, reply, screen: 'reply', replyPage: 0 } : { ...s, reply }
     }
     case 'permission': {
       // Stale cards come from history replay; the channel re-sends live ones fresh on connect.
