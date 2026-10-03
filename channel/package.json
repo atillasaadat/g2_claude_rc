@@ -1,0 +1,24 @@
+{
+  "name": "@g2cc/channel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun server.ts",
+    "pair": "bun pair.ts",
+    "feed": "bun tools/feed.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@g2cc/protocol": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.32.0",
+    "qrcode": "^1.5.4",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.10",
+    "@types/qrcode": "^1.5.5",
+    "typescript": "^5.7.0"
+  }
+}

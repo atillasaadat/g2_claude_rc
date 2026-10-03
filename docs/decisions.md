@@ -190,3 +190,37 @@ The difference is that auto mode opens no permission dialogs, so the channel get
   - The glasses discard cards whose `request_id` was resolved, and permission frames older than a few minutes.
   - The channel only honors verdicts for request IDs that are currently pending. Claude Code also drops unknown IDs, so a stale Allow is harmless.
 - **Per-IP rate limit in the Worker:** consider the Workers rate limiting binding when deploying (Phase 8). Room IDs are 128-bit and known only to the paired devices and the relay, which bounds the abuse.
+
+## Phase 2: read-only channel (2026-10-03)
+
+- **Redaction in the channel.** Hook payloads are *not* redacted by Claude Code; only permission previews are. So `channel/src/redact.ts` masks secrets in every outbound string (summaries, replies, glance) before sealing:
+  - known token shapes: OpenAI/Anthropic `sk-`, Groq `gsk_`, GitHub, Slack, AWS, Google, Stripe, JWT
+  - private key blocks, `Bearer` tokens, `Authorization:` header values, and credentials in URLs
+  - secret-named assignments (`PASSWORD=`, `--token x`, `api_key: ...`)
+
+  It is best effort, so summaries are also flattened to one line and clipped to 200 characters.
+- **Session filter.** The channel only handles hooks whose `session_id` equals its own `CLAUDE_CODE_SESSION_ID`. Other sessions using the same settings.json are answered with `{}` and ignored. This is the base for multi-session later.
+- **Hook server hardening.**
+  - It binds 127.0.0.1 only.
+  - It requires `Content-Type: application/json`, so a browser must send a CORS preflight, which the server never answers.
+  - It requires `Host` to be `127.0.0.1:<port>` or `localhost:<port>`, which defeats DNS rebinding.
+  - Bodies are capped at 5 MB.
+  - Errors return non-2xx, which Claude Code treats as fail-open.
+- **Port taken:** the channel logs it and keeps running. MCP and `glance` still work, but that session has no feed.
+- **Session state** comes from the hook stream:
+  - UserPromptSubmit, PreToolUse and PostToolUse mean `working`.
+  - A Notification of type `permission_prompt` means `waiting`, and one of type `idle_prompt` means `idle`.
+  - Stop means `idle`.
+
+  A `session` envelope goes out on every change and on every relay connect. Envelopes are sealed through a promise chain, so they keep hook order.
+- **Permission capability is not declared yet** (Phase 5). Read-only means inbound envelopes are decrypted and validated, then logged by kind and dropped.
+- **Pairing file.** `~/.g2cc/pairing.json` is 0600 in a 0700 directory and is written atomically.
+  - A corrupt file is an error, never a silent re-key.
+  - `bun channel/pair.ts [--relay URL] [--rotate]` prints a QR code and the pairing text.
+  - The default relay is `ws://127.0.0.1:8787` (`wrangler dev`) until Phase 8.
+- Tools added:
+  - `channel/tools/feed.ts`, a CLI glasses stand-in
+  - `scripts/make-sandbox.sh`, which wires `~/g2cc-sandbox` to the real channel
+- Tests:
+  - 77 channel tests, 5 of them end to end: the real `server.ts` plus `wrangler dev` plus a glasses client, checking order, redaction, the session filter and glance
+  - 149 tests across the repo
