@@ -16,3 +16,6 @@ apps/glasses/test/artifacts/
 # built glasses app (apps/glasses: bun run build)
 relay/public/g2-claude/app/
 *.ehpk
+
+# Even Hub packages (apps/glasses: bun run pack)
+build/

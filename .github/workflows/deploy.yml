@@ -29,6 +29,12 @@ jobs:
           (cd apps/glasses && bun test --path-ignore-patterns 'test/sim.e2e.test.ts')
       - name: Build the glasses app (fails if a secret lands in the bundle)
         run: cd apps/glasses && bun run build
+      - name: Build the Even Hub packages (private builds; upload by hand in the dev portal)
+        run: cd apps/glasses && bun run pack
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ehpk
+          path: build/*.ehpk
       - name: Skip deploy (no Cloudflare token yet)
         if: env.HAS_TOKEN != 'true'
         run: echo "::notice::Add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets to enable deploys."

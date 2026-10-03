@@ -524,3 +524,20 @@ The user asked for boxes, overlays, a voice box that fills in while speaking, an
   - The JS asset loads from the base path and contains no secrets.
   - An encrypted round trip through `wss://atillasaadat.com/g2-claude` took 86 ms, with presence `computer=1 glasses=1`.
 - **Next:** hardware. Install and pair on the real G2 over cellular, check whether a QR-loaded app persists across Even app restarts, and pack the `.ehpk`.
+
+## Phase 8 (part 2): keeping the app installed (2026-10-03)
+
+- **Hardware result (user):** the app works on the real G2. But a QR-loaded app is a dev or prototype load: leaving it drops prototype mode, and the QR must be scanned again.
+- **No public release is needed.** Even Hub has **Private builds** (https://hub.evenrealities.com/docs/test/private-testing):
+  1. Pack an `.ehpk`.
+  2. Upload it in the dev portal (hub.evenrealities.com, your project, **Private builds** tab).
+  3. Install it from the Even app: Even Hub (Developer Mode), then Me, Apps, Private builds.
+
+  Private builds are tied to your account and are not reviewed. Caveats from the docs:
+  - Updates need a re-upload and re-install, and the CLI has no upload command.
+  - Private builds "don't pass the 5-minute lock test"; surviving a locked phone needs Beta Testing.
+- **Two packages** (`apps/glasses: bun run pack`, written to `build/`; CI attaches both as the `ehpk` artifact):
+  - `g2-claude-launcher.ehpk` (1 KB): `launcher/index.html` calls `location.replace('https://atillasaadat.com/g2-claude/app/')`. If the Even app lets a packaged app navigate to a whitelisted site, one install keeps auto-updating from `main`. **To be verified on hardware.**
+  - `g2-claude-bundled.ehpk` (111 KB): the whole app built with relative paths (`G2CC_APP_BASE=./`). It always works, but each update needs a re-upload.
+- `package_id` is now `com.atillasaadat.g2claude`, replacing the template placeholder. `min_app_version` is 2.2.10, the floor for SDK 0.0.16 that the packer stamps.
+- **Pairing an installed app:** it opens without the `#pair=` fragment, so its SDK storage may start unpaired. `bun channel/pair.ts --text` prints the pairing text to paste into the phone view.

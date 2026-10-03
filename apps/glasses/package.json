@@ -7,10 +7,12 @@
     "dev": "vite --host 127.0.0.1 --port 5173 --strictPort",
     "build": "tsc --noEmit && vite build && bun scripts/check-bundle.ts",
     "preview": "vite preview",
-    "pack": "bun run build && evenhub pack app.json ../../relay/public/g2-claude/app -o g2-claude-code.ehpk",
     "simulate": "evenhub-simulator http://127.0.0.1:5173 --automation-port 9898",
     "test": "bun test",
-    "test:sim": "G2CC_SIM=1 bun test test/sim.e2e.test.ts"
+    "test:sim": "G2CC_SIM=1 bun test test/sim.e2e.test.ts",
+    "pack:launcher": "mkdir -p ../../build && evenhub pack app.json launcher -o ../../build/g2-claude-launcher.ehpk",
+    "pack:bundled": "rm -rf ../../build/bundled && G2CC_APP_BASE=./ G2CC_OUT_DIR=../../build/bundled vite build && evenhub pack app.json ../../build/bundled -o ../../build/g2-claude-bundled.ehpk",
+    "pack": "bun run pack:launcher && bun run pack:bundled"
   },
   "dependencies": {
     "@evenrealities/even_hub_sdk": "^0.0.16",

@@ -52,6 +52,16 @@ Then run `cc-g2` instead of `claude` in any project.
 
 **Alerts while you are in another app:** in `/config`, enable `inputNeededNotifEnabled` and `agentPushNotifEnabled` (Remote Control push notifications). Allow notifications for the Claude app on your phone, then enable the Claude app in the Even app's notification mirroring.
 
+### Keep the app installed (private build)
+
+A QR-loaded app only lasts until you leave it. To keep it installed without publishing:
+
+1. Run `cd apps/glasses && bun run pack`. It writes `build/g2-claude-launcher.ehpk` (opens the hosted app, so it updates from `main`) and `build/g2-claude-bundled.ehpk` (self-contained). CI attaches both to every run.
+2. At hub.evenrealities.com, open your project's **Private builds** tab and upload one of them.
+3. In the Even app: Even Hub (Developer Mode), then Me, Apps, Private builds, then Install.
+
+If the installed app says it is not paired, run `bun channel/pair.ts --text` and paste the text in the app's phone view under Pairing.
+
 ## Using it
 
 | Gesture | Action |
