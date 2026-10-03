@@ -158,6 +158,9 @@ const unsubscribe = bridge.onEvenHubEvent(event => {
     case 'gesture':
       dispatch({ type: 'gesture', gesture: signal.gesture, map: gestures, now: Date.now() })
       return
+    case 'os_menu':
+      dispatch({ type: 'os_menu', itemID: signal.itemID })
+      return
     case 'foreground':
       display?.repaint(render(state))
       return

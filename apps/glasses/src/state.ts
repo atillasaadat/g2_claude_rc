@@ -27,10 +27,10 @@ export const FADE_MS = 450
 export const TOAST_MS = 8_000
 
 export type Link = 'offline' | 'relay' | 'online'
-export type ScreenId = 'timeline' | 'menu' | 'sessions' | 'card' | 'question' | 'voice'
+export type ScreenId = 'timeline' | 'menu' | 'card' | 'question' | 'voice'
 
 export interface MenuItem {
-  id: 'review' | 'review_question' | 'talk' | 'stop' | 'sessions'
+  id: 'review' | 'review_question' | 'talk' | 'stop' | 'exit'
   label: string
   available: boolean
 }
@@ -83,7 +83,6 @@ export interface AppState {
   clock: number
   overlaySince: number
   menuIndex: number
-  sessionIndex: number
   /** Pending permission requests, oldest first. The first one is on screen. */
   cards: readonly PermissionCard[]
   /** Starts on deny, so a stray tap never approves anything. */
@@ -111,6 +110,8 @@ export type Msg =
   | { type: 'transcript_error'; attempt: number; message: string }
   | { type: 'voice_limit' }
   | { type: 'tick'; now: number }
+  /** An item of the glasses OS side menu was chosen (see osMenu). */
+  | { type: 'os_menu'; itemID: number }
 
 /** Commands name their target session (sid), since several share the relay room. */
 export type Effect =
@@ -140,7 +141,6 @@ export function initialState(): AppState {
     clock: 0,
     overlaySince: 0,
     menuIndex: 0,
-    sessionIndex: 0,
     cards: [],
     cardChoice: 'deny',
     cardShownAt: 0,
@@ -160,24 +160,65 @@ const mapActive = (s: AppState, f: (v: SessionView) => SessionView): AppState =>
 
 const alive = (s: AppState, sid: string): boolean => view(s, sid).liveEpoch === s.connectEpoch
 
-/** Live sessions (and the one on screen), most recently active first. */
+/**
+ * Live sessions (and the one on screen), in a stable order (name, then id):
+ * the OS side menu is rebuilt whenever this list changes, so it must not reshuffle.
+ */
 export function sessionList(s: AppState): Array<{ sid: string; view: SessionView }> {
   return Object.entries(s.views)
     .filter(([sid, v]) => (v.session || v.entries.length > 0) && (alive(s, sid) || sid === s.active))
-    .sort(([, a], [, b]) => b.lastSeen - a.lastSeen)
     .map(([sid, v]) => ({ sid, view: v }))
+    .sort((a, b) => (a.view.session?.name ?? '').localeCompare(b.view.session?.name ?? '') || a.sid.localeCompare(b.sid))
+}
+
+export interface OsMenuItem {
+  id: number
+  label: string
+  sid?: string
+  clear?: true
+}
+
+/** The OS menu takes UTF-8 labels of at most 32 bytes. */
+function byteClip(text: string, max = 32): string {
+  const enc = new TextEncoder()
+  if (enc.encode(text).length <= max) return text
+  let out = ''
+  for (const ch of text) {
+    if (enc.encode(`${out}${ch}…`).length > max) break
+    out += ch
+  }
+  return `${out}…`
+}
+
+export const CLEAR_ITEM_ID = 99
+
+/**
+ * The glasses OS side menu: one item per session (switch to it) plus Clear.
+ * Only with two or more sessions; otherwise the OS default menu stays.
+ * Labels avoid live state so the menu (a page rebuild) changes rarely.
+ */
+export function osMenu(s: AppState): OsMenuItem[] {
+  const list = sessionList(s).slice(0, 9)
+  if (list.length < 2) return []
+  return [
+    ...list.map(({ sid, view: v }, i) => ({
+      id: i + 1,
+      label: byteClip(`${sid === s.active ? '▶ ' : ''}${v.session?.name ?? 'Claude Code'}`),
+      sid,
+    })),
+    { id: CLEAR_ITEM_ID, label: 'Clear other sessions', clear: true as const },
+  ]
 }
 
 export const sessionName = (s: AppState, sid: string): string => view(s, sid).session?.name ?? 'Claude Code'
 
 export function menuItems(s: AppState): MenuItem[] {
-  const sessions = sessionList(s).length
   return [
     ...(s.cards[0] ? [{ id: 'review' as const, label: `Review: ${s.cards[0].tool_name}`, available: true }] : []),
     ...(s.questions[0] ? [{ id: 'review_question' as const, label: 'Review question', available: true }] : []),
     { id: 'talk', label: s.voiceAvailable ? 'Talk' : 'Talk (no Groq key)', available: s.voiceAvailable },
     { id: 'stop', label: 'Stop Claude', available: true },
-    ...(sessions > 1 ? [{ id: 'sessions' as const, label: `Sessions (${sessions})`, available: true }] : []),
+    { id: 'exit', label: 'Exit app', available: true },
   ]
 }
 
@@ -391,23 +432,21 @@ function confirmMenu(s: AppState, now: number): Result {
       return stopActive(s)
     case 'talk':
       return done(s.voiceAvailable ? startListening(s, now) : s)
-    case 'sessions': {
-      const index = Math.max(0, sessionList(s).findIndex(x => x.sid === s.active))
-      return done({ ...open(s, 'sessions', now), sessionIndex: index })
-    }
+    case 'exit':
+      return done({ ...s, screen: 'timeline' }, [{ type: 'exit' }])
     default:
       return done(s)
   }
 }
 
-function confirmSession(s: AppState): Result {
-  const list = sessionList(s)
-  // The row after the sessions: clear everything but the session on screen.
-  if (s.sessionIndex === list.length) return done({ ...s, views: { [s.active]: view(s) }, screen: 'timeline', toast: undefined })
-  const target = list[s.sessionIndex]
-  if (!target) return done({ ...s, screen: 'timeline' })
-  const switched = { ...s, active: target.sid, screen: 'timeline' as const, toast: undefined }
-  return done(withView(switched, target.sid, { ...target.view, unread: false }))
+/** An OS side-menu choice: switch to a session, or clear the others. */
+function onOsMenu(s: AppState, itemID: number): Result {
+  const item = osMenu(s).find(i => i.id === itemID)
+  if (!item) return done(s)
+  if (item.clear) return done({ ...s, views: { [s.active]: view(s) }, toast: undefined })
+  const sid = item.sid!
+  // Overlays stay (a pending card or question still needs an answer).
+  return done(withView({ ...s, active: sid, toast: undefined }, sid, { ...view(s, sid), unread: false }))
 }
 
 const voiceIdle = (s: AppState): AppState => ({
@@ -462,8 +501,7 @@ function onTranscript(s: AppState, text: string, now: number): Result {
 }
 
 function onGesture(s: AppState, gesture: Gesture, map: GestureMap, now: number): Result {
-  const screen = s.screen === 'sessions' ? 'menu' : s.screen
-  const action = resolveGesture(map, screen, gesture)
+  const action = resolveGesture(map, s.screen, gesture)
   const v = view(s)
   switch (action) {
     case 'app.exit':
@@ -485,7 +523,6 @@ function onGesture(s: AppState, gesture: Gesture, map: GestureMap, now: number):
     case 'card.prev':
       if (s.screen === 'question') return done({ ...s, questionIndex: Math.max(0, s.questionIndex - 1) })
       if (s.screen === 'card') return done({ ...s, cardChoice: 'allow' })
-      if (s.screen === 'sessions') return done({ ...s, sessionIndex: Math.max(0, s.sessionIndex - 1) })
       return done({ ...s, menuIndex: Math.max(0, s.menuIndex - 1) })
     case 'card.next':
       if (s.screen === 'question') {
@@ -493,12 +530,10 @@ function onGesture(s: AppState, gesture: Gesture, map: GestureMap, now: number):
         return done({ ...s, questionIndex: Math.min(last, s.questionIndex + 1) })
       }
       if (s.screen === 'card') return done({ ...s, cardChoice: 'deny' })
-      if (s.screen === 'sessions') return done({ ...s, sessionIndex: Math.min(sessionList(s).length, s.sessionIndex + 1) })
       return done({ ...s, menuIndex: Math.min(menuItems(s).length - 1, s.menuIndex + 1) })
     case 'card.confirm':
       if (s.screen === 'question') return confirmQuestion(s, now)
       if (s.screen === 'card') return confirmCard(s, now)
-      if (s.screen === 'sessions') return confirmSession(s)
       return confirmMenu(s, now)
     case 'voice.send':
     case 'voice.cancel':
@@ -540,5 +575,7 @@ export function reduce(s: AppState, msg: Msg): Result {
       return done(s.voice.phase === 'listening' ? { ...s, voice: { ...s.voice, phase: 'transcribing' } } : s)
     case 'tick':
       return done({ ...s, clock: msg.now })
+    case 'os_menu':
+      return onOsMenu(s, msg.itemID)
   }
 }

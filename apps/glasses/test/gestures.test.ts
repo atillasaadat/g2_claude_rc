@@ -5,7 +5,7 @@ describe('gesture map', () => {
   test('defaults are valid and match the design', () => {
     expect(validateGestureMap(DEFAULT_GESTURES)).toEqual([])
     expect(resolveGesture(DEFAULT_GESTURES, 'timeline', 'tap')).toBe('menu.open')
-    expect(resolveGesture(DEFAULT_GESTURES, 'timeline', 'double_tap')).toBe('live.or.exit')
+    expect(resolveGesture(DEFAULT_GESTURES, 'timeline', 'double_tap')).toBe('timeline.live')
     expect(resolveGesture(DEFAULT_GESTURES, 'timeline', 'scroll_up')).toBe('timeline.up')
     expect(resolveGesture(DEFAULT_GESTURES, 'timeline', 'scroll_down')).toBe('timeline.down')
     expect(resolveGesture(DEFAULT_GESTURES, 'voice', 'tap')).toBe('voice.send')
@@ -18,9 +18,9 @@ describe('gesture map', () => {
 
   const withTimeline = (t: Partial<GestureMap['timeline']>): GestureMap => ({ ...DEFAULT_GESTURES, timeline: { ...DEFAULT_GESTURES.timeline, ...t } })
 
-  test('requires an exit path from the timeline', () => {
-    expect(validateGestureMap(withTimeline({ double_tap: 'none' }))).toContain('timeline: no gesture exits the app')
-    expect(validateGestureMap(withTimeline({ double_tap: 'none', tap: 'app.exit' }))).toEqual([])
+  test('requires a way to the menu (which has Exit) or an exit from the timeline', () => {
+    expect(validateGestureMap(withTimeline({ tap: 'none' }))).toContain('timeline: no gesture opens the menu or exits')
+    expect(validateGestureMap(withTimeline({ tap: 'none', double_tap: 'app.exit' }))).toEqual([])
   })
 
   test('rejects actions from another screen', () => {

@@ -19,7 +19,9 @@ export type Action = (typeof ACTIONS)[Screen][number]
 export type GestureMap = { [S in Screen]: Record<Gesture, (typeof ACTIONS)[S][number]> }
 
 export const DEFAULT_GESTURES: GestureMap = {
-  timeline: { tap: 'menu.open', double_tap: 'live.or.exit', scroll_up: 'timeline.up', scroll_down: 'timeline.down' },
+  // Double tap only jumps to live: exiting is an explicit menu item (an accidental
+  // exit dialog blanked the simulator), and the OS side menu may hold sessions.
+  timeline: { tap: 'menu.open', double_tap: 'timeline.live', scroll_up: 'timeline.up', scroll_down: 'timeline.down' },
   card: { tap: 'card.confirm', double_tap: 'nav.back', scroll_up: 'card.prev', scroll_down: 'card.next' },
   voice: { tap: 'voice.send', double_tap: 'voice.cancel', scroll_up: 'none', scroll_down: 'none' },
 }
@@ -40,7 +42,10 @@ export function validateGestureMap(map: GestureMap): string[] {
     }
   }
   const actions = (s: Screen): string[] => GESTURES.map(g => map[s]?.[g])
-  if (!actions('timeline').some(a => a === 'app.exit' || a === 'live.or.exit')) errors.push('timeline: no gesture exits the app')
+  // The menu always offers Exit app, so reaching it is enough.
+  if (!actions('timeline').some(a => a === 'menu.open' || a === 'app.exit' || a === 'live.or.exit')) {
+    errors.push('timeline: no gesture opens the menu or exits')
+  }
   if (!actions('card').includes('nav.back')) errors.push('card: no gesture leaves this screen')
   if (!actions('voice').includes('voice.send')) errors.push('voice: no gesture sends the prompt')
   if (!actions('voice').includes('voice.cancel')) errors.push('voice: no gesture cancels')

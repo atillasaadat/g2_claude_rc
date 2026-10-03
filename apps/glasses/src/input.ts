@@ -7,7 +7,12 @@
 import { OsEventTypeList, type EvenHubEvent } from '@evenrealities/even_hub_sdk'
 import type { Gesture } from './gestures'
 
-export type InputSignal = { type: 'gesture'; gesture: Gesture } | { type: 'foreground' } | { type: 'background' } | { type: 'exit' }
+export type InputSignal =
+  | { type: 'gesture'; gesture: Gesture }
+  | { type: 'os_menu'; itemID: number }
+  | { type: 'foreground' }
+  | { type: 'background' }
+  | { type: 'exit' }
 
 function eventTypeOf(envelope?: { eventType?: OsEventTypeList }): OsEventTypeList | null {
   if (!envelope) return null
@@ -15,6 +20,10 @@ function eventTypeOf(envelope?: { eventType?: OsEventTypeList }): OsEventTypeLis
 }
 
 export function toSignal(event: EvenHubEvent): InputSignal | null {
+  // A choice in the glasses OS side menu (our session list).
+  const menuId = event.menuItemClickEvent?.itemID
+  if (typeof menuId === 'number' && menuId > 0) return { type: 'os_menu', itemID: menuId }
+
   const sys = eventTypeOf(event.sysEvent)
   const text = eventTypeOf(event.textEvent)
   const is = (t: OsEventTypeList) => sys === t || text === t

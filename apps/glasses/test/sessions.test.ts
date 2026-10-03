@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { makeEnvelope, type AnyEnvelope, type Body, type Kind } from '@g2cc/protocol'
-import { initialState, reduce, sessionList, TOAST_MS, view, type AppState } from '../src/state'
+import { render } from '../src/render'
+import { CLEAR_ITEM_ID, initialState, osMenu, reduce, sessionList, TOAST_MS, view, type AppState } from '../src/state'
 import { frame, g, gs, NOW, perm, question } from './helpers'
 
 const A = 'aaaa-1'
@@ -41,26 +42,23 @@ describe('multiple sessions', () => {
     expect(frame(s).header).toBe('◆ repo-b: needs your input')
   })
 
-  test('the menu lists Sessions; choosing one switches and clears unread', () => {
+  test('the OS side menu lists the sessions; choosing one switches and clears unread', () => {
     let s = recv(two(), at(B, 'reply', { text: 'Done in B.' }))
-    s = gs(s, 'tap')
-    expect(frame(s).overlay!.content.split('\n').at(-1)).toBe('   Sessions (2)')
-    s = gs(s, 'scroll_down', 'scroll_down', 'tap') // Sessions
-    expect(s.screen).toBe('sessions')
-    const list = frame(s).overlay!.content.split('\n')
-    expect(list.some(l => l.includes('repo-a · idle (on screen)'))).toBe(true)
-    expect(list.some(l => l.includes('repo-b · idle') && l.includes('◆'))).toBe(true)
-    const iB = sessionList(s).findIndex(x => x.sid === B)
-    s = { ...s, sessionIndex: iB }
-    s = gs(s, 'tap')
-    expect([s.active, s.screen, view(s, B).unread]).toEqual([B, 'timeline', false])
+    const menu = osMenu(s)
+    expect(menu.map(m => m.label)).toEqual(['▶ repo-a', 'repo-b', 'Clear other sessions'])
+    expect(render(s).menu).toEqual(menu.map(({ id, label }) => ({ id, label })))
+    s = reduce(s, { type: 'os_menu', itemID: menu.find(m => m.sid === B)!.id }).state
+    expect([s.active, view(s, B).unread]).toEqual([B, false])
     expect(frame(s).timeline).toContain('Done in B.')
+    expect(osMenu(s).map(m => m.label)).toEqual(['repo-a', '▶ repo-b', 'Clear other sessions'])
   })
 
-  test('the menu has no Sessions entry with only one session', () => {
+  test('the OS side menu stays the default with one session, and labels fit 32 bytes', () => {
     let s: AppState = { ...initialState(), paired: true }
     s = recv(s, session(A, 'repo-a'))
-    expect(frame(gs(s, 'tap')).overlay!.content).not.toContain('Sessions')
+    expect(osMenu(s)).toEqual([])
+    s = recv(s, session(B, 'a-very-long-repository-name-that-goes-on'))
+    for (const m of osMenu(s)) expect(new TextEncoder().encode(m.label).length).toBeLessThanOrEqual(32)
   })
 
   test('stop and prompts go to the session on screen', () => {
@@ -119,13 +117,9 @@ describe('stale sessions', () => {
   })
 
   test('Clear other sessions keeps only the one on screen', () => {
-    let s = gs(two(), 'tap', 'scroll_down', 'scroll_down', 'tap') // menu > Sessions
-    const rows = frame(s).overlay!.content.split('\n')
-    expect(rows.at(-1)).toBe('   Clear other sessions')
-    s = { ...s, sessionIndex: rows.length - 1 }
-    s = gs(s, 'tap')
+    let s = two()
+    s = reduce(s, { type: 'os_menu', itemID: CLEAR_ITEM_ID }).state
     expect(Object.keys(s.views)).toEqual([A])
-    expect(s.screen).toBe('timeline')
     // A cleared session that is still alive comes back with its next envelope.
     s = recv(s, at(B, 'glance', { text: 'back' }))
     expect(sessionList(s).map(x => x.sid).sort()).toEqual([A, B].sort())

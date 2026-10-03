@@ -59,12 +59,13 @@ describe('timeline: scrolling', () => {
     expect(view(withLines(withLines(paired(), 30), 2)).fromBottom).toBe(0)
   })
 
-  test('double tap jumps back to live when scrolled, otherwise asks to exit', () => {
+  test('double tap jumps back to live and never exits; Exit app is in the menu', () => {
     const scrolled = gs(withLines(paired(), 30), 'scroll_up', 'scroll_up')
     const r = g(scrolled, 'double_tap')
     expect(view(r.state).fromBottom).toBe(0)
     expect(r.effects).toEqual([])
-    expect(g(r.state, 'double_tap').effects).toEqual([{ type: 'exit' }])
+    expect(g(r.state, 'double_tap').effects).toEqual([])
+    expect(g(gs(paired(), 'tap', 'scroll_down', 'scroll_down'), 'tap').effects).toEqual([{ type: 'exit' }])
   })
 
   test('a fresh long reply lands on its first line; a short one stays at the bottom', () => {
@@ -96,7 +97,7 @@ describe('menu and stop', () => {
     let s = gs(working(), 'tap')
     expect(s.screen).toBe('menu')
     s = gs(s, 'scroll_down', 'scroll_down', 'scroll_down')
-    expect(s.menuIndex).toBe(1)
+    expect(s.menuIndex).toBe(2)
     expect(gs(s, 'double_tap').screen).toBe('timeline')
   })
 

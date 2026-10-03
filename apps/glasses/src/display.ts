@@ -7,6 +7,8 @@
 
 import {
   CreateStartUpPageContainer,
+  MenuContainerProperty,
+  MenuItemProperty,
   RebuildPageContainer,
   TextContainerProperty,
   TextContainerUpgrade,
@@ -23,7 +25,13 @@ const BORDER_COLOR = 12
 
 /** Everything except text and brightness: a change here needs a rebuild. */
 export function layoutKey(scene: Scene): string {
-  return JSON.stringify(scene.containers.map(c => [c.id, c.name, c.box, c.capture, c.z]))
+  return JSON.stringify([scene.containers.map(c => [c.id, c.name, c.box, c.capture, c.z]), scene.menu])
+}
+
+/** The OS side menu travels with the page; a rebuild without it would clear it. */
+function menuObject(scene: Scene): { menuObject?: MenuContainerProperty } {
+  if (!scene.menu.length) return {}
+  return { menuObject: new MenuContainerProperty({ menuItems: scene.menu.map(m => new MenuItemProperty({ itemID: m.id, itemName: m.label })) }) }
 }
 
 function property(c: ContainerSpec): TextContainerProperty {
@@ -47,7 +55,7 @@ function property(c: ContainerSpec): TextContainerProperty {
 }
 
 export class Display {
-  private shown: Scene = { containers: [] }
+  private shown: Scene = { containers: [], menu: [] }
   private pending: Scene | null = null
   private timer: ReturnType<typeof setTimeout> | null = null
 
@@ -60,7 +68,7 @@ export class Display {
   async init(scene: Scene): Promise<void> {
     const result = await this.queue.run('createStartUpPageContainer', () =>
       this.bridge.createStartUpPageContainer(
-        new CreateStartUpPageContainer({ containerTotalNum: scene.containers.length, textObject: scene.containers.map(property) }),
+        new CreateStartUpPageContainer({ containerTotalNum: scene.containers.length, textObject: scene.containers.map(property), ...menuObject(scene) }),
       ),
     )
     // Creation is allowed once per app run. After a WebView reload the page
@@ -80,7 +88,7 @@ export class Display {
 
   /** Redraws everything, e.g. after the app returns to the foreground. */
   repaint(scene: Scene): void {
-    this.shown = { containers: [] }
+    this.shown = { containers: [], menu: [] }
     this.show(scene)
   }
 
@@ -106,7 +114,7 @@ export class Display {
   private async rebuild(scene: Scene): Promise<void> {
     const ok = await this.queue.run('rebuildPageContainer', () =>
       this.bridge.rebuildPageContainer(
-        new RebuildPageContainer({ containerTotalNum: scene.containers.length, textObject: scene.containers.map(property) }),
+        new RebuildPageContainer({ containerTotalNum: scene.containers.length, textObject: scene.containers.map(property), ...menuObject(scene) }),
       ),
     )
     if (!ok) throw new Error('rebuildPageContainer failed')

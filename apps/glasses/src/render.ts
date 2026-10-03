@@ -22,7 +22,7 @@ import {
   TIMELINE_LINES,
   type Box,
 } from './layout'
-import { FADE_MS, menuItems, sessionList, sessionName, view, type AppState, type Link, type PermissionCard, type QuestionCard } from './state'
+import { FADE_MS, menuItems, osMenu, sessionList, sessionName, view, type AppState, type Link, type PermissionCard, type QuestionCard } from './state'
 import { buildTimeline, visibleWindow } from './timeline'
 
 export interface ContainerSpec {
@@ -39,6 +39,8 @@ export interface ContainerSpec {
 
 export interface Scene {
   containers: readonly ContainerSpec[]
+  /** Items for the glasses OS side menu; empty keeps the OS default menu. */
+  menu: readonly { id: number; label: string }[]
 }
 
 /** A flat view of a scene, for logs, the phone mirror, and tests. */
@@ -83,7 +85,6 @@ function statusHeader(s: AppState): string {
 
 const HINTS: Record<Exclude<AppState['screen'], 'timeline'>, string> = {
   menu: '↑↓ choose · tap: select · 2× tap: back',
-  sessions: '↑↓ choose · tap: switch · 2× tap: back',
   card: '↑ allow · ↓ deny · tap: confirm · 2× tap: later',
   question: '↑↓ choose · tap: answer · 2× tap: later',
   voice: '',
@@ -126,20 +127,6 @@ function menuOverlay(s: AppState): { box: Box; content: string } {
   const items = menuItems(s)
   const box = sideBox(items.length)
   return { box, content: items.map((item, i) => indent(i === s.menuIndex, item.label, innerWidth(box))).join('\n') }
-}
-
-const STATE_GLYPH: Record<string, string> = { working: '▶', waiting: '!', idle: '·', stopped: '■' }
-
-function sessionsOverlay(s: AppState): { box: Box; content: string } {
-  const list = sessionList(s)
-  const box = overlayBox(list.length + 1)
-  const w = innerWidth(box)
-  const lines = list.map(({ sid, view: v }, i) => {
-    const st = v.session?.state ?? 'idle'
-    const label = `${STATE_GLYPH[st] ?? '·'} ${v.session?.name ?? 'Claude Code'} · ${st}${sid === s.active ? ' (on screen)' : ''}${v.unread ? '  ◆' : ''}`
-    return indent(i === s.sessionIndex, label, w)
-  })
-  return { box, content: [...lines, indent(s.sessionIndex === list.length, 'Clear other sessions', w)].join('\n') }
 }
 
 /** With several sessions, cards say which one is asking. */
@@ -214,8 +201,6 @@ function overlay(s: AppState): { name: string; box: Box; content: string } | nul
   switch (s.screen) {
     case 'menu':
       return { name: 'menu', ...menuOverlay(s) }
-    case 'sessions':
-      return { name: 'sessions', ...sessionsOverlay(s) }
     case 'card':
       return s.cards[0] ? { name: 'card', ...cardOverlay(s, s.cards[0]) } : null
     case 'question':
@@ -264,6 +249,7 @@ export function render(s: AppState): Scene {
       { id: TIMELINE_ID, name: 'timeline', box: TIMELINE, content: timeline, brightness: over ? DIM : BRIGHT, capture: true, z: 2 },
       ...(over ? [{ id: OVERLAY_ID, name: over.name, box: over.box, content: over.content, brightness: fade(s), capture: false, z: 3 }] : []),
     ],
+    menu: s.paired ? osMenu(s).map(({ id, label }) => ({ id, label })) : [],
   }
 }
 

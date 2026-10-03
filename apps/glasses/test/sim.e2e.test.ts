@@ -178,8 +178,15 @@ describe.skipIf(!RUN)('glasses app in the simulator', () => {
     await screenshot('reply')
     await input('down')
     await frameWhere(f => f.timeline.split('\n')[0] === 'Line 4: the timeline scrolls continuously.', 'scrolled down 3 lines')
-    await input('double_click')
+    await input('double_click') // jumps to live; never opens the exit dialog
     await frameWhere(f => f.timeline.split('\n').at(-1) === 'Line 14: the timeline scrolls continuously.' && f.header.endsWith('auto'), 'back to live')
+    // A second double tap at live does nothing (no exit dialog): the app still responds.
+    await input('double_click')
+    await Bun.sleep(500)
+    await input('up')
+    await frameWhere(f => /▼ \d+ newer$/.test(f.header), 'still responsive after a second double tap')
+    await input('double_click')
+    await frameWhere(f => f.header.endsWith('auto'), 'live again')
   })
 
   test('tap opens the menu box, and Stop sends a stop to the computer', async () => {
@@ -187,7 +194,7 @@ describe.skipIf(!RUN)('glasses app in the simulator', () => {
     await frameWhere(f => f.header.includes('working'), 'working header')
     await input('click')
     const menu = await frameWhere(f => f.overlay?.name === 'menu', 'menu')
-    expect(ov(menu).split('\n')).toEqual(['▶ Talk', '   Stop Claude'])
+    expect(ov(menu).split('\n')).toEqual(['▶ Talk', '   Stop Claude', '   Exit app'])
     await Bun.sleep(600) // let the fade finish before the screenshot
     await screenshot('menu')
     await input('down')

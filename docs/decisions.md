@@ -493,3 +493,13 @@ The user asked for boxes, overlays, a voice box that fills in while speaking, an
     - A dead session on screen hands over to the first live one.
     - The session list ends with `Clear other sessions`, which keeps only the one on screen. Live sessions reappear with their next envelope.
   - "Didn't see the notification": toasts now last 8 s at full header brightness, with the `◆`/`◇` marker pulsing.
+- **Sessions moved to the glasses OS side menu (user request).** SDK 0.0.16 lets an app register a contextual side menu: `menuObject` on create and rebuild, with up to 10 `MenuItemProperty {itemID, itemName}` items (UTF-8 labels of at most 32 bytes). Clicks arrive as `event.menuItemClickEvent.itemID`.
+  - The menu is part of the page: changing it needs a rebuild, and a rebuild without `menuObject` clears it. So the display always re-sends it, and the layout key includes it.
+  - Labels are session names only, with `▶` marking the one on screen and a stable name order. Live states and unread markers would force a rebuild on every change, so they stay in our own UI (header and toasts).
+  - The menu is installed only with 2 or more sessions, followed by `Clear other sessions` (item 99). With one session the OS default menu stays.
+  - Choosing a session switches to it and keeps any open card or question.
+  - The in-app Sessions entry and overlay were removed.
+- **Double tap no longer exits (user bug report).**
+  - A double tap at live opened the system exit dialog (`shutDownPageContainer(1)`). In the simulator that showed as a black screen that took no further input.
+  - Timeline double tap now only jumps to live, and the tap menu gains `Exit app` as its last item.
+  - Gesture validation now requires the timeline to reach the menu (which always has Exit) or to exit directly.
