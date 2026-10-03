@@ -1,0 +1,11 @@
+{
+  "name": "g2-channel-probe",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "bun server.ts" },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": { "@types/bun": "^1.3.10", "typescript": "^5.7.0" }
+}
