@@ -17,7 +17,8 @@ export const bodySchemas = {
   session: z.strictObject({
     name: shortText,
     cwd: shortText,
-    state: z.enum(['idle', 'working', 'waiting', 'stopped']),
+    // 'ended': the session's channel shut down (it leaves the glasses' session list).
+    state: z.enum(['idle', 'working', 'waiting', 'stopped', 'ended']),
     mode: shortText.optional(),
   }),
   event: z.strictObject({

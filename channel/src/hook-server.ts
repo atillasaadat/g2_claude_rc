@@ -9,7 +9,7 @@ export type HookResponse = Record<string, unknown>
 
 export interface HookServerOptions {
   port: number
-  onHook: (payload: Record<string, unknown>) => HookResponse
+  onHook: (payload: Record<string, unknown>) => HookResponse | Promise<HookResponse>
 }
 
 export interface HookServer {
@@ -45,7 +45,7 @@ export function startHookServer(opts: HookServerOptions): HookServer {
         return new Response('expected an object', { status: 400 })
       }
       try {
-        return Response.json(opts.onHook(payload as Record<string, unknown>))
+        return Response.json(await opts.onHook(payload as Record<string, unknown>))
       } catch {
         return new Response('handler error', { status: 500 })
       }

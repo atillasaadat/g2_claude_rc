@@ -11,7 +11,7 @@ function setup() {
   return { c, out }
 }
 
-const stop = (sid?: string): AnyEnvelope => makeEnvelope('stop', {}, sid ? { sid } : {}) as AnyEnvelope
+const stop = (sid: string = SID): AnyEnvelope => makeEnvelope('stop', {}, { sid }) as AnyEnvelope
 const states = (out: Emitted[]) => out.filter(e => e.kind === 'session').map(e => (e.body as Body<'session'>).state)
 const notes = (out: Emitted[]) =>
   out.filter(e => e.kind === 'event' && (e.body as Body<'event'>).type === 'notify').map(e => (e.body as Body<'event'>).summary)
@@ -116,7 +116,7 @@ describe('SessionController: hooks', () => {
 
   test('answers to unknown questions emit nothing', () => {
     const { c, out } = setup()
-    c.onInbound(makeEnvelope('answer', { question_id: 'q1', choice: 'a' }) as AnyEnvelope)
+    c.onInbound(makeEnvelope('answer', { question_id: 'q1', choice: 'a' }, { sid: SID }) as AnyEnvelope)
     expect(out).toEqual([])
   })
 })
@@ -131,14 +131,14 @@ describe('SessionController: voice prompts', () => {
 
   test('a prompt from the glasses is injected into the session', () => {
     const { c, prompts } = withPrompts()
-    c.onInbound(makeEnvelope('prompt', { text: 'run the unit tests' }) as AnyEnvelope)
+    c.onInbound(makeEnvelope('prompt', { text: 'run the unit tests' }, { sid: SID }) as AnyEnvelope)
     expect(prompts).toEqual(['run the unit tests'])
   })
 
   test('while Claude is busy the glasses are told it is queued', () => {
     const { c, out, prompts } = withPrompts()
     c.onHook({ ...base, hook_event_name: 'UserPromptSubmit', prompt: 'x' })
-    c.onInbound(makeEnvelope('prompt', { text: 'and then lint' }) as AnyEnvelope)
+    c.onInbound(makeEnvelope('prompt', { text: 'and then lint' }, { sid: SID }) as AnyEnvelope)
     expect(prompts).toEqual(['and then lint'])
     expect(notes(out)).toContain('Queued for the next turn: Claude is busy')
   })
@@ -146,6 +146,16 @@ describe('SessionController: voice prompts', () => {
   test('a prompt for another session is ignored', () => {
     const { c, prompts } = withPrompts()
     c.onInbound(makeEnvelope('prompt', { text: 'x' }, { sid: 'other' }) as AnyEnvelope)
+    expect(prompts).toEqual([])
+  })
+})
+
+describe('SessionController: targeting', () => {
+  test('commands without a session id are ignored once the session id is known', () => {
+    const out: Emitted[] = []
+    const prompts: string[] = []
+    const c = new SessionController({ sessionId: SID, name: 'repo', cwd: '/r', emit: e => out.push(e), sendPrompt: t => prompts.push(t) })
+    c.onInbound(makeEnvelope('prompt', { text: 'untargeted' }) as AnyEnvelope)
     expect(prompts).toEqual([])
   })
 })

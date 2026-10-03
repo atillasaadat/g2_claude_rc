@@ -189,7 +189,8 @@ export class SessionController {
   }
 
   onInbound(env: AnyEnvelope): void {
-    if (env.sid && this.opts.sessionId && env.sid !== this.opts.sessionId) return
+    // Several sessions share the room, so commands must name this session.
+    if (this.opts.sessionId && env.sid !== this.opts.sessionId) return
     switch (env.kind) {
       case 'stop': {
         const state = this.tracker.snapshot().state

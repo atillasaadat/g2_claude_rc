@@ -19,7 +19,7 @@ function setup(glasses = true) {
   return { c, out, answers }
 }
 const questions = (out: Emitted[]) => out.filter(e => e.kind === 'question').map(e => e.body as Body<'question'>)
-const answer = (question_id: string, choice: string) => makeEnvelope('answer', { question_id, choice }) as AnyEnvelope
+const answer = (question_id: string, choice: string) => makeEnvelope('answer', { question_id, choice }, { sid: SID }) as AnyEnvelope
 
 describe('ask tool', () => {
   test('sends the question to the glasses and tells Claude to end its turn', () => {

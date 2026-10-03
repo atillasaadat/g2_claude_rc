@@ -28,7 +28,7 @@ function setup() {
 }
 
 const verdict = (request_id: string, behavior: 'allow' | 'deny') =>
-  makeEnvelope('verdict', { request_id, behavior }) as AnyEnvelope
+  makeEnvelope('verdict', { request_id, behavior }, { sid: SID }) as AnyEnvelope
 const of = <K extends Emitted['kind']>(out: Emitted[], kind: K) =>
   out.filter(e => e.kind === kind).map(e => e.body as Body<K>)
 
@@ -96,7 +96,7 @@ describe('permission relay', () => {
   test('stop denies pending requests, then halts the next tool', () => {
     const { c, verdicts, out } = setup()
     c.onPermissionRequest(req('abcde'))
-    c.onInbound(makeEnvelope('stop', {}) as AnyEnvelope)
+    c.onInbound(makeEnvelope('stop', {}, { sid: SID }) as AnyEnvelope)
     expect(verdicts).toEqual([['abcde', 'deny']])
     expect(of(out, 'permission_resolved')).toEqual([{ request_id: 'abcde' }])
   })

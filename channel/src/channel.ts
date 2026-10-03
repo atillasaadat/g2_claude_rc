@@ -15,6 +15,7 @@ import { startHookServer, type HookResponse, type HookServer } from './hook-serv
 import { SessionController } from './controller'
 import type { HookPayload } from './hooks'
 import { loadOrCreatePairing, pairingPath } from './pairing-store'
+import { routeHook, SessionRegistry } from './router'
 import { clip, oneLine, redact } from './redact'
 import { RelayClient } from '@g2cc/protocol'
 
@@ -27,6 +28,8 @@ export const INSTRUCTIONS = [
   'When you need the user to make a decision, call the ask tool (a question and 2 to 4 short options) instead of AskUserQuestion, then end your turn. The answer arrives as a <channel source="g2"> message with a question_id attribute.',
   `At the end of each turn, call the glance tool with a one-line plain-text summary (at most ${GLANCE_MAX} characters) of what you did or what you need from the user.`,
 ].join(' ')
+
+const ROUTER_RETRY_MS = 3_000
 
 const PermissionRequestNotification = z.object({
   method: z.literal('notifications/claude/channel/permission_request'),
@@ -113,13 +116,29 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
   })
   const onHook = (raw: Record<string, unknown>): HookResponse => controller.onHook(raw as HookPayload)
 
-  let hooks: HookServer | null = null
-  try {
-    hooks = startHookServer({ port: cfg.port, onHook })
-    log(`hooks on 127.0.0.1:${hooks.port}`)
-  } catch {
-    log(`port ${cfg.port} is in use (another g2 session?). The feed is off for this session; glance still works.`)
+  // Multi-session (src/router.ts): this session's own hooks on a private port,
+  // registered by session id; whoever holds the fixed port routes for everyone.
+  const registry = new SessionRegistry(cfg.home)
+  let own: HookServer | null = null
+  if (cfg.sessionId) {
+    own = startHookServer({ port: 0, onHook })
+    registry.register(cfg.sessionId, own.port)
   }
+  let router: HookServer | null = null
+  let stopped = false
+  const claimRouter = (): void => {
+    if (router || stopped) return
+    try {
+      router = startHookServer({ port: cfg.port, onHook: p => routeHook(p, { ownSid: cfg.sessionId, local: onHook, registry }) })
+      log(`routing hooks on 127.0.0.1:${cfg.port}`)
+    } catch {
+      // Another g2 session routes; it forwards this session's hooks here.
+    }
+  }
+  claimRouter()
+  if (!router) log(`another g2 session is routing hooks on ${cfg.port}; this session is reachable through it`)
+  // Take over routing if the router's session ends.
+  const claimTimer = setInterval(claimRouter, ROUTER_RETRY_MS)
 
   const mcp = new Server(
     { name: 'g2', version: '0.1.0' },
@@ -163,11 +182,15 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
     return { content: [{ type: 'text', text: relay.isOpen ? 'shown' : 'queued: glasses relay offline' }] }
   })
 
-  let stopped = false
   const stop = async (): Promise<void> => {
     if (stopped) return
     stopped = true
-    hooks?.stop()
+    clearInterval(claimTimer)
+    router?.stop()
+    own?.stop()
+    if (cfg.sessionId) registry.unregister(cfg.sessionId)
+    // Tell the glasses this session is gone, so it leaves the session list.
+    emit('session', { ...controller.snapshot(), state: 'ended' })
     await outbound
     relay.stop()
     await mcp.close()
@@ -176,5 +199,6 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
 
   await mcp.connect(transport)
   relay.start()
-  return { hookPort: hooks?.port ?? null, stop }
+  // router is assigned inside claimRouter, which TypeScript cannot see here.
+  return { hookPort: (router as HookServer | null)?.port ?? own?.port ?? null, stop }
 }

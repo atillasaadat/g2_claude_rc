@@ -191,7 +191,7 @@ describe('channel feed end to end', () => {
   test('stop from the glasses halts the next tool call', async () => {
     await hook({ hook_event_name: 'UserPromptSubmit', prompt: 'long task' })
     received.length = 0
-    glassesRelay!.send(await glasses.seal('stop', {}))
+    glassesRelay!.send(await glasses.seal('stop', {}, { sid: SESSION }))
     await until(() => JSON.stringify(received).includes('Stop requested'))
 
     const res = await hook({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'sleep 9' } })
@@ -205,7 +205,7 @@ describe('channel feed end to end', () => {
   })
 
   test('a confirmed voice prompt is injected as a channel event', async () => {
-    glassesRelay!.send(await glasses.seal('prompt', { text: 'run the unit tests' }))
+    glassesRelay!.send(await glasses.seal('prompt', { text: 'run the unit tests' }, { sid: SESSION }))
     const isChannel = (m: Record<string, unknown>) => m.method === 'notifications/claude/channel'
     await until(() => mcpOut().some(isChannel))
     expect(mcpOut().find(isChannel)!.params).toEqual({ content: 'run the unit tests', meta: { source_kind: 'voice' } })
@@ -220,7 +220,7 @@ describe('channel feed end to end', () => {
     const result = mcpOut().find(m => m.id === 3) as { result: { content: Array<{ text: string }> } }
     expect(result.result.content[0]!.text).toContain(q.question_id)
 
-    glassesRelay!.send(await glasses.seal('answer', { question_id: q.question_id, choice: 'dev' }))
+    glassesRelay!.send(await glasses.seal('answer', { question_id: q.question_id, choice: 'dev' }, { sid: SESSION }))
     const isAnswer = (m: Record<string, unknown>) =>
       m.method === 'notifications/claude/channel' && (m.params as { meta?: { question_id?: string } }).meta?.question_id === q.question_id
     await until(() => mcpOut().some(isAnswer))
@@ -256,14 +256,14 @@ describe('channel feed end to end', () => {
     const card = received.find(e => e.kind === 'permission')!
     expect(card.body).toEqual({ request_id: 'wokkv', tool_name: 'Bash', description: 'Create empty test file', input_preview: '{ "command": "touch x" }' })
 
-    glassesRelay!.send(await glasses.seal('verdict', { request_id: 'wokkv', behavior: 'allow' }))
+    glassesRelay!.send(await glasses.seal('verdict', { request_id: 'wokkv', behavior: 'allow' }, { sid: SESSION }))
     const isVerdict = (m: Record<string, unknown>) => m.method === 'notifications/claude/channel/permission'
     await until(() => mcpOut().some(isVerdict))
     expect(mcpOut().find(isVerdict)!.params).toEqual({ request_id: 'wokkv', behavior: 'allow' })
     await until(() => received.some(e => e.kind === 'permission_resolved'))
 
     // A replayed verdict is never relayed twice.
-    glassesRelay!.send(await glasses.seal('verdict', { request_id: 'wokkv', behavior: 'deny' }))
+    glassesRelay!.send(await glasses.seal('verdict', { request_id: 'wokkv', behavior: 'deny' }, { sid: SESSION }))
     await Bun.sleep(500)
     expect(mcpOut().filter(isVerdict)).toHaveLength(1)
   })
