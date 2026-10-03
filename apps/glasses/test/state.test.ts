@@ -193,7 +193,7 @@ describe('reduce: menu and stop', () => {
     expect(r.state.stopPending).toBe(true)
   })
 
-  test('choosing Talk does nothing until voice exists', () => {
+  test('choosing Talk does nothing without a Groq key', () => {
     const r = g(g(working(), 'tap').state, 'tap')
     expect(r.effects).toEqual([])
     expect(r.state.screen).toBe('menu')

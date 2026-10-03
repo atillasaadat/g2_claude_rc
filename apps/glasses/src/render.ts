@@ -19,6 +19,7 @@ function header(s: AppState): string {
     return fitLine(`Reply ${s.replyPage + 1}/${s.reply.pages.length} · ↑↓ pages${s.session ? ` · ${s.session.name}` : ''}`)
   }
   if (s.screen === 'menu') return fitLine(`Menu${s.session ? ` · ${s.session.name}` : ''}`)
+  if (s.screen === 'voice') return VOICE_HEADER[s.voice.phase]
   if (s.screen === 'card' && s.cards[0]) {
     return fitLine(`Allow ${s.cards[0].tool_name}?${s.cards.length > 1 ? ` · 1/${s.cards.length}` : ''}`)
   }
@@ -68,11 +69,39 @@ function unpairedBody(): string {
 
 function menuBody(s: AppState): string {
   const items = menuItems(s).map((item, i) => {
-    const label = item.available ? item.label : `${item.label} (coming soon)`
+    const label = item.label
     // fitLine trims, so the indent goes outside it and the label gets the remaining width.
     return indent(i === s.menuIndex, label)
   })
   return [...items, '', fitLine('tap: select · double tap: back')].join('\n')
+}
+
+const VOICE_HEADER: Record<AppState['voice']['phase'], string> = {
+  idle: 'Voice',
+  listening: 'Listening…',
+  transcribing: 'Transcribing…',
+  review: 'Send to Claude?',
+  error: 'Voice',
+}
+const REVIEW_LINES = 6
+
+function voiceBody(s: AppState): string {
+  switch (s.voice.phase) {
+    case 'listening':
+      return ['Speak now. Say "stop" to stop Claude.', '', 'tap: done · double tap: cancel'].map(l => fitLine(l)).join('\n')
+    case 'transcribing':
+      return ['One moment.', '', 'double tap: cancel'].map(l => fitLine(l)).join('\n')
+    case 'review': {
+      const lines = wrapLines(s.voice.text ?? '')
+      const shown =
+        lines.length <= REVIEW_LINES
+          ? lines
+          : [...lines.slice(0, REVIEW_LINES - 1), fitLine(`${lines[REVIEW_LINES - 1]} ${lines[REVIEW_LINES]}`)]
+      return [...shown, '', fitLine('tap: send · double tap: cancel')].join('\n')
+    }
+    default:
+      return [s.voice.error ?? '', '', 'tap: try again · double tap: cancel'].map(l => fitLine(l)).join('\n')
+  }
 }
 
 const PREVIEW_LINES = 4
@@ -117,6 +146,7 @@ export function render(s: AppState): Frame {
   if (!s.paired) return { header: header(s), body: unpairedBody() }
   if (s.screen === 'card' && s.cards[0]) return { header: header(s), body: cardBody(s, s.cards[0]) }
   if (s.screen === 'menu') return { header: header(s), body: menuBody(s) }
+  if (s.screen === 'voice') return { header: header(s), body: voiceBody(s) }
   if (s.screen === 'reply' && s.reply) return { header: header(s), body: s.reply.pages[s.replyPage] ?? '' }
   return { header: header(s), body: feedBody(s) }
 }

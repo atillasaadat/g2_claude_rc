@@ -93,7 +93,7 @@ describe('render: menu and stop', () => {
     const out = render(s)
     expect(out.header.startsWith('Menu')).toBe(true)
     const lines = out.body.split('\n')
-    expect(lines[0]).toBe('   Talk (coming soon)')
+    expect(lines[0]).toBe('   Talk (no Groq key)')
     expect(lines[1]).toBe('▶ Stop Claude')
     assertFits(out.body, BODY_LINES)
   })

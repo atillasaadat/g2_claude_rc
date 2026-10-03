@@ -1,45 +1,54 @@
-// Speech-to-text client for the G2 microphone.
+// Speech to text via the Groq Whisper API (free tier, chosen in Phase 0).
+// Batch: the whole recording is posted after the user taps done.
 //
-// The G2 mic emits PCM s16le @ 16 kHz, mono via `bridge.audioControl(true)`.
-// Each onEvenHubEvent callback with `audioEvent.audioPcm` delivers a chunk.
-//
-// ─────────────────────────────────────────────────────────────────────
-// choose your own implementation here
-// ─────────────────────────────────────────────────────────────────────
-// Pick whichever STT provider you prefer (streaming or batch, hosted
-// or self-hosted) and implement the three functions below. The rest
-// of the scaffold (main.ts, ui.ts) already wires the mic into
-// `sendPcm` and renders whatever `onSnapshot` emits.
-//
-// Treat each snapshot as a full transcript state, not a delta:
-//   - finalText: text the provider is confident about
-//   - interimText: unstable tail that may still change
-//   - finished: true on the terminal message, after which no more
-//     snapshots will be emitted
-//
-// Don't forget to add a `network` permission to app.json with your
-// provider's hosts in the `whitelist` array once you wire this up.
-// `evenhub pack` rejects an empty whitelist, which is why the default
-// app.json omits the `network` entry entirely.
-// ─────────────────────────────────────────────────────────────────────
+// The key comes from VITE_STT_API_KEY in .env.local and is baked into the
+// bundle, which is acceptable for a personal sideload only: never publish
+// the .ehpk. app.json whitelists https://api.groq.com.
 
-export interface SttSnapshot {
-  finalText: string
-  interimText: string
-  finished: boolean
+import { pcmToWav } from './wav'
+
+export const GROQ_URL = 'https://api.groq.com/openai/v1/audio/transcriptions'
+export const GROQ_MODEL = 'whisper-large-v3-turbo'
+/** Biases Whisper toward the words people say to a coding agent. */
+const VOCABULARY = 'Claude, Claude Code, git, GitHub, Bash, npm, bun, TypeScript, JavaScript, Python, pull request, commit, refactor, lint, repo.'
+
+export class SttError extends Error {}
+
+export interface TranscribeOptions {
+  apiKey: string
+  fetchImpl?: typeof fetch
+  timeoutMs?: number
 }
 
-export interface SttClient {
-  sendPcm(chunk: Uint8Array): void
-  close(): void
-}
+export async function transcribe(pcm: readonly Uint8Array[], opts: TranscribeOptions): Promise<string> {
+  if (!opts.apiKey) throw new SttError('No Groq API key: set VITE_STT_API_KEY in .env.local')
+  const form = new FormData()
+  form.append('file', new File([pcmToWav(pcm) as BlobPart], 'speech.wav', { type: 'audio/wav' }))
+  form.append('model', GROQ_MODEL)
+  form.append('language', 'en')
+  form.append('response_format', 'json')
+  form.append('temperature', '0')
+  form.append('prompt', VOCABULARY)
 
-export function startSttStream(
-  _apiKey: string,
-  _onSnapshot: (snap: SttSnapshot) => void,
-  _onError?: (err: unknown) => void,
-): SttClient {
-  throw new Error(
-    'STT provider not implemented: open src/asr/stt.ts and wire up your chosen STT service.',
-  )
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 15_000)
+  let res: Response
+  try {
+    res = await (opts.fetchImpl ?? fetch)(GROQ_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${opts.apiKey}` },
+      body: form,
+      signal: controller.signal,
+    })
+  } catch (err) {
+    if ((err as Error).name === 'AbortError') throw new SttError('Transcription timed out')
+    throw new SttError('Could not reach Groq')
+  } finally {
+    clearTimeout(timer)
+  }
+  if (res.status === 401) throw new SttError('Groq rejected the API key')
+  if (res.status === 429) throw new SttError('Groq free-tier limit reached, try again shortly')
+  if (!res.ok) throw new SttError(`Transcription failed (HTTP ${res.status})`)
+  const body = (await res.json()) as { text?: unknown }
+  return typeof body.text === 'string' ? body.text.trim() : ''
 }

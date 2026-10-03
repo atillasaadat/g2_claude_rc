@@ -52,6 +52,8 @@ export interface ControllerOptions {
   emit: (e: Emitted) => void
   /** Sends notifications/claude/channel/permission back to Claude Code. */
   sendVerdict?: (requestId: string, behavior: 'allow' | 'deny') => void
+  /** Injects a confirmed voice prompt as a notifications/claude/channel event. */
+  sendPrompt?: (text: string) => void
 }
 
 export class SessionController {
@@ -166,8 +168,15 @@ export class SessionController {
         this.note(`${behavior === 'allow' ? 'Allowed' : 'Denied'} ${pending.tool_name} from glasses`)
         return
       }
+      case 'prompt': {
+        // Channel events queue while Claude is busy and arrive on the next turn.
+        const state = this.tracker.snapshot().state
+        this.opts.sendPrompt?.(env.body.text)
+        if (state === 'working' || state === 'waiting') this.note('Queued for the next turn: Claude is busy')
+        return
+      }
       default:
-        // prompt, answer: later phases.
+        // answer: Phase 7.
         return
     }
   }

@@ -204,11 +204,19 @@ describe('channel feed end to end', () => {
     expect(await next.json()).toEqual({})
   })
 
+  test('a confirmed voice prompt is injected as a channel event', async () => {
+    glassesRelay!.send(await glasses.seal('prompt', { text: 'run the unit tests' }))
+    const isChannel = (m: Record<string, unknown>) => m.method === 'notifications/claude/channel'
+    await until(() => mcpOut().some(isChannel))
+    expect(mcpOut().find(isChannel)!.params).toEqual({ content: 'run the unit tests', meta: { source_kind: 'voice' } })
+  })
+
   test('the MCP side advertises the channel and permission capabilities and instructions', async () => {
     const init = mcpOut().find(m => m.id === 1) as { result: { capabilities: { experimental: Record<string, unknown> }; instructions: string } }
     expect(init.result.capabilities.experimental['claude/channel']).toEqual({})
     expect(init.result.capabilities.experimental['claude/channel/permission']).toEqual({})
     expect(init.result.instructions).toContain('glance')
+    expect(init.result.instructions).toContain('transcription errors')
   })
 
   test('a permission request reaches the glasses, and Allow goes back to Claude Code', async () => {

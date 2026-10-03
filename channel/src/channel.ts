@@ -22,6 +22,8 @@ type C2GKind = (typeof C2G_KINDS)[number]
 
 export const INSTRUCTIONS = [
   'The user may be following this session on Even Realities G2 smart glasses, which show a live feed of your tool calls and your final reply.',
+  'Messages wrapped in <channel source="g2"> were spoken by the user through the glasses and transcribed by speech recognition, so they can contain transcription errors.',
+  'Treat them as the user\'s own prompts. If a spoken request is ambiguous, or would do something destructive or hard to undo, ask the user to confirm before acting.',
   `At the end of each turn, call the glance tool with a one-line plain-text summary (at most ${GLANCE_MAX} characters) of what you did or what you need from the user.`,
 ].join(' ')
 
@@ -83,6 +85,12 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
     name: cfg.sessionName,
     cwd: cfg.projectDir,
     emit: e => emit(e.kind, e.body as never),
+    sendPrompt: text => {
+      // meta keys must be identifiers or Claude Code drops them silently.
+      void mcp
+        .notification({ method: 'notifications/claude/channel', params: { content: text, meta: { source_kind: 'voice' } } })
+        .catch(err => log(`prompt not delivered: ${(err as Error).message}`))
+    },
     sendVerdict: (request_id, behavior) => {
       void mcp
         .notification({ method: 'notifications/claude/channel/permission', params: { request_id, behavior } })

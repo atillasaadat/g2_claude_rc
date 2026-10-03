@@ -330,3 +330,33 @@ The difference is that auto mode opens no permission dialogs, so the channel get
   - The em dashes in the template leftovers (`apps/glasses/README.md`, now rewritten for this app, and `src/asr/stt.ts`) were removed too.
   - The only remaining em dashes are in generated Cloudflare types (`relay/worker-configuration.d.ts`).
 - **Phase 5 status: done.**
+
+## Phase 6: voice prompts (2026-10-03)
+
+- **Flow:**
+  1. Menu → Talk. The mic opens (`AudioInputSource.Glasses`) and the screen shows `Listening…`.
+  2. Tap. The screen shows `Transcribing…` while the audio goes to Groq Whisper.
+  3. The screen shows `Send to Claude?` with the transcript. Tap sends; double tap cancels at any phase. **Nothing is sent without that confirming tap.**
+- **STT** is Groq `whisper-large-v3-turbo`, batch, called directly from the WebView. CORS was verified in Phase 0, and `app.json` whitelists `https://api.groq.com`.
+  - Settings: `language=en`, `temperature=0`, and a `prompt` listing coding vocabulary (Claude, git, Bash, npm, bun, TypeScript…).
+  - The client times out after 15 s, and 401 and 429 get readable errors.
+  - Recordings are capped at 60 s. Under 0.3 s counts as "didn't catch that".
+  - A real API smoke test with the user's key returned in 269 ms. One second of silence came back as "Thank you.", a known Whisper hallucination, which the parser treats as empty.
+- **The mic is derived state.** `micWanted(state)` is true only while the voice screen is listening, and `main.ts` syncs `audioControl` to it through the bridge queue. So anything that leaves listening turns the mic off without a separate effect, including a preempting permission card.
+- **Attempts:** each recording increments `voice.attempt`. Transcripts and errors carry their attempt, so a late result from a cancelled recording is ignored.
+- **Keywords** (`src/voice.ts`) are strict whole-utterance matches. Leading filler (please, ok, yes…) and trailing filler (it, that, claude, now…) are stripped first.
+  - "stop" stops immediately.
+  - "cancel" discards.
+  - "approve", "allow", "deny" and "reject" act only while a permission card is showing. Otherwise the screen shows "No approval is waiting" and nothing is sent.
+  - A sentence like "stop the dev server" stays a prompt.
+  - A card that appears while a transcription is in flight can be answered by it.
+- **Channel:**
+  - A `prompt` envelope becomes `notifications/claude/channel` with `content` set to the transcript and `meta.source_kind` set to `voice`.
+  - When Claude is busy, the glasses are told the prompt is queued for the next turn.
+  - The `instructions` now say that g2 channel messages are spoken and transcribed, may contain transcription errors, and that Claude should confirm ambiguous or destructive requests.
+- **Testing:**
+  - A dev-only `VITE_G2CC_FAKE_STT` makes the app return a canned transcript, so the simulator test drives the whole flow: menu, Talk, listening, done, review, send, and the prompt at the computer.
+  - The Linux simulator under WSL only has `alsa:null` as an input device. Live speech needs the ALSA pulse plugin pointed at WSLg's PulseAudio, or real hardware (Phase 8).
+- **Known gaps:**
+  - The on-screen hints ("tap: send") are fixed text and do not follow a remapped gesture map.
+  - The `ask` tool for clarifications arrives in Phase 7. For now Claude confirms in its reply.

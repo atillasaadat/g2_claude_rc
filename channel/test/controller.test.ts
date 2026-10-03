@@ -114,9 +114,38 @@ describe('SessionController: hooks', () => {
     expect(out.map(e => e.kind)).toEqual(['event', 'session'])
   })
 
-  test('other inbound kinds are ignored for now', () => {
+  test('answers are ignored until Phase 7', () => {
     const { c, out } = setup()
-    c.onInbound(makeEnvelope('prompt', { text: 'hi' }) as AnyEnvelope)
+    c.onInbound(makeEnvelope('answer', { question_id: 'q1', choice: 'a' }) as AnyEnvelope)
     expect(out).toEqual([])
+  })
+})
+
+describe('SessionController: voice prompts', () => {
+  function withPrompts() {
+    const out: Emitted[] = []
+    const prompts: string[] = []
+    const c = new SessionController({ sessionId: SID, name: 'repo', cwd: '/r', emit: e => out.push(e), sendPrompt: t => prompts.push(t) })
+    return { c, out, prompts }
+  }
+
+  test('a prompt from the glasses is injected into the session', () => {
+    const { c, prompts } = withPrompts()
+    c.onInbound(makeEnvelope('prompt', { text: 'run the unit tests' }) as AnyEnvelope)
+    expect(prompts).toEqual(['run the unit tests'])
+  })
+
+  test('while Claude is busy the glasses are told it is queued', () => {
+    const { c, out, prompts } = withPrompts()
+    c.onHook({ ...base, hook_event_name: 'UserPromptSubmit', prompt: 'x' })
+    c.onInbound(makeEnvelope('prompt', { text: 'and then lint' }) as AnyEnvelope)
+    expect(prompts).toEqual(['and then lint'])
+    expect(notes(out)).toContain('Queued for the next turn: Claude is busy')
+  })
+
+  test('a prompt for another session is ignored', () => {
+    const { c, prompts } = withPrompts()
+    c.onInbound(makeEnvelope('prompt', { text: 'x' }, { sid: 'other' }) as AnyEnvelope)
+    expect(prompts).toEqual([])
   })
 })

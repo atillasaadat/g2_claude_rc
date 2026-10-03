@@ -10,6 +10,13 @@
     {
       "name": "g2-microphone",
       "desc": "Capture audio from the glasses mic for live transcription."
+    },
+    {
+      "name": "network",
+      "desc": "Transcribe voice prompts with Groq Whisper.",
+      "whitelist": [
+        "https://api.groq.com"
+      ]
     }
   ],
   "supported_languages": [

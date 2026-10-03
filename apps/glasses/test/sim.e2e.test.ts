@@ -13,6 +13,7 @@ import { PNG } from 'pngjs'
 import { encodePairing, generateKey, RelayClient, SecureChannel, toBase64Url, type AnyEnvelope, type Body } from '@g2cc/protocol'
 
 const RUN = process.env.G2CC_SIM === '1'
+const FAKE_TRANSCRIPT = 'Run the unit tests and tell me what failed.'
 const APP = join(import.meta.dir, '..')
 const ROOT = join(APP, '..', '..')
 const ARTIFACTS = join(APP, 'test', 'artifacts')
@@ -110,7 +111,7 @@ beforeAll(async () => {
   await waitFor(async () => (await fetch(`http://127.0.0.1:${wranglerPort}/`)).ok, 'relay')
 
   const vitePort = freePort()
-  procs.push(Bun.spawn(['./node_modules/.bin/vite', '--host', '127.0.0.1', '--port', String(vitePort), '--strictPort'], { cwd: APP, stdout: 'ignore', stderr: 'ignore' }))
+  procs.push(Bun.spawn(['./node_modules/.bin/vite', '--host', '127.0.0.1', '--port', String(vitePort), '--strictPort'], { cwd: APP, stdout: 'ignore', stderr: 'ignore', env: { ...process.env, VITE_G2CC_FAKE_STT: FAKE_TRANSCRIPT, VITE_STT_API_KEY: '' } }))
   await waitFor(async () => (await fetch(`http://127.0.0.1:${vitePort}/`)).ok, 'vite')
 
   const key = generateKey()
@@ -196,7 +197,7 @@ describe.skipIf(!RUN)('glasses app in the simulator', () => {
     await frameWhere(f => f.header.includes('working'), 'working header')
     await input('click')
     const menu = await frameWhere(f => f.header.startsWith('Menu'), 'menu')
-    expect(menu.body.split('\n')[0]).toBe('▶ Talk (coming soon)')
+    expect(menu.body.split('\n')[0]).toBe('▶ Talk')
     await screenshot('menu')
 
     await input('down')
@@ -236,5 +237,23 @@ describe.skipIf(!RUN)('glasses app in the simulator', () => {
     await frameWhere(f => f.header === 'Allow Write?', 'second card')
     await send('permission_resolved', { request_id: 'fghij' })
     await frameWhere(f => f.header.startsWith('●'), 'card closed by resolution')
+  })
+
+  test('voice: Talk, speak, review, and send a prompt to the computer', async () => {
+    await send('session', { name: 'g2cc-sandbox', cwd: '/x', state: 'idle', mode: 'auto' })
+    await frameWhere(f => f.header.includes('idle'), 'idle header')
+    await input('click') // menu
+    await frameWhere(f => f.header.startsWith('Menu') && f.body.startsWith('▶ Talk'), 'menu with Talk')
+    await input('click') // Talk
+    await frameWhere(f => f.header === 'Listening…', 'listening')
+    await screenshot('listening')
+    await input('click') // done speaking
+    const review = await frameWhere(f => f.header === 'Send to Claude?', 'review')
+    expect(review.body.split('\n')[0]).toBe(FAKE_TRANSCRIPT)
+    await screenshot('voice-review')
+    await input('click') // send
+    await waitFor(async () => inbound.some(e => e.kind === 'prompt'), 'prompt at the computer', 5_000)
+    expect(inbound.find(e => e.kind === 'prompt')!.body).toEqual({ text: FAKE_TRANSCRIPT })
+    await frameWhere(f => f.header.startsWith('●'), 'back to feed')
   })
 })
