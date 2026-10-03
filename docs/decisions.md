@@ -113,6 +113,12 @@ Environment: WSL2 Ubuntu 24.04, Bun 1.3.14, Node 24.14.1, Claude Code 2.1.288, c
   - Also send the glasses a `permission_resolved` envelope, so a phone or terminal answer clears the card.
 - The glasses must also accept prompts typed on the phone (RC) or in the terminal. These arrive as UserPromptSubmit without the `<channel source="g2">` wrapper.
 
+### Auto mode
+
+Glasses work in auto mode. Hooks, stop, voice prompts, `ask` and `glance` are all independent of the permission mode. Probe tests 1 and 2 ran with `permission_mode: "auto"`, and the feed and the stop halt worked.
+
+The difference is that auto mode opens no permission dialogs, so the channel gets no `permission_request` and the permission card never appears. The feed header should show the mode, which comes from `permission_mode` in every hook payload, so the user knows whether approvals will reach the glasses.
+
 ### Phase 0 status: **done** (2026-10-02). All 10 live checks pass.
 
 ### Open decisions
