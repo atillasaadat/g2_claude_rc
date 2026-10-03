@@ -224,3 +224,7 @@ The difference is that auto mode opens no permission dialogs, so the channel get
 - Tests:
   - 77 channel tests, 5 of them end to end: the real `server.ts` plus `wrangler dev` plus a glasses client, checking order, redaction, the session filter and glance
   - 149 tests across the repo
+- **Live check (2026-10-03): pass.**
+  - A real `--rc` sandbox session, running in auto mode, streamed its whole turn through the local relay to `tools/feed.ts`, in order: session header, prompt, `working · auto`, Bash start and end, glance, the full reply, `idle`.
+  - Follow-up: `ToolSearch` and the channel's own `mcp__g2__*` tools are now hidden from the feed. They were noise, and glance already arrives as its own envelope.
+- **Phase 2 status: done.**

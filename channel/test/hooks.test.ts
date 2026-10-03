@@ -22,10 +22,16 @@ describe('translateHook: tool_start summaries', () => {
     [pre('WebFetch', { url: 'https://example.com/docs?q=1' }), 'WebFetch', 'example.com/docs'],
     [pre('WebSearch', { query: 'bun websocket' }), 'WebSearch', 'bun websocket'],
     [pre('Task', { description: 'Explore repo' }), 'Task', 'Explore repo'],
-    [pre('mcp__g2__glance', { text: 'hi' }), 'g2:glance', 'g2:glance'],
+    [pre('mcp__github__create_issue', { title: 'x' }), 'github:create_issue', 'github:create_issue'],
     [pre('SomethingNew', { x: 1 }), 'SomethingNew', 'SomethingNew'],
   ])('%#', (payload, tool, summary) => {
     expect(translateHook(payload)).toEqual([{ kind: 'event', body: { type: 'tool_start', tool, summary } }])
+  })
+
+  test('hides tool discovery and our own channel tools', () => {
+    expect(translateHook(pre('ToolSearch', { query: 'select:x' }))).toEqual([])
+    expect(translateHook(pre('mcp__g2__glance', { text: 'hi' }))).toEqual([])
+    expect(translateHook(post('mcp__g2__glance', { text: 'hi' }, {}))).toEqual([])
   })
 
   test('redacts secrets in commands', () => {

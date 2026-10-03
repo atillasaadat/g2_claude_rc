@@ -32,6 +32,14 @@ export type Outbound = { kind: 'event'; body: Body<'event'> } | { kind: 'reply';
 
 type SessionBody = Body<'session'>
 
+/**
+ * Plumbing that would only clutter a 4-line feed: tool discovery, and our own
+ * channel tools (glance arrives as its own envelope).
+ */
+function isHiddenTool(name: string): boolean {
+  return name === 'ToolSearch' || name.startsWith('mcp__g2__')
+}
+
 const CHANNEL_WRAPPER = /^<channel source="g2"[^>]*>\n?([\s\S]*?)\n?<\/channel>\s*$/
 
 const summary = (text: string): string => clip(oneLine(redact(text)), SUMMARY_MAX)
@@ -109,12 +117,12 @@ function endSummary(tool: string, input: unknown, response: unknown, cwd: string
 export function translateHook(p: HookPayload): Outbound[] {
   switch (p.hook_event_name) {
     case 'PreToolUse': {
-      if (!p.tool_name) return []
+      if (!p.tool_name || isHiddenTool(p.tool_name)) return []
       const tool = toolLabel(p.tool_name)
       return [{ kind: 'event', body: { type: 'tool_start', tool, summary: summary(startSummary(p.tool_name, p.tool_input, p.cwd)) } }]
     }
     case 'PostToolUse': {
-      if (!p.tool_name) return []
+      if (!p.tool_name || isHiddenTool(p.tool_name)) return []
       const tool = toolLabel(p.tool_name)
       return [{ kind: 'event', body: { type: 'tool_end', tool, summary: summary(endSummary(p.tool_name, p.tool_input, p.tool_response, p.cwd)) } }]
     }
