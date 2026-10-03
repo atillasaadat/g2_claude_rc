@@ -11,4 +11,4 @@ dist/
 ruvector.db
 .claude/proven-config*
 .claude/.proven-config-version
-test/artifacts/
+apps/glasses/test/artifacts/
