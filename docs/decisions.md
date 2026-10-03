@@ -503,3 +503,24 @@ The user asked for boxes, overlays, a voice box that fills in while speaking, an
   - A double tap at live opened the system exit dialog (`shutDownPageContainer(1)`). In the simulator that showed as a black screen that took no further input.
   - Timeline double tap now only jumps to live, and the tap menu gains `Exit app` as its last item.
   - Gesture validation now requires the timeline to reach the menu (which always has Exit) or to exit directly.
+
+## Phase 8 (part 1): deployed (2026-10-03)
+
+- **One Worker** (`g2cc-relay`) on the route `atillasaadat.com/g2-claude*`. The Pages site keeps every other path; `/` and `/about` were checked after deploy.
+  - It serves `/g2-claude/` (the setup guide, `relay/public/g2-claude/index.html`), `/g2-claude/app/` (the built glasses app, base path `/g2-claude/app/`), and the relay at `/g2-claude/v1/room/<id>`.
+  - Static assets have `run_worker_first` for relay paths, and `_headers` sets `no-cache` on the app entry and `immutable` on hashed assets. The Even app reloads the URL, so the glasses get every deploy.
+  - A per-IP limit of 30 WebSocket connects per minute (`ratelimits` binding) runs before a Durable Object wakes. Tests disable it with `--var CONNECT_LIMIT_ENABLED:false`.
+- **No secrets in public assets:**
+  - Vite exposes only `VITE_G2CC_*`. The dev Groq key is injected only by the dev server.
+  - `apps/glasses/scripts/check-bundle.ts` fails the build on secret-shaped strings.
+  - The Groq key travels in the pairing as an optional `sttKey`, or is entered in the phone view, and is stored in SDK local storage.
+- **Pairing:**
+  - For a `wss://` relay, `bun channel/pair.ts --relay wss://atillasaadat.com/g2-claude` prints one QR, `https://atillasaadat.com/g2-claude/app/#pair=<base64url>`, which loads and pairs in one scan. The fragment never reaches the server.
+  - The guide also has a public install-only QR.
+- **Setup:** `scripts/install.sh` registers the channel at user scope (`claude mcp add --scope user g2`) and merges the http hooks and permissions into `~/.claude/settings.json`. It is idempotent, makes backups, and `--remove` undoes it. Users then launch with `cc-g2` in any repo.
+- **CI:** `.github/workflows/deploy.yml` tests, builds and deploys on pushes to `main`, once the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets exist. Without them the deploy step skips with a notice.
+- **Verified live:**
+  - The guide, the app, the QR and the 404 are served with the intended cache headers.
+  - The JS asset loads from the base path and contains no secrets.
+  - An encrypted round trip through `wss://atillasaadat.com/g2-claude` took 86 ms, with presence `computer=1 glasses=1`.
+- **Next:** hardware. Install and pair on the real G2 over cellular, check whether a QR-loaded app persists across Even app restarts, and pack the `.ehpk`.
