@@ -22,7 +22,7 @@ import {
   TIMELINE_LINES,
   type Box,
 } from './layout'
-import { FADE_MS, menuItems, type AppState, type Link, type PermissionCard, type QuestionCard } from './state'
+import { FADE_MS, menuItems, sessionList, sessionName, view, type AppState, type Link, type PermissionCard, type QuestionCard } from './state'
 import { buildTimeline, visibleWindow } from './timeline'
 
 export interface ContainerSpec {
@@ -68,15 +68,20 @@ const dots = (clock: number): string => '·'.repeat(1 + (Math.floor(clock / 400)
 
 function statusHeader(s: AppState): string {
   if (!s.paired) return fitLine('G2 Claude Code · not paired', HEADER_WIDTH)
-  if (!s.session) return spread(`${DOT[s.link]} waiting for Claude Code`, '', HEADER_WIDTH)
-  const { name, state, mode } = s.session
-  const status = s.stopPending ? '■ stopping…' : state === 'working' ? `working ${dots(s.clock)}` : state
-  const right = s.fromBottom > 0 ? `▼ ${s.fromBottom} newer` : (mode ?? '')
+  // A toast about another session takes the header for a few seconds.
+  if (s.toast && s.clock < s.toast.until) return fitLine(s.toast.text, HEADER_WIDTH)
+  const v = view(s)
+  if (!v.session) return spread(`${DOT[s.link]} waiting for Claude Code`, '', HEADER_WIDTH)
+  const { name, state, mode } = v.session
+  const status = v.stopPending ? '■ stopping…' : state === 'working' ? `working ${dots(s.clock)}` : state
+  const unread = sessionList(s).some(x => x.sid !== s.active && x.view.unread) ? '◆ ' : ''
+  const right = `${unread}${v.fromBottom > 0 ? `▼ ${v.fromBottom} newer` : (mode ?? '')}`
   return spread(`${DOT[s.link]} ${name} · ${status}`, right, HEADER_WIDTH)
 }
 
 const HINTS: Record<Exclude<AppState['screen'], 'timeline'>, string> = {
   menu: '↑↓ choose · tap: select · 2× tap: back',
+  sessions: '↑↓ choose · tap: switch · 2× tap: back',
   card: '↑ allow · ↓ deny · tap: confirm · 2× tap: later',
   question: '↑↓ choose · tap: answer · 2× tap: later',
   voice: '',
@@ -107,9 +112,10 @@ function timelineText(s: AppState): string {
       .map(l => fitLine(l, w))
       .join('\n')
   }
-  const { lines } = buildTimeline(s.entries)
+  const v = view(s)
+  const { lines } = buildTimeline(v.entries)
   if (!lines.length) return fitLine('No activity yet. Tap for the menu.', w)
-  return visibleWindow(lines, TIMELINE_LINES, s.fromBottom).join('\n')
+  return visibleWindow(lines, TIMELINE_LINES, v.fromBottom).join('\n')
 }
 
 // Overlays ---------------------------------------------------------------
@@ -119,6 +125,23 @@ function menuOverlay(s: AppState): { box: Box; content: string } {
   const box = sideBox(items.length)
   return { box, content: items.map((item, i) => indent(i === s.menuIndex, item.label, innerWidth(box))).join('\n') }
 }
+
+const STATE_GLYPH: Record<string, string> = { working: '▶', waiting: '!', idle: '·', stopped: '■' }
+
+function sessionsOverlay(s: AppState): { box: Box; content: string } {
+  const list = sessionList(s)
+  const box = overlayBox(list.length)
+  const w = innerWidth(box)
+  const lines = list.map(({ sid, view: v }, i) => {
+    const st = v.session?.state ?? 'idle'
+    const label = `${STATE_GLYPH[st] ?? '·'} ${v.session?.name ?? sid} · ${st}${sid === s.active ? ' (on screen)' : ''}${v.unread ? '  ◆' : ''}`
+    return indent(i === s.sessionIndex, label, w)
+  })
+  return { box, content: lines.join('\n') }
+}
+
+/** With several sessions, cards say which one is asking. */
+const fromSession = (s: AppState, sid: string): string => (sessionList(s).length > 1 ? ` · ${sessionName(s, sid)}` : '')
 
 /** The preview is JSON text from Claude Code. Show its fields, minus a repeat of the description. */
 function previewText(card: PermissionCard): string {
@@ -138,7 +161,7 @@ function previewText(card: PermissionCard): string {
 
 function cardOverlay(s: AppState, card: PermissionCard): { box: Box; content: string } {
   const w = OVERLAY_WIDTH
-  const title = `Allow ${card.tool_name}?${s.cards.length > 1 ? `  (1 of ${s.cards.length})` : ''}`
+  const title = `Allow ${card.tool_name}?${fromSession(s, card.sid)}${s.cards.length > 1 ? `  (1 of ${s.cards.length})` : ''}`
   // Short fixed labels, so no fitting: fitLine would collapse the spacing.
   const mark = (on: boolean) => (on ? '▶ ' : '   ')
   const choices = `${mark(s.cardChoice === 'allow')}Allow${' '.repeat(12)}${mark(s.cardChoice === 'deny')}Deny`
@@ -155,8 +178,9 @@ function cardOverlay(s: AppState, card: PermissionCard): { box: Box; content: st
 
 function questionOverlay(s: AppState, q: QuestionCard): { box: Box; content: string } {
   const w = OVERLAY_WIDTH
-  const head = s.questions.length > 1 ? `(1 of ${s.questions.length}) ${q.question}` : q.question
-  const lines = [...clampLines(head, 3, w), '', ...q.options.map((o, i) => indent(i === s.questionIndex, o, w))]
+  const count = s.questions.length > 1 ? `(1 of ${s.questions.length}) ` : ''
+  const who = sessionList(s).length > 1 ? `${sessionName(s, q.sid)} asks: ` : ''
+  const lines = [...clampLines(`${count}${who}${q.question}`, 3, w), '', ...q.options.map((o, i) => indent(i === s.questionIndex, o, w))]
   return { box: overlayBox(lines.length), content: lines.join('\n') }
 }
 
@@ -188,6 +212,8 @@ function overlay(s: AppState): { name: string; box: Box; content: string } | nul
   switch (s.screen) {
     case 'menu':
       return { name: 'menu', ...menuOverlay(s) }
+    case 'sessions':
+      return { name: 'sessions', ...sessionsOverlay(s) }
     case 'card':
       return s.cards[0] ? { name: 'card', ...cardOverlay(s, s.cards[0]) } : null
     case 'question':

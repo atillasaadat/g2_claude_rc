@@ -449,3 +449,41 @@ The user asked for boxes, overlays, a voice box that fills in while speaking, an
 - **Tests:**
   - 129 glasses unit tests: timeline, scrolling, reply landing, priority, overlays, voice partials, render fit for every container, occlusion, the recorder rate cap, and display rebuild versus upgrade.
   - 7 simulator tests, rewritten for the scene frames.
+
+## Multi-session and notifications (2026-10-03)
+
+**Switching sessions (user request).** All `cc-g2` sessions share one pairing key and relay room. Each channel tags its envelopes with its session ID.
+
+- **Hook routing without a daemon** (`channel/src/router.ts`):
+  - Each channel serves its own session's hooks on a private random port and registers `{sid, port, pid}` in `~/.g2cc/sessions/<sid>.json` (0700 directory, 0600 file, UUID-shaped IDs only).
+  - Whichever channel binds 27183 is the router. It answers its own session locally and forwards the rest to the owning channel by `session_id`, returning that channel's response. That includes the stop halt and the AskUserQuestion redirect.
+  - The other channels retry 27183 every 3 s, so one takes over when the router's session ends.
+  - Unknown, stale (dead PID) or unreachable sessions get `{}`, which fails open.
+- **Commands must name their session:**
+  - A channel ignores stop, prompt, verdict and answer envelopes whose `sid` is not its own, including a missing `sid`.
+  - The glasses send stop and prompts to the session on screen, and verdicts and answers to the session that asked.
+  - This also fixes a latent bug: a non-owning channel would otherwise answer an unknown verdict with `permission_resolved` and wrongly close another session's card.
+- **The session lifecycle:** a channel emits `state: 'ended'` on shutdown (a new enum value), and the glasses drop that session.
+- **Glasses:**
+  - Each session has its own view (timeline, scroll position, stopping, unread). The first session seen is on screen, and the menu gains `Sessions (n)` when there are two or more.
+  - The session list shows each session's state and an unread `◆`. Tapping switches.
+  - Permission and question cards from any session pop up, labelled `· repo-b` or `repo-b asks:` when several sessions exist.
+  - An ended on-screen session hands the screen to the most recent other one.
+- **In-app toasts:**
+  - A fresh reply, or a "waiting for your input" note, from a session that is not on screen shows `◆ repo-b: reply ready` (or `needs your input`) in the header for 5 s.
+  - The session is marked unread, and the header's right side keeps a `◆` until you switch to it.
+
+**Notifications outside the app (user request).**
+
+- The Even Hub SDK has no notification API. There is no toast, banner or background wake, and an app only draws while it is the active one on the glasses.
+- So notifications while the user is on the dashboard or in another Even app must come from the phone. The Even app mirrors phone notifications to the G2.
+- Claude Code already sends **Claude mobile app push notifications for Remote Control sessions** (https://code.claude.com/docs/en/remote-control):
+  - `inputNeededNotifEnabled` sends one when a permission prompt or question waits.
+  - `agentPushNotifEnabled` sends one when Claude finishes longer work.
+  - Both are toggled in `/config`.
+- Our code cannot trigger them. The `PushNotification` tool is callable only by Claude, not by hooks or MCP servers, and calling Anthropic's push service directly would break the no-credentials rule.
+- Setup is on the user's side: enable both settings, allow Claude app notifications on the phone, and allow the Claude app in the Even app's notification settings for the G2.
+
+**Tests:**
+- Channel: 12 registry and router tests, plus a two-session end to end. It covers per-session tagging through one router, a stop aimed at B halting only B, and B taking over routing after A ends.
+- Glasses: 8 session tests (separate timelines, toasts, unread, the switch list, targeted commands, labelled cards, ended sessions). All 138 unit tests and 7 simulator tests pass.

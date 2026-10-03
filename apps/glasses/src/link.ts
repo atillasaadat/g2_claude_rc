@@ -28,9 +28,10 @@ export class Link {
   }
 
   /** Seals and sends a command. Buffered by the relay client while offline. */
-  async send<K extends OutKind<'glasses'>>(kind: K, body: Body<K>): Promise<void> {
+  /** `sid` names the target session; several channels share the room. */
+  async send<K extends OutKind<'glasses'>>(kind: K, body: Body<K>, sid: string): Promise<void> {
     if (!this.secure || !this.relay) throw new Error('not paired')
-    this.relay.send(await this.secure.seal(kind, body))
+    this.relay.send(await this.secure.seal(kind, body, sid ? { sid } : {}))
   }
 
   disconnect(): void {

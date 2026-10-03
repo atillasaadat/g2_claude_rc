@@ -19,12 +19,12 @@ describe('permission cards', () => {
 
   test('swipe up selects Allow, tap sends it and closes the card', () => {
     const r = g(gs(card(), 'scroll_up'), 'tap')
-    expect(r.effects).toEqual([{ type: 'send', kind: 'verdict', body: { request_id: 'abcde', behavior: 'allow' } }])
+    expect(r.effects).toEqual([{ type: 'send', kind: 'verdict', body: { request_id: 'abcde', behavior: 'allow' }, sid: '' }])
     expect(r.state.screen).toBe('timeline')
   })
 
   test('the default tap denies; taps inside the guard do nothing', () => {
-    expect(g(card(), 'tap').effects).toEqual([{ type: 'send', kind: 'verdict', body: { request_id: 'abcde', behavior: 'deny' } }])
+    expect(g(card(), 'tap').effects).toEqual([{ type: 'send', kind: 'verdict', body: { request_id: 'abcde', behavior: 'deny' }, sid: '' }])
     expect(g(card(), 'tap', NOW + CARD_GUARD_MS - 1).effects).toEqual([])
   })
 
@@ -50,7 +50,7 @@ describe('questions', () => {
     const s = gs(asked(), 'scroll_down')
     expect(s.questionIndex).toBe(1)
     const r = g(s, 'tap')
-    expect(r.effects).toEqual([{ type: 'send', kind: 'answer', body: { question_id: 'q00000001', choice: 'dev' } }])
+    expect(r.effects).toEqual([{ type: 'send', kind: 'answer', body: { question_id: 'q00000001', choice: 'dev' }, sid: '' }])
     expect(r.state.screen).toBe('timeline')
   })
 
@@ -104,12 +104,12 @@ describe('voice', () => {
   test('review, then tap sends the prompt', () => {
     const s = heard(gs(listening(), 'tap'), 'Run the unit tests.').state
     expect(s.voice).toMatchObject({ phase: 'review', text: 'Run the unit tests.' })
-    expect(g(s, 'tap').effects).toEqual([{ type: 'send', kind: 'prompt', body: { text: 'Run the unit tests.' } }])
+    expect(g(s, 'tap').effects).toEqual([{ type: 'send', kind: 'prompt', body: { text: 'Run the unit tests.' }, sid: '' }])
   })
 
   test('keywords: stop stops at once, cancel discards, approve with no card is refused', () => {
     const t = gs(listening(), 'tap')
-    expect(heard(t, 'Stop.').effects).toEqual([{ type: 'send', kind: 'stop', body: {} }])
+    expect(heard(t, 'Stop.').effects).toEqual([{ type: 'send', kind: 'stop', body: {}, sid: '' }])
     expect(heard(t, 'cancel').state.screen).toBe('timeline')
     expect(heard(t, 'approve').state.voice).toMatchObject({ phase: 'error', error: 'No approval is waiting' })
   })
@@ -125,7 +125,7 @@ describe('voice', () => {
     expect([s.screen, micWanted(s)]).toEqual(['card', false])
     let t = card(gs(listening(), 'tap')) // transcription in flight when the card appears
     const r = heard(t, 'Approve.')
-    expect(r.effects).toEqual([{ type: 'send', kind: 'verdict', body: { request_id: 'abcde', behavior: 'allow' } }])
+    expect(r.effects).toEqual([{ type: 'send', kind: 'verdict', body: { request_id: 'abcde', behavior: 'allow' }, sid: '' }])
     t = r.state
   })
 

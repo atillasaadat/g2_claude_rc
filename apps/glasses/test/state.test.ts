@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { DEFAULT_GESTURES } from '../src/gestures'
 import { TIMELINE_LINES } from '../src/layout'
 import { initialState, isAnimating, reduce, SCROLL_STEP, totalLines, type AppState } from '../src/state'
+import { view } from '../src/state'
 import { env, g, gs, NOW, paired, recv, withLines } from './helpers'
 
 describe('timeline: envelopes', () => {
@@ -9,20 +10,20 @@ describe('timeline: envelopes', () => {
     let s = paired()
     s = recv(s, env('session', { name: 'g2cc-sandbox', cwd: '/x', state: 'working' }, NOW + 10))
     s = recv(s, env('session', { name: 'g2cc-sandbox', cwd: '/x', state: 'idle' }, NOW + 5))
-    expect(s.session?.state).toBe('working')
+    expect(view(s).session?.state).toBe('working')
   })
 
   test('tool_end merges into its tool_start, so each tool call is one line', () => {
     let s = recv(paired(), env('event', { type: 'tool_start', tool: 'Bash', summary: 'ls' }))
     s = recv(s, env('event', { type: 'tool_end', tool: 'Bash', summary: 'ok' }))
-    expect(s.entries).toHaveLength(1)
-    expect(s.entries[0]).toMatchObject({ kind: 'tool', tool: 'Bash', text: 'ls', result: 'ok' })
+    expect(view(s).entries).toHaveLength(1)
+    expect(view(s).entries[0]).toMatchObject({ kind: 'tool', tool: 'Bash', text: 'ls', result: 'ok' })
   })
 
   test('glances and replies join the timeline; replies become plain text', () => {
     let s = recv(paired(), env('glance', { text: 'All green' }))
     s = recv(s, env('reply', { text: '**Done.** Ran `bun test`.' }))
-    expect(s.entries.map(e => [e.kind, e.text])).toEqual([
+    expect(view(s).entries.map(e => [e.kind, e.text])).toEqual([
       ['glance', 'All green'],
       ['reply', 'Done. Ran bun test.'],
     ])
@@ -31,8 +32,8 @@ describe('timeline: envelopes', () => {
   test('keeps at most 80 entries and does not mutate the previous state', () => {
     const s0 = paired()
     const s = withLines(s0, 100)
-    expect(s.entries).toHaveLength(80)
-    expect(s0.entries).toHaveLength(0)
+    expect(view(s).entries).toHaveLength(80)
+    expect(view(s0).entries).toHaveLength(0)
   })
 })
 
@@ -40,28 +41,28 @@ describe('timeline: scrolling', () => {
   test('swipe up scrolls back by SCROLL_STEP, swipe down returns, both clamped', () => {
     const s = withLines(paired(), 30)
     const up = gs(s, 'scroll_up')
-    expect(up.fromBottom).toBe(SCROLL_STEP)
-    expect(gs(up, 'scroll_down').fromBottom).toBe(0)
-    expect(gs(s, 'scroll_down').fromBottom).toBe(0)
+    expect(view(up).fromBottom).toBe(SCROLL_STEP)
+    expect(view(gs(up, 'scroll_down')).fromBottom).toBe(0)
+    expect(view(gs(s, 'scroll_down')).fromBottom).toBe(0)
     const top = gs(s, ...Array(30).fill('scroll_up'))
-    expect(top.fromBottom).toBe(totalLines(s.entries) - TIMELINE_LINES)
+    expect(view(top).fromBottom).toBe(totalLines(view(s).entries) - TIMELINE_LINES)
   })
 
   test('no scrolling when everything fits', () => {
-    expect(gs(withLines(paired(), 3), 'scroll_up').fromBottom).toBe(0)
+    expect(view(gs(withLines(paired(), 3), 'scroll_up')).fromBottom).toBe(0)
   })
 
   test('new lines keep a scrolled-up view steady, and follow live at the bottom', () => {
     const s = gs(withLines(paired(), 30), 'scroll_up')
     const more = withLines(s, 2)
-    expect(more.fromBottom).toBe(SCROLL_STEP + 2)
-    expect(withLines(withLines(paired(), 30), 2).fromBottom).toBe(0)
+    expect(view(more).fromBottom).toBe(SCROLL_STEP + 2)
+    expect(view(withLines(withLines(paired(), 30), 2)).fromBottom).toBe(0)
   })
 
   test('double tap jumps back to live when scrolled, otherwise asks to exit', () => {
     const scrolled = gs(withLines(paired(), 30), 'scroll_up', 'scroll_up')
     const r = g(scrolled, 'double_tap')
-    expect(r.state.fromBottom).toBe(0)
+    expect(view(r.state).fromBottom).toBe(0)
     expect(r.effects).toEqual([])
     expect(g(r.state, 'double_tap').effects).toEqual([{ type: 'exit' }])
   })
@@ -70,21 +71,21 @@ describe('timeline: scrolling', () => {
     const long = Array.from({ length: 20 }, (_, i) => `Line ${i}`).join('\n')
     let s = recv(withLines(paired(), 5), env('event', { type: 'prompt', summary: 'go', origin: 'local' }))
     s = recv(s, env('reply', { text: long }))
-    expect(s.fromBottom).toBe(20 - TIMELINE_LINES)
-    expect(recv(paired(), env('reply', { text: 'Short.' })).fromBottom).toBe(0)
+    expect(view(s).fromBottom).toBe(20 - TIMELINE_LINES)
+    expect(view(recv(paired(), env('reply', { text: 'Short.' }))).fromBottom).toBe(0)
   })
 
   test('a replayed old reply does not move the view; neither does a reply while scrolled', () => {
     const long = Array.from({ length: 20 }, (_, i) => `Line ${i}`).join('\n')
-    expect(recv(paired(), env('reply', { text: long }, NOW - 10 * 60_000)).fromBottom).toBe(0)
+    expect(view(recv(paired(), env('reply', { text: long }, NOW - 10 * 60_000))).fromBottom).toBe(0)
     const scrolled = gs(withLines(paired(), 30), 'scroll_up')
     const after = recv(scrolled, env('reply', { text: long }))
-    expect(after.fromBottom).toBeGreaterThan(SCROLL_STEP) // kept the same lines in view
+    expect(view(after).fromBottom).toBeGreaterThan(SCROLL_STEP) // kept the same lines in view
   })
 
   test('a fresh prompt returns to live from a scrolled timeline', () => {
     const scrolled = gs(withLines(paired(), 30), 'scroll_up')
-    expect(recv(scrolled, env('event', { type: 'prompt', summary: 'next', origin: 'local' })).fromBottom).toBe(0)
+    expect(view(recv(scrolled, env('event', { type: 'prompt', summary: 'next', origin: 'local' }))).fromBottom).toBe(0)
   })
 })
 
@@ -101,10 +102,10 @@ describe('menu and stop', () => {
 
   test('Stop Claude sends stop and marks stopping until the session settles', () => {
     const r = g(gs(working(), 'tap', 'scroll_down'), 'tap')
-    expect(r.effects).toEqual([{ type: 'send', kind: 'stop', body: {} }])
-    expect(r.state.stopPending).toBe(true)
-    expect(recv(r.state, env('session', { name: 'r', cwd: '/r', state: 'working' }, NOW + 2)).stopPending).toBe(true)
-    expect(recv(r.state, env('session', { name: 'r', cwd: '/r', state: 'stopped' }, NOW + 2)).stopPending).toBe(false)
+    expect(r.effects).toEqual([{ type: 'send', kind: 'stop', body: {}, sid: '' }])
+    expect(view(r.state).stopPending).toBe(true)
+    expect(view(recv(r.state, env('session', { name: 'r', cwd: '/r', state: 'working' }, NOW + 2))).stopPending).toBe(true)
+    expect(view(recv(r.state, env('session', { name: 'r', cwd: '/r', state: 'stopped' }, NOW + 2))).stopPending).toBe(false)
   })
 
   test('Talk without a Groq key does nothing', () => {

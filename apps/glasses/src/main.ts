@@ -82,7 +82,7 @@ function dispatch(msg: Msg): void {
   for (const effect of result.effects) {
     if (effect.type === 'exit') void bridge.shutDownPageContainer(1)
     if (effect.type === 'send') {
-      link.send(effect.kind, effect.body).catch(err => log(`could not send ${effect.kind}:`, (err as Error).message))
+      link.send(effect.kind, effect.body, effect.sid).catch(err => log(`could not send ${effect.kind}:`, (err as Error).message))
     }
   }
 }
