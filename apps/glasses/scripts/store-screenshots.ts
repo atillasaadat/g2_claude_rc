@@ -4,8 +4,8 @@
 //
 //   cd apps/glasses && bun scripts/store-screenshots.ts
 //
-// Writes build/store-screenshots/<n>-<screen>.png at 576x288 and at 2x, on
-// black, the way the glasses show it. Opens a simulator window and closes it.
+// Writes build/store-screenshots/<n>-<screen>.png at 576x288 and at 2x, with
+// a transparent background (the glasses draw lit pixels only). Opens a simulator window and closes it.
 
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -57,7 +57,7 @@ async function sawLog(needle: string | RegExp, ms = 10_000): Promise<void> {
 const input = (action: 'up' | 'down' | 'click' | 'double_click') =>
   fetch(`${automation}/api/input`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }) })
 
-/** The simulator returns lit pixels on a transparent background; the lens is black. */
+/** The simulator returns lit pixels on a transparent background; kept as is, so the images sit on any color. */
 async function shot(name: string): Promise<void> {
   await Bun.sleep(700) // let fades and the working dots settle
   const raw = PNG.sync.read(Buffer.from(await (await fetch(`${automation}/api/screenshot/glasses`)).arrayBuffer()))
@@ -66,12 +66,8 @@ async function shot(name: string): Promise<void> {
     for (let y = 0; y < out.height; y++) {
       for (let x = 0; x < out.width; x++) {
         const i = ((Math.floor(y / scale) * raw.width + Math.floor(x / scale)) * 4) as number
-        const a = raw.data[i + 3]! / 255
         const o = (y * out.width + x) * 4
-        out.data[o] = Math.round(raw.data[i]! * a)
-        out.data[o + 1] = Math.round(raw.data[i + 1]! * a)
-        out.data[o + 2] = Math.round(raw.data[i + 2]! * a)
-        out.data[o + 3] = 255
+        for (let c = 0; c < 4; c++) out.data[o + c] = raw.data[i + c]!
       }
     }
     await Bun.write(join(OUT, `${name}${scale === 2 ? '@2x' : ''}.png`), PNG.sync.write(out))
