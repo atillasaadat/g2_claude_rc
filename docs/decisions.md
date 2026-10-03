@@ -290,3 +290,9 @@ The difference is that auto mode opens no permission dialogs, so the channel get
   - Channel end to end: a glasses `stop` over `wrangler dev` makes the next PreToolUse return the stop JSON, then a new prompt clears it.
   - Glasses: menu, stop and stopping tests.
   - Simulator: tap, down and tap send a valid `stop` to the computer side.
+- **Live check (2026-10-03): pass.**
+  - A real sandbox session (auto mode) was given six sequential `sleep 4; echo N` commands.
+  - After `echo one` finished, the simulator menu was driven through the automation API (tap, down, tap) to choose Stop.
+  - The channel posted "Stop requested" at 12:58:02. At 12:58:04 the PreToolUse for `echo two` was halted, and the session went to `stopped` with "Stopped from glasses". Commands two through six never ran.
+  - The glasses header went from `■ stopping…` to `stopped · auto`.
+- **Phase 4 status: done.**
