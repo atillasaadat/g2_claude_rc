@@ -8,7 +8,7 @@ import { DEFAULT_GESTURES, parseGestureMap, type GestureMap } from './gestures'
 const PAIRING_KEY = 'g2cc.pairing'
 const GESTURES_KEY = 'g2cc.gestures'
 const STT_KEY = 'g2cc.sttKey'
-const STT_KEY_SHAPE = /^[A-Za-z0-9_-]{8,200}$/
+export const STT_KEY_SHAPE = /^[A-Za-z0-9_-]{8,200}$/
 
 export class Storage {
   constructor(

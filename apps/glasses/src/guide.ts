@@ -25,7 +25,7 @@ export const GUIDE_HTML = `
       and type the code it shows under <em>Pairing</em> below. Each code works once, for 10 minutes.
     </li>
     <li>
-      <strong>Add your Groq key</strong> for voice under <em>Voice</em> below. A free key from <a href="https://console.groq.com/keys">console.groq.com/keys</a> works. It is stored on this phone only.
+      <strong>Add your Groq key</strong> for voice under <em>Voice</em> below. A free key from <a href="https://console.groq.com/keys">console.groq.com/keys</a> works. It is stored on this phone only. Once saved, Voice shows it masked with a short fingerprint and whether Groq accepts it; a new key replaces it only if Groq accepts the new one.
     </li>
     <li>
       <strong>Get alerts in other apps.</strong> In a session, run <code>/config</code> and turn on <code>inputNeededNotifEnabled</code> and <code>agentPushNotifEnabled</code>. Allow notifications for the Claude app, then allow it in the Even app's notification settings.

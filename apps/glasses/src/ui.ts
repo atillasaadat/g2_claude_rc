@@ -5,6 +5,7 @@
 import { normalizePairCode } from '@g2cc/protocol'
 import { GUIDE_CSS, GUIDE_HTML, wireGuide } from './guide'
 import { dismissKeyboard, keyboardFriendly, onEnter } from './keyboard'
+import { checkGroqKey, keyFingerprint, maskKey, type KeyCheck } from './asr/key-status'
 import { ACTIONS, DEFAULT_GESTURES, GESTURES, SCREENS, validateGestureMap, type GestureMap } from './gestures'
 import type { Frame } from './render'
 import type { Link } from './state'
@@ -14,7 +15,8 @@ export interface UiCallbacks {
   pairWithCode(code: string, relayUrl?: string): Promise<void>
   forgetPairing(): Promise<void>
   saveGestures(map: GestureMap): Promise<void>
-  saveSttKey(key: string): Promise<void>
+  /** Saves (replacing any saved key) after Groq accepts it. Empty removes the key. */
+  saveSttKey(key: string): Promise<KeyCheck | null>
 }
 
 const GESTURE_LABELS: Record<(typeof GESTURES)[number], string> = {
@@ -35,6 +37,10 @@ let els: {
   gestures: HTMLDivElement
   gestureMsg: HTMLDivElement
   sttStatus: HTMLDivElement
+  sttCheck: HTMLDivElement
+  sttInput: HTMLInputElement
+  sttSave: HTMLButtonElement
+  sttRemove: HTMLButtonElement
 }
 let currentMap: GestureMap = DEFAULT_GESTURES
 
@@ -79,9 +85,10 @@ export function mountUi(cb: UiCallbacks): void {
       <details>
         <summary>Voice (Groq key)</summary>
         <p class="hint">Talk needs a free Groq API key from console.groq.com/keys. Paste it here. It is stored on this phone only.</p>
-        <div id="stt-status" class="hint"></div>
+        <div id="stt-status" class="key-status"></div>
+        <div id="stt-check" class="hint"></div>
         <input id="stt-input" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="gsk_..." />
-        <div class="row"><button id="stt-save">Save key</button></div>
+        <div class="row"><button id="stt-save">Save key</button><button id="stt-remove" class="secondary" hidden>Remove key</button></div>
         <div id="stt-msg" class="msg"></div>
       </details>
       <details>
@@ -106,16 +113,34 @@ export function mountUi(cb: UiCallbacks): void {
     gestures: app.querySelector('#gestures')!,
     gestureMsg: app.querySelector('#g-msg')!,
     sttStatus: app.querySelector('#stt-status')!,
+    sttCheck: app.querySelector('#stt-check')!,
+    sttInput: app.querySelector('#stt-input')!,
+    sttSave: app.querySelector('#stt-save')!,
+    sttRemove: app.querySelector('#stt-remove')!,
   }
   const sttInput = app.querySelector<HTMLInputElement>('#stt-input')!
   const sttMsg = app.querySelector<HTMLDivElement>('#stt-msg')!
   app.querySelector('#stt-save')!.addEventListener('click', () => {
+    if (!sttInput.value.trim()) {
+      message(sttMsg, 'Paste a key first.', true)
+      return
+    }
+    dismissKeyboard()
+    els.sttSave.disabled = true
+    message(sttMsg, 'Checking the key with Groq...', false)
     void cb
       .saveSttKey(sttInput.value)
-      .then(() => {
+      .then(check => {
         sttInput.value = ''
-        message(sttMsg, 'Saved.', false)
+        message(sttMsg, check === 'unknown' ? 'Saved, but Groq could not be reached to check it.' : 'Saved.', check === 'unknown')
       })
+      .catch(err => message(sttMsg, (err as Error).message, true))
+      .finally(() => (els.sttSave.disabled = false))
+  })
+  els.sttRemove.addEventListener('click', () => {
+    void cb
+      .saveSttKey('')
+      .then(() => message(sttMsg, 'Key removed. Talk is off.', false))
       .catch(err => message(sttMsg, (err as Error).message, true))
   })
 
@@ -208,9 +233,42 @@ export function setStatus(link: Link, paired: boolean): void {
   els.status.textContent = text
 }
 
-export function setVoiceStatus(available: boolean): void {
+let voiceRender = 0
+
+/**
+ * Shows whether a Groq key is saved, as a masked form and a fingerprint the
+ * user can compare, and whether Groq accepts it. Pass `known` when the key
+ * was just checked, to skip a second request.
+ */
+export function setVoiceStatus(key: string, opts: { known?: KeyCheck | null; fake?: boolean } = {}): void {
   if (!els) return
-  els.sttStatus.textContent = available ? 'Voice is ready.' : 'No Groq key yet: Talk is off.'
+  const n = ++voiceRender
+  const e = els
+  e.sttRemove.hidden = !key
+  e.sttSave.textContent = key ? 'Replace key' : 'Save key'
+  e.sttInput.placeholder = key ? 'Paste a new key to replace the saved one' : 'gsk_...'
+  e.sttCheck.className = 'hint'
+  if (!key) {
+    e.sttStatus.textContent = opts.fake ? 'No key saved (this dev build fakes transcripts).' : 'No Groq key saved: Talk is off.'
+    e.sttCheck.textContent = ''
+    return
+  }
+  void keyFingerprint(key).then(fp => {
+    if (n === voiceRender) e.sttStatus.textContent = `Saved key ${maskKey(key)} · fingerprint ${fp}`
+  })
+  const show = (c: KeyCheck): void => {
+    if (n !== voiceRender) return
+    e.sttCheck.textContent =
+      c === 'valid' ? '✓ Groq accepts this key. Talk is on.'
+      : c === 'invalid' ? '✗ Groq rejects this key. Paste a working one to replace it.'
+      : 'Could not reach Groq to check this key right now.'
+    e.sttCheck.className = c === 'valid' ? 'hint key-ok' : c === 'invalid' ? 'hint msg-error' : 'hint'
+  }
+  if (opts.known) show(opts.known)
+  else {
+    e.sttCheck.textContent = 'Checking with Groq...'
+    void checkGroqKey(key).then(show)
+  }
 }
 
 export function mirror(frame: Frame): void {
@@ -290,6 +348,8 @@ function injectStyles(): void {
     details { background: #2E2E2E; border: 1px solid #3E3E3E; border-radius: 12px; padding: 12px 16px; }
     summary { cursor: pointer; font-weight: 600; }
     .hint { font-size: 13px; color: #A7A7A7; }
+    .key-status { font: 13px ui-monospace, Menlo, monospace; color: #E5E5E5; margin: 4px 0; overflow-wrap: anywhere; }
+    .key-ok { color: #3CFA44; }
     #code-input { width: 100%; box-sizing: border-box; background: #232323; color: #E5E5E5; border: 1px solid #3E3E3E;
       border-radius: 8px; padding: 10px; font: 20px ui-monospace, monospace; letter-spacing: 3px; text-transform: uppercase; }
     details.sub { margin-top: 12px; padding: 8px 12px; background: #262626; }

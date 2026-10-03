@@ -11,16 +11,17 @@ import { Link } from './link'
 import { pairWithCode } from './code-pair'
 import { frameOf, render } from './render'
 import { transcribe } from './asr/stt'
+import { checkGroqKey, type KeyCheck } from './asr/key-status'
 import { VoiceRecorder } from './recorder'
 import { initialState, isAnimating, micWanted, reduce, type AppState, type Msg } from './state'
-import { Storage } from './storage'
+import { Storage, STT_KEY_SHAPE } from './storage'
 import { mirror, mountUi, setGestureMap, setStatus, setVoiceStatus } from './ui'
 
 const log = (...args: unknown[]): void => console.log('[g2cc]', ...args)
 
-function setSttKey(key: string): void {
+function setSttKey(key: string, known: KeyCheck | null = null): void {
   sttKey = key
-  setVoiceStatus(Boolean(sttKey || FAKE_STT))
+  setVoiceStatus(sttKey, { known, fake: Boolean(FAKE_STT) })
   if (started) dispatch({ type: 'config', voiceAvailable: Boolean(sttKey || FAKE_STT) })
 }
 
@@ -108,8 +109,19 @@ mountUi({
     await this.savePairing(await pairWithCode(code, relayUrl || undefined))
   },
   async saveSttKey(key) {
-    await storage.saveSttKey(key)
-    setSttKey(key.trim())
+    const k = key.trim()
+    if (!k) {
+      await storage.saveSttKey('')
+      setSttKey('')
+      return null
+    }
+    if (!STT_KEY_SHAPE.test(k)) throw new Error('that does not look like a Groq API key')
+    // Check before replacing, so a typo never overwrites a working key.
+    const check = await checkGroqKey(k)
+    if (check === 'invalid') throw new Error('Groq rejected that key, so the saved one is unchanged.')
+    await storage.saveSttKey(k)
+    setSttKey(k, check)
+    return check
   },
   async forgetPairing() {
     await storage.forgetPairing()
@@ -154,7 +166,7 @@ await pairFromFragment()
 const stored = await storage.loadPairing().catch(() => null)
 state = reduce(state, { type: 'paired', paired: stored !== null }).state
 sttKey = stored?.pairing.sttKey || (await storage.loadSttKey().catch(() => '')) || __DEV_STT_KEY__
-setVoiceStatus(Boolean(sttKey || FAKE_STT))
+setVoiceStatus(sttKey, { fake: Boolean(FAKE_STT) })
 state = reduce(state, { type: 'config', voiceAvailable: Boolean(sttKey || FAKE_STT) }).state
 
 display = new Display(bridge, queue, err => log('render failed:', (err as Error).message))
