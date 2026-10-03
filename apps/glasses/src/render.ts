@@ -66,10 +66,12 @@ const indent = (selected: boolean, label: string, width: number): string => {
 /** Working dots cycle 1..3 while Claude works. */
 const dots = (clock: number): string => '·'.repeat(1 + (Math.floor(clock / 400) % 3))
 
+const toastShowing = (s: AppState): boolean => s.toast !== undefined && s.clock < s.toast.until
+
 function statusHeader(s: AppState): string {
   if (!s.paired) return fitLine('G2 Claude Code · not paired', HEADER_WIDTH)
-  // A toast about another session takes the header for a few seconds.
-  if (s.toast && s.clock < s.toast.until) return fitLine(s.toast.text, HEADER_WIDTH)
+  // A toast about another session takes the header for a few seconds, its marker pulsing.
+  if (toastShowing(s)) return fitLine(s.toast!.text.replace(/^◆/, Math.floor(s.clock / 500) % 2 ? '◇' : '◆'), HEADER_WIDTH)
   const v = view(s)
   if (!v.session) return spread(`${DOT[s.link]} waiting for Claude Code`, '', HEADER_WIDTH)
   const { name, state, mode } = v.session
@@ -130,14 +132,14 @@ const STATE_GLYPH: Record<string, string> = { working: '▶', waiting: '!', idle
 
 function sessionsOverlay(s: AppState): { box: Box; content: string } {
   const list = sessionList(s)
-  const box = overlayBox(list.length)
+  const box = overlayBox(list.length + 1)
   const w = innerWidth(box)
   const lines = list.map(({ sid, view: v }, i) => {
     const st = v.session?.state ?? 'idle'
-    const label = `${STATE_GLYPH[st] ?? '·'} ${v.session?.name ?? sid} · ${st}${sid === s.active ? ' (on screen)' : ''}${v.unread ? '  ◆' : ''}`
+    const label = `${STATE_GLYPH[st] ?? '·'} ${v.session?.name ?? 'Claude Code'} · ${st}${sid === s.active ? ' (on screen)' : ''}${v.unread ? '  ◆' : ''}`
     return indent(i === s.sessionIndex, label, w)
   })
-  return { box, content: lines.join('\n') }
+  return { box, content: [...lines, indent(s.sessionIndex === list.length, 'Clear other sessions', w)].join('\n') }
 }
 
 /** With several sessions, cards say which one is asking. */
@@ -257,7 +259,7 @@ export function render(s: AppState): Scene {
   const timeline = over ? occlude(timelineText(s), over.box) : timelineText(s)
   return {
     containers: [
-      { id: HEADER_ID, name: 'header', box: HEADER, content: header(s), brightness: 3, capture: false, z: 1 },
+      { id: HEADER_ID, name: 'header', box: HEADER, content: header(s), brightness: toastShowing(s) ? BRIGHT : 3, capture: false, z: 1 },
       // The timeline always captures input: taps arrive as sysEvent, swipes as textEvent.
       { id: TIMELINE_ID, name: 'timeline', box: TIMELINE, content: timeline, brightness: over ? DIM : BRIGHT, capture: true, z: 2 },
       ...(over ? [{ id: OVERLAY_ID, name: over.name, box: over.box, content: over.content, brightness: fade(s), capture: false, z: 3 }] : []),

@@ -24,7 +24,7 @@ export const SCROLL_STEP = 3
 /** Overlays fade in over this long. */
 export const FADE_MS = 450
 /** Toasts about other sessions stay in the header this long. */
-export const TOAST_MS = 5_000
+export const TOAST_MS = 8_000
 
 export type Link = 'offline' | 'relay' | 'online'
 export type ScreenId = 'timeline' | 'menu' | 'sessions' | 'card' | 'question' | 'voice'
@@ -57,6 +57,8 @@ export interface SessionView {
   lastSeen: number
   /** Something happened here while another session was active. */
   unread: boolean
+  /** The relay connection during which this session last sent something live. */
+  liveEpoch: number
 }
 
 export type PermissionCard = Body<'permission'> & { ts: number; sid: string }
@@ -69,6 +71,12 @@ export interface AppState {
   link: Link
   /** Views by session id ('' for envelopes without one). */
   views: Readonly<Record<string, SessionView>>
+  /**
+   * Counts relay connections. On every connect each live channel re-announces
+   * itself (resync), so a session is alive if it spoke during this connection;
+   * sessions only seen in replayed history are dead and stay hidden.
+   */
+  connectEpoch: number
   active: string
   screen: ScreenId
   /** Animation clock (ms), advanced by ticks while something animates. */
@@ -117,7 +125,7 @@ export interface Result {
   effects: Effect[]
 }
 
-const EMPTY_VIEW: SessionView = { sessionTs: 0, entries: [], fromBottom: 0, stopPending: false, lastSeen: 0, unread: false }
+const EMPTY_VIEW: SessionView = { sessionTs: 0, entries: [], fromBottom: 0, stopPending: false, lastSeen: 0, unread: false, liveEpoch: -1 }
 
 export function initialState(): AppState {
   return {
@@ -126,6 +134,7 @@ export function initialState(): AppState {
     computers: 0,
     link: 'offline',
     views: {},
+    connectEpoch: 0,
     active: '',
     screen: 'timeline',
     clock: 0,
@@ -149,10 +158,12 @@ export const view = (s: AppState, sid: string = s.active): SessionView => s.view
 const withView = (s: AppState, sid: string, v: SessionView): AppState => ({ ...s, views: { ...s.views, [sid]: v } })
 const mapActive = (s: AppState, f: (v: SessionView) => SessionView): AppState => withView(s, s.active, f(view(s)))
 
-/** Live sessions, most recently active first. */
+const alive = (s: AppState, sid: string): boolean => view(s, sid).liveEpoch === s.connectEpoch
+
+/** Live sessions (and the one on screen), most recently active first. */
 export function sessionList(s: AppState): Array<{ sid: string; view: SessionView }> {
   return Object.entries(s.views)
-    .filter(([, v]) => v.session)
+    .filter(([sid, v]) => (v.session || v.entries.length > 0) && (alive(s, sid) || sid === s.active))
     .sort(([, a], [, b]) => b.lastSeen - a.lastSeen)
     .map(([sid, v]) => ({ sid, view: v }))
 }
@@ -260,9 +271,10 @@ function endSession(s: AppState, sid: string): AppState {
 function onSessionEnvelope(s: AppState, sid: string, env: AnyEnvelope, now: number): AppState {
   const v = view(s, sid)
   const fresh = now - env.ts <= FRESH_MS
-  const seen = { ...v, lastSeen: Math.max(v.lastSeen, env.ts) }
-  // The first session seen becomes the active one.
-  const base = s.active === '' && !s.views[''] ? { ...s, active: sid } : s
+  const seen = { ...v, lastSeen: Math.max(v.lastSeen, env.ts), liveEpoch: fresh ? s.connectEpoch : v.liveEpoch }
+  // The first session seen goes on screen; a live one replaces a dead one from history.
+  const takeOver = (s.active === '' && !s.views['']) || (fresh && env.kind === 'session' && sid !== s.active && !alive(s, s.active))
+  const base = takeOver ? { ...s, active: sid } : s
   const onTimeline = base.screen === 'timeline' && sid === base.active
   switch (env.kind) {
     case 'session': {
@@ -389,7 +401,10 @@ function confirmMenu(s: AppState, now: number): Result {
 }
 
 function confirmSession(s: AppState): Result {
-  const target = sessionList(s)[s.sessionIndex]
+  const list = sessionList(s)
+  // The row after the sessions: clear everything but the session on screen.
+  if (s.sessionIndex === list.length) return done({ ...s, views: { [s.active]: view(s) }, screen: 'timeline', toast: undefined })
+  const target = list[s.sessionIndex]
   if (!target) return done({ ...s, screen: 'timeline' })
   const switched = { ...s, active: target.sid, screen: 'timeline' as const, toast: undefined }
   return done(withView(switched, target.sid, { ...target.view, unread: false }))
@@ -478,7 +493,7 @@ function onGesture(s: AppState, gesture: Gesture, map: GestureMap, now: number):
         return done({ ...s, questionIndex: Math.min(last, s.questionIndex + 1) })
       }
       if (s.screen === 'card') return done({ ...s, cardChoice: 'deny' })
-      if (s.screen === 'sessions') return done({ ...s, sessionIndex: Math.min(sessionList(s).length - 1, s.sessionIndex + 1) })
+      if (s.screen === 'sessions') return done({ ...s, sessionIndex: Math.min(sessionList(s).length, s.sessionIndex + 1) })
       return done({ ...s, menuIndex: Math.min(menuItems(s).length - 1, s.menuIndex + 1) })
     case 'card.confirm':
       if (s.screen === 'question') return confirmQuestion(s, now)
@@ -500,7 +515,8 @@ export function reduce(s: AppState, msg: Msg): Result {
     case 'relay': {
       const relayOpen = msg.status === 'open'
       const computers = relayOpen ? s.computers : 0
-      return done({ ...s, relayOpen, computers, link: link(relayOpen, computers) })
+      const connectEpoch = relayOpen && !s.relayOpen ? s.connectEpoch + 1 : s.connectEpoch
+      return done({ ...s, relayOpen, computers, connectEpoch, link: link(relayOpen, computers) })
     }
     case 'presence':
       return done({ ...s, computers: msg.computers, link: link(s.relayOpen, msg.computers) })

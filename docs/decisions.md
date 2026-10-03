@@ -487,3 +487,9 @@ The user asked for boxes, overlays, a voice box that fills in while speaking, an
 **Tests:**
 - Channel: 12 registry and router tests, plus a two-session end to end. It covers per-session tagging through one router, a stop aimed at B halting only B, and B taking over routing after A ends.
 - Glasses: 8 session tests (separate timelines, toasts, unread, the switch list, targeted commands, labelled cards, ended sessions). All 138 unit tests and 7 simulator tests pass.
+- **Follow-up from live use:**
+  - "Many sessions": every sandbox restart created a new session ID, and channels built before the `ended` state never said goodbye. Relay history then replayed them as live.
+    - Fix: `connectEpoch` counts relay connections. Every live channel re-announces on connect (resync), so a session is listed only if it sent something fresh during the current connection, or it is the one on screen.
+    - A dead session on screen hands over to the first live one.
+    - The session list ends with `Clear other sessions`, which keeps only the one on screen. Live sessions reappear with their next envelope.
+  - "Didn't see the notification": toasts now last 8 s at full header brightness, with the `◆`/`◇` marker pulsing.

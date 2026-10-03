@@ -87,3 +87,59 @@ describe('multiple sessions', () => {
     expect(frame(s).timeline).toContain('still here')
   })
 })
+
+describe('stale sessions', () => {
+  const open = (s: AppState) => reduce(s, { type: 'relay', status: 'open' }).state
+  const OLD = NOW - 30 * 60_000
+
+  test('sessions replayed from history are hidden; ones that re-announce after connect are listed', () => {
+    let s = open({ ...initialState(), paired: true })
+    s = recv(s, session('dead-1', 'old-a', 'idle', OLD))
+    s = recv(s, session('dead-2', 'old-b', 'idle', OLD))
+    s = recv(s, session(A, 'repo-a', 'idle', NOW))
+    expect(sessionList(s).map(x => x.sid)).toEqual([A])
+  })
+
+  test('a stale session on screen hands over to the first live one', () => {
+    let s = open({ ...initialState(), paired: true })
+    s = recv(s, session('dead-1', 'old-a', 'idle', OLD))
+    expect(s.active).toBe('dead-1')
+    s = recv(s, session(A, 'repo-a', 'idle', NOW))
+    expect(s.active).toBe(A)
+  })
+
+  test('a reconnect makes everyone prove they are alive again', () => {
+    let s = open(two())
+    s = recv(s, session(A, 'repo-a', 'idle', NOW + 2))
+    s = recv(s, session(B, 'repo-b', 'idle', NOW + 3))
+    s = reduce(s, { type: 'relay', status: 'closed' }).state
+    s = open(s)
+    s = recv(s, session(A, 'repo-a', 'idle', NOW + 10)) // only A re-announces
+    expect(sessionList(s).map(x => x.sid)).toEqual([A])
+  })
+
+  test('Clear other sessions keeps only the one on screen', () => {
+    let s = gs(two(), 'tap', 'scroll_down', 'scroll_down', 'tap') // menu > Sessions
+    const rows = frame(s).overlay!.content.split('\n')
+    expect(rows.at(-1)).toBe('   Clear other sessions')
+    s = { ...s, sessionIndex: rows.length - 1 }
+    s = gs(s, 'tap')
+    expect(Object.keys(s.views)).toEqual([A])
+    expect(s.screen).toBe('timeline')
+    // A cleared session that is still alive comes back with its next envelope.
+    s = recv(s, at(B, 'glance', { text: 'back' }))
+    expect(sessionList(s).map(x => x.sid).sort()).toEqual([A, B].sort())
+  })
+})
+
+describe('toasts are hard to miss', () => {
+  test('last 8 s at full brightness with a pulsing marker', () => {
+    expect(TOAST_MS).toBe(8_000)
+    const s = recv(two(), at(B, 'reply', { text: 'Done in B.' }))
+    const headerOf = (t: number) => reduce(s, { type: 'tick', now: t }).state
+    const h0 = frame(headerOf(NOW)).header
+    const h1 = frame(headerOf(NOW + 500)).header
+    expect(h0.slice(1)).toBe(h1.slice(1))
+    expect(new Set([h0[0], h1[0]])).toEqual(new Set(['◆', '◇']))
+  })
+})
