@@ -4,11 +4,15 @@
 import type { AnyEnvelope, Body } from '@g2cc/protocol'
 import { resolveGesture, type Gesture, type GestureMap, type Screen } from './gestures'
 import { paginate } from './layout'
+import { toPlainText } from './plain'
 
 export const MAX_EVENTS = 50
 export const FEED_LINES = 4
-/** A reply newer than this opens the reply screen; older ones come from history replay. */
-export const REPLY_FRESH_MS = 60_000
+/**
+ * Envelopes newer than this are live: a reply opens the reply screen and a
+ * prompt returns to the feed. Older ones come from history replay.
+ */
+export const FRESH_MS = 60_000
 
 export type Link = 'offline' | 'relay' | 'online'
 
@@ -74,7 +78,7 @@ function appendEvent(events: readonly FeedLine[], line: FeedLine): readonly Feed
   return next.length > MAX_EVENTS ? next.slice(next.length - MAX_EVENTS) : next
 }
 
-function onEvent(s: AppState, env: Extract<AnyEnvelope, { kind: 'event' }>): AppState {
+function onEvent(s: AppState, env: Extract<AnyEnvelope, { kind: 'event' }>, now: number): AppState {
   const b = env.body
   if (b.type === 'tool_end') {
     // Merge into the most recent unfinished start of the same tool: one line per tool call.
@@ -91,7 +95,9 @@ function onEvent(s: AppState, env: Extract<AnyEnvelope, { kind: 'event' }>): App
       : b.type === 'prompt'
         ? { id: env.id, ts: env.ts, type: 'prompt', summary: b.summary, origin: b.origin }
         : { id: env.id, ts: env.ts, type: 'notify', summary: b.summary }
-  return { ...s, events: appendEvent(s.events, line) }
+  const next = { ...s, events: appendEvent(s.events, line) }
+  // A new turn takes the user back to the live feed. Replayed history does not.
+  return b.type === 'prompt' && now - env.ts <= FRESH_MS ? { ...next, screen: 'feed', feedOffset: 0 } : next
 }
 
 function onEnvelope(s: AppState, env: AnyEnvelope, now: number): AppState {
@@ -100,13 +106,14 @@ function onEnvelope(s: AppState, env: AnyEnvelope, now: number): AppState {
       // History may replay older session frames after newer ones.
       return env.ts < s.sessionTs ? s : { ...s, session: env.body, sessionTs: env.ts }
     case 'event':
-      return onEvent(s, env)
+      return onEvent(s, env, now)
     case 'glance':
       return { ...s, glance: env.body.text }
     case 'reply': {
       if (s.reply && env.ts < s.reply.ts) return s
-      const reply = { text: env.body.text, ts: env.ts, pages: paginate(env.body.text) }
-      const fresh = now - env.ts <= REPLY_FRESH_MS
+      const text = toPlainText(env.body.text)
+      const reply = { text, ts: env.ts, pages: paginate(text) }
+      const fresh = now - env.ts <= FRESH_MS
       return fresh ? { ...s, reply, screen: 'reply', replyPage: 0 } : { ...s, reply }
     }
     default:

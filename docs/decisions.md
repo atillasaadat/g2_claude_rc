@@ -259,3 +259,11 @@ The difference is that auto mode opens no permission dialogs, so the channel get
 - **Tests:**
   - 40 unit tests (gestures, layout, reducer, render), all asserting that output fits.
   - `G2CC_SIM=1 bun test test/sim.e2e.test.ts` runs the real app in the simulator against `wrangler dev`. It asserts the exact drawn frames, lit pixels in the header and body regions, reply paging and back, and scrolling to older events. Screenshots go to `test/artifacts/`.
+- **Live check (2026-10-03): pass.**
+  - The simulator, paired from `~/.g2cc/pairing.json`, replayed history on connect.
+  - It showed a real sandbox session live and auto-opened its 4-page reply, which the user paged through.
+  - After a reload, the app reconnected from the pairing stored in local storage.
+- Follow-ups from the live run:
+  - **Replies are converted from Markdown to plain text** (`src/plain.ts`) before pagination. Emphasis, inline code, links, headings, rules, fences and quotes are stripped, and list markers become `•`. The same reply went from 4 pages to 3.
+  - **A fresh prompt returns to the feed.** While the user was reading the previous reply, a whole new turn streamed into a feed they could not see. Replayed old prompts do not switch screens.
+- **Phase 3 status: done.**

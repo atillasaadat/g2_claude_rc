@@ -137,3 +137,25 @@ describe('reduce: gestures', () => {
     expect(r.effects).toEqual([])
   })
 })
+
+describe('reduce: new turns', () => {
+  test('a fresh prompt brings the reply view back to the newest feed', () => {
+    let s = recv(initialState(), env('reply', { text: 'previous answer' })).state
+    expect(s.screen).toBe('reply')
+    s = { ...s, feedOffset: 3 }
+    s = recv(s, env('event', { type: 'prompt', summary: 'next task', origin: 'local' })).state
+    expect(s.screen).toBe('feed')
+    expect(s.feedOffset).toBe(0)
+  })
+
+  test('a replayed old prompt does not leave the reply view', () => {
+    let s = recv(initialState(), env('reply', { text: 'answer' })).state
+    s = recv(s, env('event', { type: 'prompt', summary: 'old', origin: 'local' }, NOW - 10 * 60_000)).state
+    expect(s.screen).toBe('reply')
+  })
+
+  test('replies are shown as plain text', () => {
+    const s = recv(initialState(), env('reply', { text: '**Done.** Ran `bun test`.' })).state
+    expect(s.reply?.pages[0]).toBe('Done. Ran bun test.')
+  })
+})
