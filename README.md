@@ -50,7 +50,7 @@ Requirements: Claude Code signed in with a claude.ai account, [Bun](https://bun.
    ```bash
    alias cc-g2='claude --dangerously-load-development-channels plugin:g2@g2cc --rc'
    ```
-3. **Install the glasses app** from Even Hub in the Even app (G2 Claude).
+3. **Install the glasses app** from Even Hub in the Even app (G2 Claude Code).
 4. **Pair.** In a `cc-g2` session, run `/g2:pair`. Type the code it shows in the app's phone view under Pairing. A code works once, for 10 minutes.
 5. **Voice:** paste your Groq key in the app under Voice. It stays on the phone.
 

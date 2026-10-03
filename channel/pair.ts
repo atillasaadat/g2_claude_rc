@@ -41,7 +41,7 @@ if (values.text) {
 const open = await openCodePairing(pairing)
 const minutes = Math.round((open.expiresAt - Date.now()) / 60_000)
 console.log(`\n  Pairing code:  ${open.code}\n`)
-console.log(`In the G2 Claude app on your phone, open Pairing and enter the code.`)
+console.log(`In the G2 Claude Code app on your phone, open Pairing and enter the code.`)
 console.log(`It works once and expires in ${minutes} minutes. Waiting...`)
 process.on('SIGINT', () => open.cancel())
 const ok = await open.done

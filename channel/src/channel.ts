@@ -169,7 +169,7 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
       {
         name: 'pair',
         description:
-          'Show a one-time code for pairing the G2 Claude phone app with this computer. Call it only when the user asks to pair (for example through /g2:pair). Show the user the code exactly as returned.',
+          'Show a one-time code for pairing the G2 Claude Code phone app with this computer. Call it only when the user asks to pair (for example through /g2:pair). Show the user the code exactly as returned.',
         inputSchema: { type: 'object', properties: {} },
       },
       {
@@ -199,7 +199,7 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
             type: 'text',
             text:
               `Pairing code: ${open.code}\n` +
-              `In the G2 Claude app on the phone, open Pairing, type it, and tap Pair. ` +
+              `In the G2 Claude Code app on the phone, open Pairing, type it, and tap Pair. ` +
               `It works once and expires in ${minutes} minutes. Anyone with the code can pair until then, so show it only to the user.`,
           },
         ],
