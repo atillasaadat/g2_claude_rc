@@ -75,15 +75,18 @@ export type Envelope<K extends Kind = Kind> = {
   body: Body<K>
 }
 
+/** Discriminated union: narrowing on `kind` narrows `body`. */
+export type AnyEnvelope = { [K in Kind]: Envelope<K> }[Kind]
+
 export function makeEnvelope<K extends Kind>(kind: K, body: Body<K>, opts: { sid?: string } = {}): Envelope<K> {
   return { v: 1, id: crypto.randomUUID(), ts: Date.now(), ...(opts.sid ? { sid: opts.sid } : {}), kind, body }
 }
 
 /** Validates an envelope that travelled in `dir`. Throws if invalid or in the wrong direction. */
-export function parseEnvelope(input: unknown, dir: Direction): Envelope {
+export function parseEnvelope(input: unknown, dir: Direction): AnyEnvelope {
   const h = header.parse(input)
   if (!kindsFor[dir].includes(h.kind as Kind)) throw new Error(`kind ${h.kind} not allowed for ${dir}`)
   const kind = h.kind as Kind
   const body = bodySchemas[kind].parse(h.body)
-  return { ...h, kind, body } as Envelope
+  return { ...h, kind, body } as AnyEnvelope
 }

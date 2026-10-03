@@ -5,6 +5,7 @@ import {
   REQUEST_ID_RE,
   makeEnvelope,
   parseEnvelope,
+  type AnyEnvelope,
   type Kind,
 } from '../src/envelope'
 import { GLANCE_MAX } from '../src/limits'
@@ -44,7 +45,7 @@ describe('parseEnvelope', () => {
   test.each(Object.entries(samples))('accepts a valid %s in its direction', (kind, body) => {
     const dir = (C2G_KINDS as readonly string[]).includes(kind) ? 'c2g' : 'g2c'
     const env = makeEnvelope(kind as Kind, body as never)
-    expect(parseEnvelope(env, dir)).toEqual(env)
+    expect(parseEnvelope(env, dir)).toEqual(env as AnyEnvelope)
   })
 
   test('rejects a computer-bound kind arriving from the computer side', () => {

@@ -77,3 +77,27 @@ describe('SecureChannel', () => {
     expect(await c.open(await sealFrame(key, c.roomId, 'g2c', enc.encode('not json')))).toBeNull()
   })
 })
+
+describe('SecureChannel restart protection', () => {
+  test('a restarted computer rejects commands sent before it started', async () => {
+    const raw = generateKey()
+    const glasses = await SecureChannel.create(raw, 'glasses')
+    const key = await importKey(raw)
+    const roomId = glasses.roomId
+    // Captured 10 s ago, inside the 60 s window but before the channel restarted.
+    const old = { ...makeEnvelope('verdict', { request_id: 'abcde', behavior: 'allow' }), ts: Date.now() - 10_000 }
+    const frame = await sealFrame(key, roomId, 'g2c', enc.encode(JSON.stringify(old)))
+    const restarted = await SecureChannel.create(raw, 'computer')
+    expect(await restarted.open(frame)).toBeNull()
+  })
+
+  test('narrows body by kind', async () => {
+    const raw = generateKey()
+    const computer = await SecureChannel.create(raw, 'computer')
+    const glasses = await SecureChannel.create(raw, 'glasses')
+    const env = await computer.open(await glasses.seal('verdict', { request_id: 'abcde', behavior: 'allow' }))
+    if (env?.kind !== 'verdict') throw new Error('expected verdict')
+    const behavior: 'allow' | 'deny' = env.body.behavior
+    expect(behavior).toBe('allow')
+  })
+})

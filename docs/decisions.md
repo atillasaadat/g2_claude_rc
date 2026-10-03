@@ -133,3 +133,60 @@ The difference is that auto mode opens no permission dialogs, so the channel get
    - Free-tier rate limits apply, so show a clear error on 429.
 2. ~~Fixed port~~: **decided, 27183**, overridable with `G2CC_PORT`. It is free on Linux and Windows, not in /etc/services, and below both ephemeral ranges (Linux 32768+, Windows 49152+).
 3. ~~Gestures~~: **decided**. The defaults are in CLAUDE.md, and the map is user-configurable from the companion UI.
+
+## Phase 1: protocol + relay (2026-10-03)
+
+### Protocol (`packages/protocol`)
+
+- **Crypto: WebCrypto AES-256-GCM**, not libsodium. There are no dependencies, and the same code runs in Bun and in the phone WebView.
+  - Frame = `[version 1B][nonce 12B][ciphertext+tag]`, with a random nonce per frame.
+  - The additional data is `g2cc/v1/<roomId>/<dir>`, so the relay cannot move a frame to another room or reflect it back to its sender. Both are tested.
+- **Room ID** = the first 128 bits of `SHA-256("g2cc-room-v1" || key)`, as hex. It is public, and the key cannot be derived from it.
+- **Direction is enforced twice:** once by the additional data, and once by kind sets (`C2G_KINDS`, `G2C_KINDS`).
+- **Replay windows differ by direction.**
+  - Commands to the computer: 60 s, plus duplicate-ID rejection.
+  - Display data to the glasses: 24 h, because the relay replays history to late joiners. The glasses dedupe by ID.
+- `SecureChannel` wraps seal and open, which do schema validation on both send and receive, the replay check, and the 64 KB cap. `open()` returns `null` on any failure, so callers cannot act on a bad frame.
+- Additions to the CLAUDE.md protocol:
+  - an optional `sid` (Claude Code session ID) on every envelope, for multi-session routing later
+  - `mode` on `session`
+  - `origin` on `event`
+  - the `permission_resolved` kind
+- Pairing payload = `{v, relayUrl, roomId, key(base64url)}`. `roomId` is checked against the key. The relay URL must be `wss://`, or `ws://` on localhost only.
+
+### Relay (`relay`)
+
+- Worker route: `GET /v1/room/<32 hex>?role=computer|glasses` as a WebSocket upgrade. One SQLite-backed DO per room via `getByName`, using hibernation and a `ping`/`pong` auto-response.
+- **Buffers.** The relay cannot tell a real peer from an impostor that knows the room ID, so no socket may deprive another of frames:
+  - To glasses: a history ring of the last 100 frames, also capped at 1 MB, replayed on every connect. It is pruned every 10 inserts, which keeps free-tier row writes near one per frame.
+  - To computer: every command is kept until it expires (60 s, max 20) and delivered to every computer socket, live and on connect.
+  - Redelivery is safe because `SecureChannel` dedupes by ID, and on the computer side it also **rejects commands stamped before the channel started** (5 s margin for phone clock lag). A restarted channel, whose replay guard is empty, therefore cannot be fed a captured command.
+  - This replaces the first design (deliver once and delete), which let an impostor connect as `computer` and swallow a queued `stop`.
+- **Slots:** when a role is full (8 sockets), the newcomer evicts the oldest socket with close code 4000, instead of getting a 429. Otherwise an impostor holding every slot could lock the real peer out.
+- **Room TTL:** an alarm 7 days after the last connect wipes the room's storage.
+- **Presence:** the relay sends a plaintext `{"t":"presence","computer":n,"glasses":n}` text frame to everyone on connect and close. This is the glasses connection indicator. It is metadata only.
+- **Limits:**
+  - Binary frames only; a text frame other than `ping` closes with 1003.
+  - Frames over 64 KB close with 1009.
+  - At most 8 sockets per role.
+  - A token bucket **per socket**, 20 frames/s with a burst of 60. Excess frames are dropped, and the sender gets a `{"t":"rate_limited"}` notice at most once a second. It is in memory and resets when the DO wakes from hibernation, which is acceptable for a soft limit.
+- Observability is off, so nothing is logged.
+- Tests: `relay/test/relay.e2e.test.ts` starts `wrangler dev` (wrangler 4.147.0) and covers 13 cases. The three added after review are the impostor-cannot-swallow-commands case, eviction, and the byte cap. The original 10 cover:
+  - routing errors
+  - a two-way encrypted exchange
+  - presence
+  - late-join history
+  - the history cap
+  - deliver-once commands
+  - room isolation
+  - ping
+  - closes on bad frames
+  - the rate limit
+
+### Security review follow-ups (deferred)
+
+- **Stale permission cards from history replay (Phase 5):**
+  - On every glasses connect, the channel sends the current pending permission and question state.
+  - The glasses discard cards whose `request_id` was resolved, and permission frames older than a few minutes.
+  - The channel only honors verdicts for request IDs that are currently pending. Claude Code also drops unknown IDs, so a stale Allow is harmless.
+- **Per-IP rate limit in the Worker:** consider the Workers rate limiting binding when deploying (Phase 8). Room IDs are 128-bit and known only to the paired devices and the relay, which bounds the abuse.
