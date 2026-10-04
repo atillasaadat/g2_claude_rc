@@ -16,6 +16,8 @@ file=$([ "$kind" = app ] && echo apps/glasses/app.json || echo plugin/.claude-pl
 [ -z "$(git status --porcelain)" ] || { echo "commit or stash your changes first" >&2; exit 1; }
 git rev-parse -q --verify "refs/tags/$tag" >/dev/null && { echo "$tag already exists" >&2; exit 1; }
 command -v jq >/dev/null || { echo "missing: jq" >&2; exit 1; }
+label=$([ "$kind" = app ] && echo App || echo Plugin)
+grep -qx "## $label $version" CHANGELOG.md || { echo "add a \"## $label $version\" entry to CHANGELOG.md first" >&2; exit 1; }
 
 current=$(jq -r .version "$file")
 if [ "$current" != "$version" ]; then

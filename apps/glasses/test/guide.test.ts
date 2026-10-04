@@ -6,7 +6,7 @@ describe('phone setup guide', () => {
     for (const needle of [
       '/plugin marketplace add atillasaadat/g2_claude_rc',
       '/plugin install g2@g2cc',
-      'plugin:g2@g2cc --rc',
+      "plugin:g2@g2cc'",
       '/g2:pair',
       'console.groq.com/keys',
       'inputNeededNotifEnabled',

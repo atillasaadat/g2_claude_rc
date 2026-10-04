@@ -142,12 +142,12 @@ Users install everything as a Claude Code plugin from this repo's marketplace (`
 Launch alias (document in README):
 
 ```bash
-alias cc-g2='claude --dangerously-load-development-channels plugin:g2@g2cc --rc'
+alias cc-g2='claude --dangerously-load-development-channels plugin:g2@g2cc'
 ```
 
 For development from source, `server:g2` with a sandbox `.mcp.json` still works (`scripts/make-sandbox.sh`).
 
-`--rc` is accepted in the same launch as the development channel, and the channel works alongside it. See docs/decisions.md for the RC app side.
+`--rc` (Remote Control) is optional: it is accepted in the same launch as the development channel, and the channel works alongside it. See docs/decisions.md for the RC app side.
 
 ## Glasses app rules (apps/glasses)
 
@@ -222,4 +222,6 @@ Each phase ends with something testable. Do not start a phase until the previous
 - Before building anything, read the relevant docs: the channels reference, the hooks docs, and the everything-evenhub skills. Record surprises in `docs/decisions.md`.
 - Keep the local footprint minimal. If a feature seems to need a background service, a listening port beyond 127.0.0.1, or Tailscale, stop and propose an alternative.
 - Prefer small, reviewable commits per phase.
+- Keep the docs current: any user-facing change updates README.md, the website (`relay/public/g2-claude/index.html`) and the in-app guide (`apps/glasses/src/guide.ts`) in the same commit. `apps/glasses/test/docs.test.ts` checks that they agree on the launch command and install steps.
+- Every release gets a CHANGELOG.md entry (`## App X.Y.Z` / `## Plugin X.Y.Z`) before `scripts/release.sh`, which refuses a version without one.
 - Version numbers change only through `scripts/release.sh app|plugin X.Y.Z`, which commits, tags (`app-vX.Y.Z` / `plugin-vX.Y.Z`) and pushes; the release workflow publishes the GitHub Release. Do not bump `app.json` or `plugin.json` versions in feature commits.

@@ -17,7 +17,7 @@ export const GUIDE_HTML = `
     </li>
     <li>
       <strong>Add the launch command</strong> to <code>~/.zshrc</code> or <code>~/.bashrc</code>, then open a new terminal.
-      ${cmd("alias cc-g2='claude --dangerously-load-development-channels plugin:g2@g2cc --rc'")}
+      ${cmd("alias cc-g2='claude --dangerously-load-development-channels plugin:g2@g2cc'")}
       Run <code>cc-g2</code> instead of <code>claude</code>. The first launch shows a warning; choose that you are using it for local development.
     </li>
     <li>
