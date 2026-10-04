@@ -149,3 +149,17 @@ describe('matchOption', () => {
   test.each(['fourth', 'something else', '', 'de', 'actually run the tests first'])('%p -> null', t => expect(matchOption(t, opts)).toBeNull())
   test('ambiguous text matches nothing', () => expect(matchOption('test', ['unit test', 'e2e test'])).toBeNull())
 })
+
+describe('questions answered in the terminal', () => {
+  test('question_resolved dismisses the card on screen and shows the next one', () => {
+    let s = recv(paired(), env('question', question('q00000001')))
+    s = recv(s, env('question', question('q00000002', ['yes', 'no'])))
+    expect([s.screen, s.questions[0]!.question_id]).toEqual(['question', 'q00000001'])
+    s = recv(s, env('question_resolved', { question_id: 'q00000001' }))
+    expect([s.screen, s.questions.map(q => q.question_id)]).toEqual(['question', ['q00000002']])
+    s = recv(s, env('question_resolved', { question_id: 'q00000002' }))
+    expect([s.screen, s.questions]).toEqual(['timeline', []])
+    // An unknown or repeated id changes nothing.
+    expect(recv(s, env('question_resolved', { question_id: 'q00000009' }))).toBe(s)
+  })
+})

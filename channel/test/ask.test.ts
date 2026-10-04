@@ -133,3 +133,39 @@ describe('own tools under the plugin', () => {
     expect(ASK_DENY_REASON).toContain('mcp__plugin_g2_g2__ask')
   })
 })
+
+describe('ask in both places', () => {
+  test('while the ask call waits, a glasses answer goes to it, not to a channel message', async () => {
+    const { c, answers } = setup()
+    const q = c.onAsk({ question: 'Ship it?', options: ['yes', 'no'] }).question!
+    const wait = c.awaitGlassesAnswer(q.question_id)
+    c.onInbound(answer(q.question_id, 'no'))
+    expect(await wait.answer).toBe('no')
+    expect(answers).toEqual([])
+    // Answered once only.
+    c.onInbound(answer(q.question_id, 'yes'))
+    expect(answers).toEqual([])
+  })
+
+  test('answered in the terminal: the card is dismissed, and a late glasses tap is ignored', () => {
+    const { c, out, answers } = setup()
+    const q = c.onAsk({ question: 'Ship it?', options: ['yes', 'no'] }).question!
+    c.awaitGlassesAnswer(q.question_id)
+    c.resolveQuestion(q.question_id)
+    expect(out.filter(e => e.kind === 'question_resolved').map(e => e.body)).toEqual([{ question_id: q.question_id }])
+    c.onInbound(answer(q.question_id, 'yes'))
+    expect(answers).toEqual([])
+    // Resolved questions are not re-sent on reconnect.
+    out.length = 0
+    c.resync()
+    expect(questions(out)).toEqual([])
+  })
+
+  test('when the call stops waiting, a glasses answer becomes a channel message again', () => {
+    const { c, answers } = setup()
+    const q = c.onAsk({ question: 'Ship it?', options: ['yes', 'no'] }).question!
+    c.awaitGlassesAnswer(q.question_id).stop()
+    c.onInbound(answer(q.question_id, 'yes'))
+    expect(answers.map(a => a.questionId)).toEqual([q.question_id])
+  })
+})

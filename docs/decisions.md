@@ -670,3 +670,16 @@ No secrets or Anthropic credentials are involved. **Verified:** the first run pa
   - **Display off** in the tap menu turns it off by hand, with or without the setting.
   - **First gesture:** on a dark display it only wakes, so a blind tap cannot open the menu or confirm a card.
   - The animation clock stops while dark.
+
+## Questions in both places (2026-10-03, user request)
+
+- **User report:** Claude's `ask` questions only showed on the glasses, and the terminal could not answer them.
+- **Now:** `ask` sends the question card and, at the same time, opens a terminal choice dialog: an MCP elicitation with an enum field built from the options. It then waits for whichever answer comes first.
+  - **Glasses first:** the dialog is aborted, which closes it, the same mechanism pairing uses. The tool returns the choice.
+  - **Terminal first:** the channel sends `question_resolved` (a new c2g kind) and the app drops the card. A late glasses tap is ignored.
+  - **Dismissed:** Decline or Esc in the terminal withdraws the question everywhere, and Claude is told not to assume an answer.
+- Claude now gets the answer as the tool result in the same turn, instead of a channel message on the next turn. When elicitation is unavailable (`claude -p`), the call is cancelled, or 30 minutes pass, it falls back to the old behaviour: the card stays, and its answer arrives as a channel message.
+- **Verified** in a tmux-driven interactive session with a glasses stand-in on the production relay:
+  - Choosing "blue" in the terminal returned it to Claude, and the stand-in saw the card dismissed.
+  - The stand-in answering "medium" closed the open terminal dialog and returned "medium (answered on the glasses)".
+- Old app builds drop the unknown `question_resolved` kind, so their card simply stays until answered. Answering it then does nothing.

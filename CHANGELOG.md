@@ -4,6 +4,9 @@ Every release has a git tag and a GitHub Release with the full commit list. App 
 
 Add the entry here before running `scripts/release.sh`, which refuses a version without one.
 
+## App 0.3.8
+- A question answered in the terminal disappears from the glasses.
+
 ## App 0.3.7
 - Reviewing a spoken prompt, swipes scroll your own transcript instead of the timeline behind it. The box shows which lines you are on.
 - Display sleep (phone view, Display): always on by default, or off after 5 s to 5 min while Claude works. It wakes for a reply, the end of a turn, an approval card, a question, or an alert from another session, and stays on until you turn it off or start a new prompt.
@@ -48,6 +51,9 @@ Add the entry here before running `scripts/release.sh`, which refuses a version 
 
 ## App 0.1.0
 - Project spike: channel probe, Even Hub template and design notes.
+
+## Plugin 0.3.4
+- Claude's questions show on the glasses and in the terminal at the same time. Answer in either; the other closes, and Claude gets the choice in the same turn instead of a later message.
 
 ## Plugin 0.3.3
 - `/g2:setup` installs Bun with its official installer, after you approve the command.

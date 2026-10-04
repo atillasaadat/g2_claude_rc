@@ -393,6 +393,8 @@ function onEnvelope(s: AppState, env: AnyEnvelope, now: number): AppState {
       // Behind a permission card or an existing question, it waits its turn.
       return s.screen === 'card' || s.screen === 'question' ? next : showQuestion(next, now, 0)
     }
+    case 'question_resolved':
+      return dropQuestion(s, env.body.question_id, now)
     default:
       return onSessionEnvelope(s, sid, env, now)
   }
@@ -475,6 +477,16 @@ function dropCard(s: AppState, requestId: string, now: number): AppState {
   const next = { ...s, cards }
   if (!wasShown) return next
   return cards.length ? showCard(next, now) : afterCard(next, now)
+}
+
+/** Answered in the terminal (or withdrawn): the card goes, and the next question or the timeline shows. */
+function dropQuestion(s: AppState, questionId: string, now: number): AppState {
+  const wasShown = s.screen === 'question' && s.questions[0]?.question_id === questionId
+  const questions = s.questions.filter(q => q.question_id !== questionId)
+  if (questions.length === s.questions.length) return s
+  const next = { ...s, questions }
+  if (!wasShown) return next
+  return questions.length ? showQuestion(next, now, 0) : { ...next, screen: 'timeline' }
 }
 
 function confirmCard(s: AppState, now: number): Result {

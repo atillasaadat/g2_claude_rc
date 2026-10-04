@@ -18,6 +18,7 @@ const samples: Record<Kind, unknown> = {
   permission: { request_id: 'abcde', tool_name: 'Bash', description: 'Run shell command', input_preview: '{}' },
   permission_resolved: { request_id: 'abcde' },
   question: { question_id: 'q1', question: 'Which branch?', options: ['main', 'dev'] },
+  question_resolved: { question_id: 'q1' },
   prompt: { text: 'run the tests' },
   verdict: { request_id: 'abcde', behavior: 'allow' },
   answer: { question_id: 'q1', choice: 'main' },

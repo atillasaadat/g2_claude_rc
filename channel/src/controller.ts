@@ -50,14 +50,14 @@ export const PREVIEW_MAX = 2000
 export const OPTION_MAX = 100
 
 export const ASK_DENY_REASON =
-  'The user is following this session on smart glasses and cannot see this dialog. Call the g2 ask tool (mcp__g2__ask, or mcp__plugin_g2_g2__ask when g2 is installed as a plugin) with the question and 2 to 4 short options instead, then end your turn: the answer arrives as a channel message.'
+  'The user is following this session on smart glasses and cannot see this dialog. Call the g2 ask tool (mcp__g2__ask, or mcp__plugin_g2_g2__ask when g2 is installed as a plugin) with the question and 2 to 4 short options instead. It shows the question on the glasses and in the terminal and returns the user\'s choice.'
 
 const AskInput = z.object({
   question: z.string().trim().min(1),
   options: z.array(z.string().trim().min(1)).min(1).max(4),
 })
 
-export type AskResult = { ok: boolean; text: string }
+export type AskResult = { ok: boolean; text: string; question?: Body<'question'> }
 
 const newQuestionId = (): string =>
   'q' + Array.from(crypto.getRandomValues(new Uint8Array(4)), b => b.toString(16).padStart(2, '0')).join('')
@@ -93,6 +93,8 @@ export class SessionController {
   /** Insertion-ordered, so the oldest request of a tool resolves first. */
   private readonly pending = new Map<string, Pending>()
   private readonly questions = new Map<string, Body<'question'>>()
+  /** Questions whose ask call is still waiting (shown in the terminal too): a glasses answer goes there, not to a channel message. */
+  private readonly waiting = new Map<string, (choice: string) => void>()
   private glassesPresent = false
 
   constructor(private readonly opts: ControllerOptions) {
@@ -136,10 +138,30 @@ export class SessionController {
     this.opts.emit({ kind: 'question', body })
     return {
       ok: true,
+      question: body,
       text:
         `Asked on the user's glasses (question_id=${question_id}). Do not wait or call ask again: end your turn now. ` +
         `The answer arrives later as a g2 channel message with question_id="${question_id}".`,
     }
+  }
+
+  /**
+   * The ask call waits for this question. Resolves with the glasses' choice;
+   * call `stop` once the call no longer waits (answered in the terminal, or
+   * given up), after which a glasses answer becomes a channel message again.
+   */
+  awaitGlassesAnswer(questionId: string): { answer: Promise<string>; stop: () => void } {
+    let settle: (choice: string) => void = () => {}
+    const answer = new Promise<string>(resolve => (settle = resolve))
+    this.waiting.set(questionId, settle)
+    return { answer, stop: () => this.waiting.delete(questionId) }
+  }
+
+  /** Answered somewhere other than the glasses: drop it and dismiss the card there. */
+  resolveQuestion(questionId: string): void {
+    this.waiting.delete(questionId)
+    if (!this.questions.delete(questionId)) return
+    this.opts.emit({ kind: 'question_resolved', body: { question_id: questionId } })
   }
 
   onPermissionRequest(params: unknown): void {
@@ -252,6 +274,12 @@ export class SessionController {
         // Only one of the offered options, and only once.
         if (!q || !q.options.includes(env.body.choice)) return
         this.questions.delete(q.question_id)
+        const waiter = this.waiting.get(q.question_id)
+        if (waiter) {
+          this.waiting.delete(q.question_id)
+          waiter(env.body.choice)
+          return
+        }
         this.opts.sendAnswer?.(`The user answered your question "${q.question}": ${env.body.choice}`, q.question_id)
         return
       }

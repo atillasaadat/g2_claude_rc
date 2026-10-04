@@ -46,7 +46,7 @@ Even Hub app (Vite + TS, Even Hub SDK) in the Even Realities phone app → G2
 | Final reply text | Stop hook input carries `last_assistant_message` (fall back to the last assistant entry in `transcript_path`), then follows the same path as the feed |
 | Voice prompt | Glasses ASR → confirm tap → Worker → channel → `notifications/claude/channel` with `content` = transcript |
 | Permission approval | Claude Code → `notifications/claude/channel/permission_request` → glasses card → Allow or Deny → `notifications/claude/channel/permission` with `{request_id, behavior}` |
-| Claude asks a question | Claude calls the `ask` tool with a question and options → glasses list → selection returns as a channel event with `meta.question_id` |
+| Claude asks a question | Claude calls the `ask` tool with a question and options → a question card on the glasses **and** a choice dialog in the terminal (MCP elicitation), at once → the first answer wins: the tool returns it, and the other side closes (an aborted dialog, or a `question_resolved` envelope). Without a dialog (for example `claude -p`), the answer returns later as a channel event with `meta.question_id` |
 | Stop | Glasses → Worker → channel sets a stop flag → the next PreToolUse hook gets back `continue: false` **plus** a PreToolUse `permissionDecision: "deny"` (exact JSON in docs/decisions.md). `continue: false` alone lets the pending tool run first. The flag clears on the next UserPromptSubmit. |
 
 Why stop is a hook rather than a channel message: channel events queue while Claude is busy and are only delivered on the next turn, so a "stop" message would arrive too late.
@@ -81,6 +81,7 @@ kind: 'glance'       // {text}  short summary Claude chose to send (<= 120 chars
 kind: 'permission'   // {request_id, tool_name, description, input_preview}
 kind: 'question'     // {question_id, question, options: string[]}
 kind: 'permission_resolved' // {request_id}  settled from the terminal or phone; dismiss the card
+kind: 'question_resolved'   // {question_id} answered in the terminal; dismiss the question card
 
 // glasses → computer
 kind: 'prompt'       // {text}
@@ -105,7 +106,7 @@ Follow the official channels reference: https://code.claude.com/docs/en/channels
 - Permission request IDs are 5 lowercase letters `[a-km-z]`. Echo them back exactly.
 - Treat `description` and `input_preview` as untrusted display text. Truncate for the glasses, never execute.
 - Tools to expose:
-  - `ask({question, options})`: shows a choice list on the glasses. Return immediately with `"asked"`. The answer arrives later as a channel event.
+  - `ask({question, options})`: shows the question on the glasses and in the terminal at once and waits for the first answer, which it returns. Without terminal dialogs it returns at once, and the answer arrives later as a channel event.
   - `glance({text})`: a short status line for the glasses.
 - The `instructions` string must tell Claude:
   - Messages from `<channel source="g2">` are spoken by the user through smart glasses. Transcription errors are possible, so ask via `ask` if a command is ambiguous or destructive.

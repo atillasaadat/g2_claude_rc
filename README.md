@@ -97,6 +97,7 @@ The relay admits a socket to a room only with the room's auth token (an HMAC of 
   - Choose Talk. The words fill in as you speak; tap to finish. Review the prompt (swipe to scroll a long one), then tap to send or double tap to cancel.
   - Spoken keywords are handled on the glasses and never sent: **stop**, **cancel**, and **approve** / **deny** (the last two only while a card is showing).
 - **Approvals:** permission cards start on Deny, and taps within 0.5 s of a card appearing are ignored.
+- **Claude's questions** show on the glasses and in the terminal at the same time. Answer in either; the other closes, and Claude gets the answer right away.
 - **Gestures** can be remapped in the phone view.
 
 ## Repository
