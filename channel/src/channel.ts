@@ -169,28 +169,44 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
       if (pairingCode === open) pairingCode = null
       log(ok ? 'phone paired by code' : 'pairing code closed')
     })
-    const minutes = Math.round((open.expiresAt - Date.now()) / 60_000)
-    let answer: string
-    try {
-      const r = await mcp.elicitInput({
-        message:
-          `G2 pairing code:  ${open.code}\n\n` +
-          `In the G2 Claude Code app on your phone, open Pairing, type this code, and tap Pair. ` +
-          `It works once and expires in ${minutes} minutes. Keep it to yourself. Accept here when the app says Paired.`,
-        requestedSchema: { type: 'object', properties: {} },
-      })
-      answer = r.action
-    } catch (err) {
-      open.cancel()
-      return `Could not show the pairing dialog (${(err as Error).message}). Run /g2:pair again.`
+    let result: boolean | null = null
+    void open.done.then(ok => (result = ok))
+    // The dialog stays up until the phone has paired: it closes by itself
+    // then, and an early Accept (Enter is the default) brings it back with
+    // the same code, so the code can never vanish before it is used.
+    let notice = ''
+    while (result === null) {
+      const left = open.expiresAt - Date.now()
+      if (left <= 0) break
+      const closeDialog = new AbortController()
+      void open.done.then(() => closeDialog.abort())
+      let action: string
+      try {
+        const r = await mcp.elicitInput(
+          {
+            message:
+              `${notice}G2 pairing code:  ${open.code}\n\n` +
+              `Type it in the G2 Claude Code app under Pairing. It works once, for ${Math.max(1, Math.round(left / 60_000))} more minutes. ` +
+              `This closes by itself once the app has paired. Decline to cancel.`,
+            requestedSchema: { type: 'object', properties: {} },
+          },
+          { signal: closeDialog.signal, timeout: left },
+        )
+        action = r.action
+      } catch (err) {
+        if (closeDialog.signal.aborted || result !== null) break // paired (or closed) while the dialog was up
+        open.cancel()
+        return `Could not show the pairing dialog (${(err as Error).message}). Run /g2:pair again.`
+      }
+      if (action !== 'accept') {
+        open.cancel()
+        return 'Pairing cancelled. Run /g2:pair again for a new code.'
+      }
+      // Give a phone that is mid-exchange a moment before showing the code again.
+      await Promise.race([open.done, Bun.sleep(1_500)])
+      notice = 'Not paired yet, so here is the code again.\n\n'
     }
-    if (answer !== 'accept') {
-      open.cancel()
-      return 'Pairing cancelled. Run /g2:pair again for a new code.'
-    }
-    const ok = await Promise.race([open.done, Bun.sleep(30_000).then(() => null)])
-    if (ok === true) return 'Paired: the phone app now has this computer. The code was only shown to the user.'
-    if (ok === null) return 'The code is still open for a few minutes: once the phone app says Paired, it is done.'
+    if ((await open.done) === true) return 'Paired: the phone app now has this computer. The code was only shown to the user.'
     return 'The code closed without pairing (too many wrong attempts, or it expired). Run /g2:pair again.'
   }
 

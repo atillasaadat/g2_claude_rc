@@ -623,3 +623,13 @@ Four read-only reviews (crypto and pairing, the local channel surface, the relay
 - The website, the in-app guide and the Even Hub listing copy now link to the source.
 - Before going public, history was already clean of secrets (audit, Phase 10).
 - No license file yet, so the default is all rights reserved: others may read the code but not reuse it. Choosing one is the user's call.
+
+## Pairing dialog fix (2026-10-03)
+
+- **User report:** `/g2:pair` showed no code, and the tool said the code was "still open". A tmux-driven interactive session showed the dialog does appear, with and without `--rc`. But **Accept** is pre-selected, so one stray Enter (easy right after the `/g2:pair` autocomplete) closes it before the code is read.
+- **Fix:**
+  - The dialog now stays up until the phone has paired, then closes itself: the elicitation request is aborted when the pairing finishes, which closes it in Claude Code. **Verified** in tmux.
+  - An early Accept shows the same code again, with "Not paired yet". **Verified** in tmux.
+  - Decline or Esc cancels the code.
+  - The request timeout is set to the code's remaining lifetime, because the SDK default of 60 s would cut the dialog short.
+- Plugin 0.3.2.

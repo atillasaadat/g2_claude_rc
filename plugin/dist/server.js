@@ -31918,34 +31918,46 @@ async function runChannel(cfg, transport) {
     pairingCode?.cancel();
     const open2 = await openCodePairing(pairing2);
     pairingCode = open2;
-    open2.done.then((ok2) => {
+    open2.done.then((ok) => {
       if (pairingCode === open2)
         pairingCode = null;
-      log(ok2 ? "phone paired by code" : "pairing code closed");
+      log(ok ? "phone paired by code" : "pairing code closed");
     });
-    const minutes = Math.round((open2.expiresAt - Date.now()) / 60000);
-    let answer;
-    try {
-      const r = await mcp.elicitInput({
-        message: `G2 pairing code:  ${open2.code}
+    let result = null;
+    open2.done.then((ok) => result = ok);
+    let notice = "";
+    while (result === null) {
+      const left = open2.expiresAt - Date.now();
+      if (left <= 0)
+        break;
+      const closeDialog = new AbortController;
+      open2.done.then(() => closeDialog.abort());
+      let action;
+      try {
+        const r = await mcp.elicitInput({
+          message: `${notice}G2 pairing code:  ${open2.code}
 
-` + `In the G2 Claude Code app on your phone, open Pairing, type this code, and tap Pair. ` + `It works once and expires in ${minutes} minutes. Keep it to yourself. Accept here when the app says Paired.`,
-        requestedSchema: { type: "object", properties: {} }
-      });
-      answer = r.action;
-    } catch (err) {
-      open2.cancel();
-      return `Could not show the pairing dialog (${err.message}). Run /g2:pair again.`;
+` + `Type it in the G2 Claude Code app under Pairing. It works once, for ${Math.max(1, Math.round(left / 60000))} more minutes. ` + `This closes by itself once the app has paired. Decline to cancel.`,
+          requestedSchema: { type: "object", properties: {} }
+        }, { signal: closeDialog.signal, timeout: left });
+        action = r.action;
+      } catch (err) {
+        if (closeDialog.signal.aborted || result !== null)
+          break;
+        open2.cancel();
+        return `Could not show the pairing dialog (${err.message}). Run /g2:pair again.`;
+      }
+      if (action !== "accept") {
+        open2.cancel();
+        return "Pairing cancelled. Run /g2:pair again for a new code.";
+      }
+      await Promise.race([open2.done, Bun.sleep(1500)]);
+      notice = `Not paired yet, so here is the code again.
+
+`;
     }
-    if (answer !== "accept") {
-      open2.cancel();
-      return "Pairing cancelled. Run /g2:pair again for a new code.";
-    }
-    const ok = await Promise.race([open2.done, Bun.sleep(30000).then(() => null)]);
-    if (ok === true)
+    if (await open2.done === true)
       return "Paired: the phone app now has this computer. The code was only shown to the user.";
-    if (ok === null)
-      return "The code is still open for a few minutes: once the phone app says Paired, it is done.";
     return "The code closed without pairing (too many wrong attempts, or it expired). Run /g2:pair again.";
   };
   const mcp = new Server({ name: "g2", version: "0.1.0" }, {
