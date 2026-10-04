@@ -122,6 +122,9 @@ bun install
 bun run build:plugin                       # after channel or protocol changes; commit plugin/dist
 claude plugin validate . && claude plugin validate ./plugin
 
+bun channel/tools/smoke-prod.ts           # check the live site and relay
+scripts/smoke-plugin.sh                    # fresh plugin install from the public marketplace
+
 cd relay && bunx wrangler dev              # local relay on ws://127.0.0.1:8789
 cd apps/glasses && bun run dev             # Vite on :5173
 cd apps/glasses && bun run simulate        # Even Hub simulator, automation API on :9898
@@ -150,6 +153,7 @@ To cut one, add an entry to [CHANGELOG.md](CHANGELOG.md), commit, then run `scri
 | `deploy.yml` | Push to `main` (app, relay, protocol, channel) | Unit tests, app build and secret scan, `.ehpk` packs, then deploys the Worker |
 | `plugin.yml` | Push and pull requests (channel, protocol, plugin) | Channel tests; the committed plugin bundle matches the source |
 | `release.yml` | `app-v*` and `plugin-v*` tags | Version check, build, GitHub Release |
+| `nightly.yml` | Daily at 09:17 UTC, and on demand | Every test suite, including the relay and channel end-to-end tests; the simulator under Xvfb; the live site and relay (`channel/tools/smoke-prod.ts`); a fresh plugin install with the latest Claude Code (`scripts/smoke-plugin.sh`). GitHub emails you when it fails |
 
 All workflows pin action SHAs, install without dependency scripts, and get a read-only token. The exception is `release.yml`, which may write releases.
 

@@ -649,3 +649,13 @@ Four read-only reviews (crypto and pairing, the local channel surface, the relay
   - The notes list the commits since the previous tag of the same kind.
 - The workflow is the only one with `contents: write`.
 - Backfilled from history: the app tags sit where `app.json` first had each version (0.1.0, 0.2.0, 0.3.0 to 0.3.5). The plugin tags 0.3.0 to 0.3.3 already existed. 0.1.0 and 0.2.0 get notes-only releases, because the release build steps postdate them.
+
+## Nightly health check (2026-10-03, user request)
+
+`.github/workflows/nightly.yml` runs daily (09:17 UTC) and on demand, to catch breakage nobody pushed: a Claude Code update, a Cloudflare change, a moved dependency. It has four independent jobs:
+1. **Test suites:** every suite, including the relay and channel end-to-end tests through `wrangler dev`, plus the plugin-bundle and build checks.
+2. **Simulator:** the end-to-end test under Xvfb. It needs `libwebkit2gtk-4.1-0` and `libsoup-3.0-0` from apt. The screenshots are kept as a run artifact.
+3. **Production:** `channel/tools/smoke-prod.ts` checks the pages and their security headers, that a room refuses a missing or forged token, an encrypted round trip with the right one, and pairing by code. It uses throwaway keys and rooms.
+4. **Fresh install:** `scripts/smoke-plugin.sh` installs `g2@g2cc` from the public marketplace with the latest Claude Code from npm, deliberately unpinned. It uses a fresh `CLAUDE_CONFIG_DIR` and no login, then starts the MCP server (it must answer initialize as a channel) and checks that the hook fails open.
+
+No secrets or Anthropic credentials are involved. **Verified:** the first run passed all four jobs, and the simulator ran 7 of 7 tests on the runner.
