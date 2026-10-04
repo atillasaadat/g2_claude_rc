@@ -144,7 +144,7 @@ Every version is a git tag with a GitHub Release:
 - `app-vX.Y.Z`: the glasses app. The version is in `apps/glasses/app.json`. The release has `g2-claude-X.Y.Z.ehpk`, to upload to Even Hub, plus its SHA-256.
 - `plugin-vX.Y.Z`: the Claude Code plugin. The version is in `plugin/.claude-plugin/plugin.json`. Users get it with `/plugin marketplace update g2cc`.
 
-To cut one, add an entry to [CHANGELOG.md](CHANGELOG.md), commit, then run `scripts/release.sh app 0.3.7` or `scripts/release.sh plugin 0.3.4` on a clean `main`. The script sets the version, runs the checks, commits `release: <kind> vX.Y.Z`, tags and pushes.
+To cut one, add an entry to [CHANGELOG.md](CHANGELOG.md), commit, then run `scripts/release.sh app 0.3.7` or `scripts/release.sh plugin 0.3.4` on a clean `main`. The script sets the version, runs the checks, commits `release: <kind> vX.Y.Z`, tags and pushes. For the app, it also leaves `build/g2-claude-X.Y.Z.ehpk` (byte-identical to the one on the GitHub Release) and `build/g2-claude-X.Y.Z-notes.txt` (the changelog entry as plain text, for Even Hub's release notes) ready to upload. `bun scripts/changelog.ts app X.Y.Z` prints those notes for any version.
 
 `.github/workflows/release.yml` then checks that the tag matches the file, builds, and publishes the release. The notes list the commits since the previous tag of the same kind. Feature commits leave the version numbers alone.
 

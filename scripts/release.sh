@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Cuts a release: sets the version, commits, tags, and pushes. The release
-# workflow (.github/workflows/release.yml) then builds and publishes it.
+# workflow (.github/workflows/release.yml) then builds and publishes it. For
+# the app it also builds build/g2-claude-X.Y.Z.ehpk and
+# build/g2-claude-X.Y.Z-notes.txt (the CHANGELOG entry as plain text), ready
+# to upload to Even Hub.
 #
 #   scripts/release.sh app 0.3.6       glasses app (apps/glasses/app.json)
 #   scripts/release.sh plugin 0.3.4    Claude Code plugin (plugin.json; rebuilds the bundle)
@@ -38,3 +41,15 @@ fi
 git tag -a "$tag" -m "$kind v$version"
 git push -q origin main "$tag"
 echo "pushed $tag: the release workflow builds and publishes it"
+
+# The upload-ready package and its Even Hub notes, built from the same commit as the release.
+if [ "$kind" = app ]; then
+  (cd apps/glasses && bun run pack:bundled >/dev/null)
+  cp build/g2-claude-bundled.ehpk "build/g2-claude-$version.ehpk"
+  bun scripts/changelog.ts app "$version" > "build/g2-claude-$version-notes.txt"
+  echo
+  echo "Even Hub upload: build/g2-claude-$version.ehpk"
+  echo "Release notes:   build/g2-claude-$version-notes.txt"
+  echo
+  cat "build/g2-claude-$version-notes.txt"
+fi
