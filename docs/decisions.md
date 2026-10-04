@@ -639,3 +639,13 @@ Four read-only reviews (crypto and pairing, the local channel surface, the relay
 - The tap menu's **Exit app** became **End session**. It unpairs this phone: the pairing is forgotten, every session, card and question goes, and `/g2:pair` reconnects. The user chose this over detaching just the one session on screen.
 - Unpairing is one tap from losing everything, so End session asks first ("End session: unpair?") and starts on **Cancel**, the same idea as permission cards starting on Deny.
 - **Exit app** moved to the glasses' OS side menu, which now always exists. It holds the session list and Clear when there are two or more sessions, and Exit app always, paired or not. The forget button in the phone view and End session share the same unpair path.
+
+## Release tags (2026-10-03, user request)
+
+- Versions are tracked with git tags and GitHub Releases: `app-vX.Y.Z` for the glasses app (`app.json`) and `plugin-vX.Y.Z` for the plugin (`plugin.json`). There are two tag kinds because the two version independently: an app release needs an Even Hub upload, while a plugin release reaches users through `/plugin`.
+- `scripts/release.sh` sets the version, runs the checks, commits, tags and pushes. `release.yml` checks that the tag matches the file and publishes.
+  - App releases attach `g2-claude-X.Y.Z.ehpk` and `SHA256SUMS`.
+  - Plugin releases re-run the channel tests and the bundle check.
+  - The notes list the commits since the previous tag of the same kind.
+- The workflow is the only one with `contents: write`.
+- Backfilled from history: the app tags sit where `app.json` first had each version (0.1.0, 0.2.0, 0.3.0 to 0.3.5). The plugin tags 0.3.0 to 0.3.3 already existed. 0.1.0 and 0.2.0 get notes-only releases, because the release build steps postdate them.

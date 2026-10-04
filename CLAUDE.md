@@ -222,3 +222,4 @@ Each phase ends with something testable. Do not start a phase until the previous
 - Before building anything, read the relevant docs: the channels reference, the hooks docs, and the everything-evenhub skills. Record surprises in `docs/decisions.md`.
 - Keep the local footprint minimal. If a feature seems to need a background service, a listening port beyond 127.0.0.1, or Tailscale, stop and propose an alternative.
 - Prefer small, reviewable commits per phase.
+- Version numbers change only through `scripts/release.sh app|plugin X.Y.Z`, which commits, tags (`app-vX.Y.Z` / `plugin-vX.Y.Z`) and pushes; the release workflow publishes the GitHub Release. Do not bump `app.json` or `plugin.json` versions in feature commits.

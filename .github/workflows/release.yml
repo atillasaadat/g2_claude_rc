@@ -1,0 +1,82 @@
+# Publishes a GitHub Release for every version tag:
+#   app-vX.Y.Z     the glasses app (apps/glasses/app.json): builds, scans and
+#                  attaches g2-claude-X.Y.Z.ehpk, ready to upload to Even Hub
+#   plugin-vX.Y.Z  the Claude Code plugin (plugin/.claude-plugin/plugin.json):
+#                  runs the channel tests and checks the committed bundle
+# The tag must match the version in its file. Notes list the commits since the
+# previous tag of the same kind. Create tags with scripts/release.sh.
+# workflow_dispatch builds a release for an existing tag (backfill or rerun).
+name: release
+on:
+  push:
+    tags: ['app-v*', 'plugin-v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag, e.g. app-v0.3.5'
+        required: true
+# Writing releases needs contents: write; nothing else is granted.
+permissions:
+  contents: write
+concurrency: { group: release-${{ github.event.inputs.tag || github.ref_name }}, cancel-in-progress: false }
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check the tag name
+        run: |
+          [[ "$TAG" =~ ^(app|plugin)-v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::not a release tag: $TAG"; exit 1; }
+          echo "KIND=${TAG%%-v*}" >> "$GITHUB_ENV"
+          echo "VERSION=${TAG#*-v}" >> "$GITHUB_ENV"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: { ref: 'refs/tags/${{ env.TAG }}', fetch-depth: 0 }
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with: { bun-version: 1.3.14 }
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - name: The tag matches the version in its file
+        run: |
+          file=$([ "$KIND" = app ] && echo apps/glasses/app.json || echo plugin/.claude-plugin/plugin.json)
+          actual=$(jq -r .version "$file")
+          [ "$actual" = "$VERSION" ] || { echo "::error::$TAG, but $file says $actual"; exit 1; }
+      - name: Build the Even Hub package
+        if: env.KIND == 'app'
+        run: |
+          (cd apps/glasses && bun test --path-ignore-patterns 'test/sim.e2e.test.ts' && bun run pack:bundled)
+          mkdir -p out && cp build/g2-claude-bundled.ehpk "out/g2-claude-$VERSION.ehpk"
+          (cd out && sha256sum *.ehpk > SHA256SUMS)
+      - name: Check the plugin
+        if: env.KIND == 'plugin'
+        run: |
+          (cd channel && bun test)
+          bun run build:plugin
+          git diff --exit-code -- plugin/dist
+          mkdir -p out
+      - name: Release notes
+        run: |
+          prev=$(git tag --list "$KIND-v*" --sort=-v:refname | grep -vx "$TAG" | while read -r t; do
+            if git merge-base --is-ancestor "$t" "$TAG"; then echo "$t"; break; fi; done)
+          range=${prev:+$prev..}$TAG
+          {
+            if [ "$KIND" = app ]; then
+              echo "Glasses app $VERSION. Upload \`g2-claude-$VERSION.ehpk\` at hub.evenrealities.com (store submission or Private builds)."
+            else
+              echo "Claude Code plugin $VERSION. Update with \`/plugin marketplace update g2cc\`, then restart the session."
+            fi
+            echo
+            echo "## Changes${prev:+ since $prev}"
+            echo
+            git log --no-merges --format='- %s (%h)' "$range"
+          } > notes.md
+          cat notes.md
+      - name: Publish
+        run: |
+          title=$([ "$KIND" = app ] && echo "Glasses app $VERSION" || echo "Claude Code plugin $VERSION")
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$title" --notes-file notes.md
+            [ -n "$(ls out)" ] && gh release upload "$TAG" out/* --clobber || true
+          else
+            gh release create "$TAG" --verify-tag --title "$title" --notes-file notes.md $(ls out/* 2>/dev/null)
+          fi

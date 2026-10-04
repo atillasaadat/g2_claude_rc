@@ -105,6 +105,15 @@ claude plugin validate . && claude plugin validate ./plugin
 
 For development, put a Groq key in `apps/glasses/.env.local` (`VITE_STT_API_KEY=...`). The dev server uses it, and production builds never include it: `bun run build` fails if anything secret-shaped lands in the bundle.
 
+## Releases
+
+Every version is a git tag with a GitHub Release:
+
+- `app-vX.Y.Z`: the glasses app. The version is in `apps/glasses/app.json`. The release has the `g2-claude-X.Y.Z.ehpk` to upload to Even Hub, plus its SHA-256.
+- `plugin-vX.Y.Z`: the Claude Code plugin. The version is in `plugin/.claude-plugin/plugin.json`. Users get it with `/plugin marketplace update g2cc`.
+
+To cut one, run `scripts/release.sh app 0.3.6` or `scripts/release.sh plugin 0.3.4` on a clean `main`. It sets the version, runs the checks, commits `release: <kind> vX.Y.Z`, tags and pushes. `.github/workflows/release.yml` then checks that the tag matches the file, builds, and publishes the release, with notes listing the commits since the previous tag of the same kind. Feature commits leave the version numbers alone.
+
 ## Deploy
 
 Every push to `main` that touches the app, relay, or protocol deploys automatically (`.github/workflows/deploy.yml`). It needs the repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
