@@ -60,6 +60,8 @@ Then run `cc-g2` instead of `claude` in any project.
 
 **Updates:** run `/plugin marketplace update g2cc`, or turn on auto-update for the marketplace under `/plugin`. The plugin pins a version, so only a release (a version bump in `plugin/.claude-plugin/plugin.json`) reaches users, not every commit.
 
+**Bun is required on every computer that runs the plugin.** Without it the g2 server cannot start; the plugin says so when a session starts.
+
 **Coming from the old `scripts/install.sh` setup?** Run `scripts/install.sh --remove` (from a clone) to drop its http hooks, or they fire alongside the plugin. Existing pairings keep working.
 
 ### How pairing works

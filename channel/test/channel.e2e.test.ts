@@ -145,6 +145,8 @@ describe('channel feed end to end', () => {
   })
 
   test('a turn streams prompt, tools, state and reply, in order and redacted', async () => {
+    // The channel re-sends its session state when the test client joins; let that land first.
+    await Bun.sleep(500)
     received.length = 0
     await hook({ hook_event_name: 'UserPromptSubmit', prompt: 'deploy it' })
     await hook({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'curl -H "Authorization: Bearer supersecret123" x' } })

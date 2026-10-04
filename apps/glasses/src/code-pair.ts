@@ -20,7 +20,12 @@ export async function pairWithCode(input: string, relayUrl = DEFAULT_RELAY_URL):
   return new Promise<string>((resolve, reject) => {
     const timer = setTimeout(() => {
       relay.stop()
-      reject(new Error('no answer for that code. Check it, or ask for a new one with /g2:pair'))
+      reject(
+        new Error(
+          'your computer did not answer within 30 seconds. Check the code, keep the Claude Code session that showed it open, ' +
+            'and make sure the plugin is up to date (/plugin marketplace update g2cc, then restart the session). Then run /g2:pair again.',
+        ),
+      )
     }, WAIT_MS)
     const relay: RelayClient = new RelayClient({
       url: relayPairUrl(relayUrl, session.roomId, 'glasses'),

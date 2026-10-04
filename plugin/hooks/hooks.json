@@ -1,6 +1,17 @@
 {
-  "description": "Every hook runs dist/hook.js, which hands the payload to this session's g2 channel over its private Unix socket (~/.g2cc/sessions/<session>.sock). It prints nothing and exits 0 when no channel is running, so it fails open.",
+  "description": "Every hook runs dist/hook.js, which hands the payload to this session's g2 channel over its private Unix socket (~/.g2cc/sessions/<session>.sock). It prints nothing and exits 0 when no channel is running, so it fails open. SessionStart only checks that Bun is installed, and tells the user if it is not.",
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v bun >/dev/null 2>&1 || echo '{\"systemMessage\":\"The g2 plugin needs Bun, which is not installed or not on PATH. Install it from https://bun.sh, then restart Claude Code. Until then the glasses get nothing from this session.\"}'",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "*",

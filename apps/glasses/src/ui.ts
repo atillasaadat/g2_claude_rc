@@ -161,7 +161,7 @@ export function mountUi(cb: UiCallbacks): void {
     dismissKeyboard()
     lastTried = normalizePairCode(codeInput.value) ?? codeInput.value
     codeButton.disabled = true
-    message(els.pairMsg, 'Pairing...', false)
+    message(els.pairMsg, 'Looking for your computer (up to 30 seconds)...', false)
     void cb
       .pairWithCode(codeInput.value, app.querySelector<HTMLInputElement>('#relay-input')!.value.trim())
       .then(() => {

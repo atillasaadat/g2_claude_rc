@@ -44,7 +44,7 @@ export const GUIDE_HTML = `
   <h3 class="g-h">If something is off</h3>
   <ul class="g-trouble">
     <li><strong>Waiting for Claude Code:</strong> start the session with <code>cc-g2</code>, not <code>claude</code>.</li>
-    <li><strong>Code not accepted:</strong> codes work once and expire after 10 minutes. Run <code>/g2:pair</code> again for a new one.</li>
+    <li><strong>Code not accepted, or pairing hangs:</strong> codes work once and expire after 10 minutes, and the session that showed it must stay open. Update the plugin (<code>/plugin marketplace update g2cc</code>, then restart the session) and run <code>/g2:pair</code> again.</li>
     <li><strong>No approval cards:</strong> in auto mode Claude decides itself. Press Shift+Tab in the session to change the mode.</li>
     <li><strong>Talk is off:</strong> add your Groq key under Voice.</li>
     <li><strong>Stop seems slow:</strong> it takes effect at Claude's next tool call.</li>
