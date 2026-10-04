@@ -4,6 +4,11 @@ Every release has a git tag and a GitHub Release with the full commit list. App 
 
 Add the entry here before running `scripts/release.sh`, which refuses a version without one.
 
+## App 0.3.7
+- Reviewing a spoken prompt, swipes scroll your own transcript instead of the timeline behind it. The box shows which lines you are on.
+- Display sleep (phone view, Display): always on by default, or off after 5 s to 5 min while Claude works. It wakes for a reply, the end of a turn, an approval card, a question, or an alert from another session, and stays on until you turn it off or start a new prompt.
+- Display off in the tap menu. Any gesture wakes the glasses, and that first gesture does nothing else.
+
 ## App 0.3.6
 - No app changes. First release cut with `scripts/release.sh`, with the `.ehpk` attached on GitHub.
 

@@ -69,7 +69,7 @@ describe('timeline: scrolling', () => {
 
   test('End session asks first, starting on Cancel, and Unpair phone forgets everything', () => {
     const base = recv(withLines(paired(), 3), env('session', { name: 'repo', cwd: '/r', state: 'idle' }))
-    const asking = gs(base, 'tap', 'scroll_down', 'scroll_down', 'tap')
+    const asking = gs(base, 'tap', 'scroll_down', 'scroll_down', 'scroll_down', 'tap')
     expect(asking.confirmEnd).toBe(true)
     expect(asking.menuIndex).toBe(0)
     // Cancel (the default) closes the menu and keeps the pairing.
@@ -113,8 +113,8 @@ describe('menu and stop', () => {
   test('tap opens the menu; scroll moves within bounds; double tap closes', () => {
     let s = gs(working(), 'tap')
     expect(s.screen).toBe('menu')
-    s = gs(s, 'scroll_down', 'scroll_down', 'scroll_down')
-    expect(s.menuIndex).toBe(2)
+    s = gs(s, 'scroll_down', 'scroll_down', 'scroll_down', 'scroll_down')
+    expect(s.menuIndex).toBe(3)
     expect(gs(s, 'double_tap').screen).toBe('timeline')
   })
 

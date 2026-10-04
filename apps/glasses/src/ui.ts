@@ -15,6 +15,7 @@ export interface UiCallbacks {
   pairWithCode(code: string, relayUrl?: string): Promise<void>
   forgetPairing(): Promise<void>
   saveGestures(map: GestureMap): Promise<void>
+  saveDisplaySleep(seconds: number): Promise<void>
   /** Saves (replacing any saved key) after Groq accepts it. Empty removes the key. */
   saveSttKey(key: string): Promise<KeyCheck | null>
 }
@@ -91,6 +92,23 @@ export function mountUi(cb: UiCallbacks): void {
         <input id="stt-input" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="gsk_..." />
         <div class="row"><button id="stt-save">Save key</button><button id="stt-remove" class="secondary" hidden>Remove key</button></div>
         <div id="stt-msg" class="msg"></div>
+      </details>
+      <details>
+        <summary>Display</summary>
+        <p class="hint">While Claude works, the glasses display can turn itself off. It comes back on for a reply, an approval or a question, and then stays on until you turn it off (menu: Display off) or start a new prompt. Any gesture wakes it; that first gesture does nothing else.</p>
+        <label>Display while Claude works
+          <select id="sleep-select">
+            <option value="0">Always on</option>
+            <option value="5">Off after 5 s</option>
+            <option value="10">Off after 10 s</option>
+            <option value="15">Off after 15 s</option>
+            <option value="30">Off after 30 s</option>
+            <option value="60">Off after 1 min</option>
+            <option value="120">Off after 2 min</option>
+            <option value="300">Off after 5 min</option>
+          </select>
+        </label>
+        <div id="sleep-msg" class="msg"></div>
       </details>
       <details>
         <summary>Gestures</summary>
@@ -207,6 +225,14 @@ export function mountUi(cb: UiCallbacks): void {
 
   wireGuide(els.guide)
   keyboardFriendly()
+  const sleepSelect = app.querySelector<HTMLSelectElement>('#sleep-select')!
+  const sleepMsg = app.querySelector<HTMLDivElement>('#sleep-msg')!
+  sleepSelect.addEventListener('change', () => {
+    void cb
+      .saveDisplaySleep(Number(sleepSelect.value))
+      .then(() => message(sleepMsg, 'Saved.', false))
+      .catch(err => message(sleepMsg, (err as Error).message, true))
+  })
   injectStyles()
 }
 
@@ -277,12 +303,19 @@ export function setVoiceStatus(key: string, opts: { known?: KeyCheck | null; fak
 
 export function mirror(frame: Frame): void {
   if (!els) return
-  els.header.textContent = frame.header
-  els.body.textContent = frame.timeline
+  const off = !frame.header && !frame.timeline && !frame.overlay
+  els.header.textContent = off ? 'Display off' : frame.header
+  els.body.textContent = off ? 'The glasses show nothing right now. Any gesture on the glasses wakes them.' : frame.timeline
   els.body.classList.toggle('dimmed', Boolean(frame.overlay))
   els.overlay.hidden = !frame.overlay
   els.overlay.textContent = frame.overlay?.content ?? ''
   els.overlay.dataset.kind = frame.overlay?.name ?? ''
+}
+
+/** Shows the saved display sleep choice. */
+export function setDisplaySleep(seconds: number): void {
+  const select = document.querySelector<HTMLSelectElement>('#sleep-select')
+  if (select) select.value = String(seconds)
 }
 
 export function setGestureMap(map: GestureMap): void {

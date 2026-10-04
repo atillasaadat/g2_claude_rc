@@ -86,13 +86,15 @@ The relay admits a socket to a room only with the room's auth token (an HMAC of 
 | Gesture | Action |
 |---|---|
 | Swipe up / down | Scroll the timeline 3 lines (the R1 ring works the same) |
-| Tap | Menu: Talk, Stop Claude, End session. On a card: confirm |
+| Tap | Menu: Talk, Stop Claude, Display off, End session. On a card: confirm |
 | Double tap | Jump to the newest line. On a card: leave it for later. In the menu: back |
 | OS side menu | Switch sessions, clear other sessions, or Exit app |
 
+- **Display off** blanks the glasses until something needs you. Any gesture wakes them, and that first gesture does nothing else.
+- **Display sleep** (phone view, Display): keep the display always on (the default), or let it turn off after 5 s to 5 min while Claude works. It wakes for a reply, the end of a turn, an approval card, a question, or an alert from another session. It then stays on until you turn it off or start a new prompt.
 - **End session** unpairs this phone, after a confirm that starts on Cancel. Every session leaves the glasses, and `/g2:pair` reconnects.
 - **Voice:**
-  - Choose Talk. The words fill in as you speak; tap to finish, then tap to send, or double tap to cancel.
+  - Choose Talk. The words fill in as you speak; tap to finish. Review the prompt (swipe to scroll a long one), then tap to send or double tap to cancel.
   - Spoken keywords are handled on the glasses and never sent: **stop**, **cancel**, and **approve** / **deny** (the last two only while a card is showing).
 - **Approvals:** permission cards start on Deny, and taps within 0.5 s of a card appearing are ignored.
 - **Gestures** can be remapped in the phone view.

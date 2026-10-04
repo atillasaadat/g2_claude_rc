@@ -8,6 +8,7 @@
 import { getTextWidth } from '@evenrealities/pretext'
 import {
   clampLines,
+  wrapLines,
   fitLine,
   LINE_H,
   HEADER,
@@ -22,7 +23,7 @@ import {
   TIMELINE_LINES,
   type Box,
 } from './layout'
-import { FADE_MS, menuItems, osMenu, sessionList, sessionName, view, type AppState, type Link, type PermissionCard, type QuestionCard } from './state'
+import { FADE_MS, menuItems, osMenu, sessionList, sessionName, view, VOICE_REVIEW_LINES, voiceLineCount, type AppState, type Link, type PermissionCard, type QuestionCard } from './state'
 import { buildTimeline, visibleWindow } from './timeline'
 
 export interface ContainerSpec {
@@ -95,7 +96,7 @@ function voiceHint(s: AppState): string {
     case 'listening':
       return 'tap: done · 2× tap: cancel'
     case 'review':
-      return 'tap: send · 2× tap: cancel'
+      return voiceLineCount(s.voice.text ?? '') > VOICE_REVIEW_LINES ? '↑↓ read · tap: send · 2× tap: cancel' : 'tap: send · 2× tap: cancel'
     case 'error':
       return 'tap: try again · 2× tap: cancel'
     default:
@@ -191,7 +192,12 @@ function voiceOverlay(s: AppState): { box: Box; content: string } {
       return { box: overlayBox(3), content: ['○ Transcribing', ...said].map(l => fitLine(l, w)).join('\n') }
     }
     case 'review': {
-      const lines = ['Send to Claude?', ...clampLines(v.text ?? '', 5, w)]
+      // Long prompts scroll inside the box (swipes), so all of it can be read before sending.
+      const all = wrapLines(v.text ?? '', w)
+      const top = Math.min(v.scroll ?? 0, Math.max(0, all.length - VOICE_REVIEW_LINES))
+      const shown = all.slice(top, top + VOICE_REVIEW_LINES)
+      const where = all.length > VOICE_REVIEW_LINES ? `  ${top > 0 ? '▲' : ' '}${top + shown.length < all.length ? '▼' : ' '} ${top + 1}-${top + shown.length} of ${all.length}` : ''
+      const lines = [fitLine(`Send to Claude?${where}`, w), ...shown]
       return { box: overlayBox(lines.length), content: lines.join('\n') }
     }
     default:
@@ -241,7 +247,19 @@ export function occlude(timeline: string, box: Box): string {
     .join('\n')
 }
 
+/** The display turned off (display sleep or Display off): nothing lit, input still captured. */
+function darkScene(s: AppState): Scene {
+  return {
+    containers: [
+      { id: HEADER_ID, name: 'header', box: { ...HEADER, border: 0 }, content: '', brightness: 0, capture: false, z: 1 },
+      { id: TIMELINE_ID, name: 'timeline', box: TIMELINE, content: '', brightness: 0, capture: true, z: 2 },
+    ],
+    menu: osMenu(s).map(({ id, label }) => ({ id, label })),
+  }
+}
+
 export function render(s: AppState): Scene {
+  if (s.dark) return darkScene(s)
   const over = s.paired ? overlay(s) : null
   const timeline = over ? occlude(timelineText(s), over.box) : timelineText(s)
   return {

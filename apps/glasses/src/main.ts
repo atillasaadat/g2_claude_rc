@@ -15,7 +15,7 @@ import { checkGroqKey, type KeyCheck } from './asr/key-status'
 import { VoiceRecorder } from './recorder'
 import { initialState, isAnimating, micWanted, reduce, type AppState, type Msg } from './state'
 import { Storage, STT_KEY_SHAPE } from './storage'
-import { mirror, mountUi, setGestureMap, setStatus, setVoiceStatus } from './ui'
+import { mirror, mountUi, setDisplaySleep, setGestureMap, setStatus, setVoiceStatus } from './ui'
 
 const log = (...args: unknown[]): void => console.log('[g2cc]', ...args)
 
@@ -132,6 +132,10 @@ mountUi({
     return check
   },
   forgetPairing: () => unpair(),
+  async saveDisplaySleep(seconds) {
+    await storage.saveDisplaySleep(seconds)
+    dispatch({ type: 'config', displaySleepMs: seconds * 1000 })
+  },
   async saveGestures(map) {
     await storage.saveGestures(map)
     gestures = map
@@ -166,6 +170,9 @@ try {
   log('using default gestures:', (err as Error).message)
 }
 setGestureMap(gestures)
+const displaySleep = await storage.loadDisplaySleep().catch(() => 0)
+setDisplaySleep(displaySleep)
+state = reduce(state, { type: 'config', displaySleepMs: displaySleep * 1000 }).state
 await pairFromFragment()
 const stored = await storage.loadPairing().catch(() => null)
 state = reduce(state, { type: 'paired', paired: stored !== null }).state

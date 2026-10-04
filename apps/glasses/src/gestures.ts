@@ -12,7 +12,7 @@ export type Gesture = (typeof GESTURES)[number]
 export const ACTIONS = {
   timeline: ['none', 'menu.open', 'voice.start', 'app.exit', 'live.or.exit', 'timeline.up', 'timeline.down', 'timeline.live'],
   card: ['none', 'nav.back', 'card.prev', 'card.next', 'card.confirm'],
-  voice: ['none', 'voice.send', 'voice.cancel'],
+  voice: ['none', 'voice.send', 'voice.cancel', 'voice.up', 'voice.down'],
 } as const satisfies Record<Screen, readonly string[]>
 
 export type Action = (typeof ACTIONS)[Screen][number]
@@ -23,7 +23,8 @@ export const DEFAULT_GESTURES: GestureMap = {
   // exit dialog blanked the simulator), and the OS side menu may hold sessions.
   timeline: { tap: 'menu.open', double_tap: 'timeline.live', scroll_up: 'timeline.up', scroll_down: 'timeline.down' },
   card: { tap: 'card.confirm', double_tap: 'nav.back', scroll_up: 'card.prev', scroll_down: 'card.next' },
-  voice: { tap: 'voice.send', double_tap: 'voice.cancel', scroll_up: 'none', scroll_down: 'none' },
+  // Swipes scroll the spoken prompt under review, so all of it can be read before sending.
+  voice: { tap: 'voice.send', double_tap: 'voice.cancel', scroll_up: 'voice.up', scroll_down: 'voice.down' },
 }
 
 /** The menu and question cards are cards too, so they share the card row of the map. */
@@ -56,6 +57,10 @@ export function validateGestureMap(map: GestureMap): string[] {
 export function parseGestureMap(raw: string): GestureMap {
   try {
     const parsed = JSON.parse(raw) as GestureMap
+    // Maps saved before voice scrolling existed had swipes do nothing there.
+    if (parsed.voice?.scroll_up === 'none' && parsed.voice?.scroll_down === 'none') {
+      parsed.voice = { ...parsed.voice, scroll_up: 'voice.up', scroll_down: 'voice.down' }
+    }
     return validateGestureMap(parsed).length === 0 ? parsed : DEFAULT_GESTURES
   } catch {
     return DEFAULT_GESTURES

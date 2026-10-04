@@ -194,7 +194,7 @@ describe.skipIf(!RUN)('glasses app in the simulator', () => {
     await frameWhere(f => f.header.includes('working'), 'working header')
     await input('click')
     const menu = await frameWhere(f => f.overlay?.name === 'menu', 'menu')
-    expect(ov(menu).split('\n')).toEqual(['▶ Talk', '   Stop Claude', '   End session'])
+    expect(ov(menu).split('\n')).toEqual(['▶ Talk', '   Stop Claude', '   Display off', '   End session'])
     await Bun.sleep(600) // let the fade finish before the screenshot
     await screenshot('menu')
     await input('down')
@@ -250,6 +250,32 @@ describe.skipIf(!RUN)('glasses app in the simulator', () => {
     await waitFor(async () => inbound.some(e => e.kind === 'prompt'), 'prompt at the computer', 5_000)
     expect(inbound.find(e => e.kind === 'prompt')!.body).toEqual({ text: FAKE_TRANSCRIPT })
     await frameWhere(f => !f.overlay, 'back to the timeline')
+  })
+
+  test('Display off blanks the glasses, and a reply (or any gesture) brings them back', async () => {
+    await send('session', { name: 'g2cc-sandbox', cwd: '/x', state: 'working', mode: 'auto' })
+    await frameWhere(f => f.header.includes('working') && !f.overlay, 'working')
+    await input('click')
+    await frameWhere(f => ov(f).includes('Display off'), 'menu with Display off')
+    for (let i = 0; i < 2; i++) await input('down')
+    await frameWhere(f => ov(f).includes('▶ Display off'), 'Display off highlighted')
+    await input('click')
+    await frameWhere(f => f.header === '' && f.timeline === '' && !f.overlay, 'display off')
+    await Bun.sleep(400)
+    expect(litPixels(await screenshot('display-off'), 0, 288)).toBe(0)
+    // A gesture only wakes it: the menu does not open.
+    await input('click')
+    const awake = await frameWhere(f => f.header.includes('g2cc-sandbox'), 'awake again')
+    expect(awake.overlay).toBeUndefined()
+    // Off again, then a reply wakes it.
+    await input('click')
+    await frameWhere(f => ov(f).includes('Display off'), 'menu again')
+    for (let i = 0; i < 2; i++) await input('down')
+    await input('click')
+    await frameWhere(f => f.header === '' && f.timeline === '', 'off again')
+    await send('session', { name: 'g2cc-sandbox', cwd: '/x', state: 'idle', mode: 'auto' })
+    await send('reply', { text: 'All done.' })
+    await frameWhere(f => f.timeline.includes('All done.'), 'woken by the reply')
   })
 
   test('a question card shows the options, and the chosen answer reaches the computer', async () => {

@@ -659,3 +659,14 @@ Four read-only reviews (crypto and pairing, the local channel surface, the relay
 4. **Fresh install:** `scripts/smoke-plugin.sh` installs `g2@g2cc` from the public marketplace with the latest Claude Code from npm, deliberately unpinned. It uses a fresh `CLAUDE_CONFIG_DIR` and no login, then starts the MCP server (it must answer initialize as a channel) and checks that the hook fails open.
 
 No secrets or Anthropic credentials are involved. **Verified:** the first run passed all four jobs, and the simulator ran 7 of 7 tests on the runner.
+
+## Voice review scrolling and display sleep (2026-10-03, user request)
+
+- **Voice review scrolling:** swipes in the voice box now scroll the transcript under review (`voice.up` / `voice.down`, 3 lines at a time, 5 shown, with a "4-8 of 12" marker). Before, they did nothing there. Gesture maps saved before this, with both voice swipes set to `none`, are upgraded on load.
+- **Display sleep:** the SDK has no screen-off or brightness call, so "off" means the app draws nothing: empty containers and no borders. The G2 lenses show only lit pixels, and the timeline container still captures input. **Verified** in the simulator: 0 lit pixels.
+  - **Setting:** phone view, Display. Always on (the default), or 5 s to 5 min, stored as `g2cc.displaySleep`. It is a picker, so no keyboard is needed.
+  - **Goes dark** only while the session on screen is working, with no card, question, menu or voice box up, and no gesture for the set time. The timer restarts when a new turn starts and on every gesture.
+  - **Wakes** on fresh envelopes only, never history replays. The triggers are a reply or a session state change other than working for the session on screen, a permission card or a question (from any session), and a toast from another session. After waking it stays on, because the timer only runs while working.
+  - **Display off** in the tap menu turns it off by hand, with or without the setting.
+  - **First gesture:** on a dark display it only wakes, so a blind tap cannot open the menu or confirm a card.
+  - The animation clock stops while dark.

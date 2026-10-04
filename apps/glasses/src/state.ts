@@ -9,7 +9,7 @@
 
 import type { AnyEnvelope, Body } from '@g2cc/protocol'
 import { resolveGesture, type Gesture, type GestureMap } from './gestures'
-import { TIMELINE_LINES } from './layout'
+import { OVERLAY_WIDTH, TIMELINE_LINES, wrapLines } from './layout'
 import { toPlainText } from './plain'
 import { buildTimeline, type TimelineEntry } from './timeline'
 import { matchOption, parseVoice } from './voice'
@@ -30,7 +30,7 @@ export type Link = 'offline' | 'relay' | 'online'
 export type ScreenId = 'timeline' | 'menu' | 'card' | 'question' | 'voice'
 
 export interface MenuItem {
-  id: 'review' | 'review_question' | 'talk' | 'stop' | 'end' | 'end_cancel' | 'end_confirm'
+  id: 'review' | 'review_question' | 'talk' | 'stop' | 'dark' | 'end' | 'end_cancel' | 'end_confirm'
   label: string
   available: boolean
 }
@@ -42,6 +42,8 @@ export interface VoiceState {
   /** Live partial transcript while listening. */
   partial?: string
   text?: string
+  /** First transcript line shown while reviewing (swipes scroll it). */
+  scroll?: number
   error?: string
 }
 
@@ -97,6 +99,14 @@ export interface AppState {
   voice: VoiceState
   /** A Groq key is configured. */
   voiceAvailable: boolean
+  /**
+   * Display sleep while Claude works, in ms (0: always on). See shouldSleep.
+   * `dark` means the app draws nothing; the next gesture only wakes it.
+   */
+  displaySleepMs: number
+  dark: boolean
+  /** Last gesture or wake: the sleep timer counts from here. */
+  awakeSince: number
   toast?: { text: string; until: number }
 }
 
@@ -106,7 +116,7 @@ export type Msg =
   | { type: 'presence'; computers: number }
   | { type: 'gesture'; gesture: Gesture; map: GestureMap; now?: number }
   | { type: 'paired'; paired: boolean }
-  | { type: 'config'; voiceAvailable: boolean }
+  | { type: 'config'; voiceAvailable?: boolean; displaySleepMs?: number }
   | { type: 'transcript'; attempt: number; text: string; now: number }
   | { type: 'partial'; attempt: number; text: string }
   | { type: 'transcript_error'; attempt: number; message: string }
@@ -154,6 +164,9 @@ export function initialState(): AppState {
     questionShownAt: 0,
     voice: { phase: 'idle', attempt: 0 },
     voiceAvailable: false,
+    displaySleepMs: 0,
+    dark: false,
+    awakeSince: 0,
   }
 }
 
@@ -234,6 +247,7 @@ export function menuItems(s: AppState): MenuItem[] {
     ...(s.questions[0] ? [{ id: 'review_question' as const, label: 'Review question', available: true }] : []),
     { id: 'talk', label: s.voiceAvailable ? 'Talk' : 'Talk (no Groq key)', available: s.voiceAvailable },
     { id: 'stop', label: 'Stop Claude', available: true },
+    { id: 'dark', label: 'Display off', available: true },
     { id: 'end', label: 'End session', available: true },
   ]
 }
@@ -246,6 +260,8 @@ export function micWanted(s: AppState): boolean {
 /** Whether the animation clock needs to tick (dots, pulse, fade, toast). */
 export function isAnimating(s: AppState): boolean {
   const v = view(s)
+  // Dark draws nothing, and every way out of it is an event, not the clock.
+  if (s.dark) return false
   return (
     v.session?.state === 'working' ||
     v.stopPending ||
@@ -382,6 +398,55 @@ function onEnvelope(s: AppState, env: AnyEnvelope, now: number): AppState {
   }
 }
 
+// Display sleep -------------------------------------------------------------
+
+/** Transcript lines the review box shows at once, and how far a swipe moves. */
+export const VOICE_REVIEW_LINES = 5
+const VOICE_SCROLL_STEP = 3
+export const voiceLineCount = (text: string): number => wrapLines(text, OVERLAY_WIDTH).length
+
+/**
+ * With display sleep on, the display goes dark once the session on screen has
+ * been working for displaySleepMs with no gesture, and nothing needs the user
+ * (no card, question, menu or voice box).
+ */
+export function shouldSleep(s: AppState, now: number): boolean {
+  return (
+    s.displaySleepMs > 0 &&
+    !s.dark &&
+    s.paired &&
+    view(s).session?.state === 'working' &&
+    s.screen === 'timeline' &&
+    s.cards.length === 0 &&
+    s.questions.length === 0 &&
+    now - s.awakeSince >= s.displaySleepMs
+  )
+}
+
+const wake = (s: AppState, now: number): AppState => ({ ...s, dark: false, awakeSince: now })
+
+/**
+ * After an envelope: a new turn starts the sleep timer, and anything that is
+ * a response or needs the user wakes the display (it then stays on until the
+ * user turns it off or a new turn starts). History replays never wake it.
+ */
+function afterEnvelope(prev: AppState, next: AppState, env: AnyEnvelope, now: number): AppState {
+  if (now - env.ts > FRESH_MS) return next
+  const sid = env.sid ?? ''
+  const onScreen = sid === next.active
+  if (env.kind === 'session' && onScreen && env.body.state === 'working' && view(prev, sid).session?.state !== 'working') {
+    return { ...next, awakeSince: now }
+  }
+  if (!next.dark) return next
+  const response =
+    env.kind === 'permission' ||
+    env.kind === 'question' ||
+    (env.kind === 'reply' && onScreen) ||
+    (env.kind === 'session' && onScreen && env.body.state !== 'working') ||
+    (next.toast !== undefined && next.toast !== prev.toast)
+  return response ? wake(next, now) : next
+}
+
 // Cards and questions -----------------------------------------------------
 
 /** A card or question preempts recording (the mic goes off); a transcription in flight continues. */
@@ -449,6 +514,8 @@ function confirmMenu(s: AppState, now: number): Result {
       return stopActive(s)
     case 'talk':
       return done(s.voiceAvailable ? startListening(s, now) : s)
+    case 'dark':
+      return done({ ...s, screen: 'timeline', dark: true })
     case 'end':
       return done({ ...s, confirmEnd: true, menuIndex: 0 })
     case 'end_cancel':
@@ -560,6 +627,13 @@ function onGesture(s: AppState, gesture: Gesture, map: GestureMap, now: number):
     case 'voice.send':
     case 'voice.cancel':
       return s.screen === 'voice' ? onVoiceGesture(s, action, now) : done(s)
+    case 'voice.up':
+    case 'voice.down': {
+      if (s.screen !== 'voice' || s.voice.phase !== 'review') return done(s)
+      const step = action === 'voice.up' ? -VOICE_SCROLL_STEP : VOICE_SCROLL_STEP
+      const max = Math.max(0, voiceLineCount(s.voice.text ?? '') - VOICE_REVIEW_LINES)
+      return done({ ...s, voice: { ...s.voice, scroll: Math.min(max, Math.max(0, (s.voice.scroll ?? 0) + step)) } })
+    }
     default:
       return done(s)
   }
@@ -568,7 +642,7 @@ function onGesture(s: AppState, gesture: Gesture, map: GestureMap, now: number):
 export function reduce(s: AppState, msg: Msg): Result {
   switch (msg.type) {
     case 'envelope':
-      return done(onEnvelope(s, msg.env, msg.now))
+      return done(afterEnvelope(s, onEnvelope(s, msg.env, msg.now), msg.env, msg.now))
     case 'relay': {
       const relayOpen = msg.status === 'open'
       const computers = relayOpen ? s.computers : 0
@@ -577,14 +651,26 @@ export function reduce(s: AppState, msg: Msg): Result {
     }
     case 'presence':
       return done({ ...s, computers: msg.computers, link: link(s.relayOpen, msg.computers) })
-    case 'gesture':
+    case 'gesture': {
+      const clock = msg.now ?? s.clock
+      // A dark display only wakes: a blind tap must not open the menu or confirm a card.
+      if (s.dark) return done(wake(s, clock))
       // Without a clock (tests of non-card screens) the card guard is not applied.
-      return onGesture(s, msg.gesture, msg.map, msg.now ?? Number.POSITIVE_INFINITY)
+      const r = onGesture(s, msg.gesture, msg.map, msg.now ?? Number.POSITIVE_INFINITY)
+      return r.state.dark ? r : { ...r, state: { ...r.state, awakeSince: clock } }
+    }
     case 'paired':
       // Unpaired: every session, card and question goes with the pairing.
-      return done(msg.paired ? { ...s, paired: true } : { ...initialState(), voiceAvailable: s.voiceAvailable, clock: s.clock })
-    case 'config':
-      return done({ ...s, voiceAvailable: msg.voiceAvailable })
+      return done(msg.paired ? { ...s, paired: true } : { ...initialState(), voiceAvailable: s.voiceAvailable, displaySleepMs: s.displaySleepMs, clock: s.clock })
+    case 'config': {
+      const next = {
+        ...s,
+        ...(msg.voiceAvailable !== undefined ? { voiceAvailable: msg.voiceAvailable } : {}),
+        ...(msg.displaySleepMs !== undefined ? { displaySleepMs: msg.displaySleepMs } : {}),
+      }
+      // Turning sleep off wakes a dark display.
+      return done(next.displaySleepMs === 0 && next.dark ? wake(next, s.clock) : next)
+    }
     case 'transcript':
       if (msg.attempt !== s.voice.attempt || s.voice.phase !== 'transcribing') return done(s)
       return onTranscript(s, msg.text, msg.now)
@@ -596,8 +682,10 @@ export function reduce(s: AppState, msg: Msg): Result {
       return done(voiceError(s, msg.message))
     case 'voice_limit':
       return done(s.voice.phase === 'listening' ? { ...s, voice: { ...s.voice, phase: 'transcribing' } } : s)
-    case 'tick':
-      return done({ ...s, clock: msg.now })
+    case 'tick': {
+      const next = { ...s, clock: msg.now }
+      return done(shouldSleep(next, msg.now) ? { ...next, dark: true } : next)
+    }
     case 'os_menu':
       return onOsMenu(s, msg.itemID)
   }
