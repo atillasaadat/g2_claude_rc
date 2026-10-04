@@ -32,6 +32,7 @@ let els: {
   body: HTMLPreElement
   overlay: HTMLPreElement
   guide: HTMLDetailsElement
+  pairing: HTMLDetailsElement
   pairInput: HTMLTextAreaElement
   pairMsg: HTMLDivElement
   gestures: HTMLDivElement
@@ -59,11 +60,7 @@ export function mountUi(cb: UiCallbacks): void {
           <pre id="m-overlay" class="m-overlay" hidden></pre>
         </div>
       </section>
-      <details id="guide">
-        <summary>Setup guide</summary>
-        ${GUIDE_HTML}
-      </details>
-      <details>
+      <details id="pairing">
         <summary>Pairing</summary>
         <p class="hint">In Claude Code on your computer, run <code>/g2:pair</code>. Type the code it shows here.</p>
         <input id="code-input" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD-EFGH" maxlength="12" />
@@ -81,6 +78,10 @@ export function mountUi(cb: UiCallbacks): void {
           <textarea id="pair-input" rows="4" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder='{"v":1,"relayUrl":...}'></textarea>
           <div class="row"><button id="pair-save">Save pairing</button></div>
         </details>
+      </details>
+      <details id="guide">
+        <summary>Setup guide</summary>
+        ${GUIDE_HTML}
       </details>
       <details>
         <summary>Voice (Groq key)</summary>
@@ -108,6 +109,7 @@ export function mountUi(cb: UiCallbacks): void {
     body: app.querySelector('#m-body')!,
     overlay: app.querySelector('#m-overlay')!,
     guide: app.querySelector('#guide')!,
+    pairing: app.querySelector('#pairing')!,
     pairInput: app.querySelector('#pair-input')!,
     pairMsg: app.querySelector('#pair-msg')!,
     gestures: app.querySelector('#gestures')!,
@@ -204,7 +206,7 @@ export function mountUi(cb: UiCallbacks): void {
   })
 
   wireGuide(els.guide)
-  keyboardFriendly(app)
+  keyboardFriendly()
   injectStyles()
 }
 
@@ -217,10 +219,12 @@ let guideShown = false
 
 export function setStatus(link: Link, paired: boolean): void {
   if (!els) return
-  // Open the guide once for an unpaired app; after that, respect the user's toggle.
+  // Open Pairing and the guide once for an unpaired app; after that, respect the user's toggles.
+  // Pairing comes first on the page, so its field stays clear of the on-screen keyboard.
   if (!guideShown) {
     guideShown = true
     els.guide.open = !paired
+    els.pairing.open = !paired
   }
   const [cls, text] = !paired
     ? ['offline', 'Not paired']
@@ -326,8 +330,9 @@ function injectStyles(): void {
     html, body { margin: 0; min-height: 100%; background: #232323; color: #E5E5E5;
       font: 16px/1.4 -apple-system, BlinkMacSystemFont, 'Helvetica Neue', system-ui, sans-serif;
       touch-action: manipulation; -webkit-text-size-adjust: 100%; overscroll-behavior: none; }
-    .panel { scroll-padding-bottom: 40vh; display: flex; flex-direction: column; gap: 16px; max-width: 640px; margin: 0 auto;
-      padding: 24px; box-sizing: border-box; }
+    /* The blank space at the end lets the bottom field scroll above the on-screen keyboard. */
+    .panel { display: flex; flex-direction: column; gap: 16px; max-width: 640px; margin: 0 auto;
+      padding: 24px 24px 45vh; box-sizing: border-box; }
     header { display: flex; align-items: center; justify-content: space-between; }
     h1 { font-size: 18px; font-weight: 600; margin: 0; }
     .status { font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid #3E3E3E;

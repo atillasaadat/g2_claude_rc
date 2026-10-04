@@ -1,7 +1,7 @@
 {
   "name": "g2",
   "displayName": "G2 Claude Code",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Follow and drive Claude Code from Even Realities G2 glasses: live feed, voice prompts, stop, tool approvals, and questions.",
   "author": {
     "name": "Atilla Saadat",

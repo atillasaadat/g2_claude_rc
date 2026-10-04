@@ -1,59 +1,36 @@
-// Keeps the phone view usable while the on-screen keyboard is up. The Even
-// app's WebView does not always shrink for the keyboard, so a field near the
-// bottom, and the button under it, can end up hidden with no way out.
+// Keeps the phone view usable while the on-screen keyboard is up, without
+// fighting the Even app's WebView: no layout changes or scrolling from
+// script while the keyboard moves (those froze the page on a phone).
 //   - Enter / Go on a single-line field runs its action and closes the keyboard.
-//   - Tapping anywhere outside a field closes the keyboard.
-//   - While a field has focus, the page gets room at the bottom for the
-//     keyboard and scrolls the field into view.
+//   - A tap (not a scroll) outside any field closes the keyboard.
+//   - The page always ends with blank space (CSS, .panel), so the bottom
+//     field and its button can be scrolled above the keyboard.
 
 const FIELD = 'input, textarea, select'
 
-/** Closes the on-screen keyboard. */
+/** Closes the on-screen keyboard, after the current event has finished. */
 export function dismissKeyboard(): void {
-  const el = document.activeElement
-  if (el instanceof HTMLElement && el.matches(FIELD)) el.blur()
+  setTimeout(() => {
+    const el = document.activeElement
+    if (el instanceof HTMLElement && el.matches(FIELD)) el.blur()
+  }, 0)
 }
 
-/** Wires `action` to Enter on `input`; the keyboard closes first. */
+/** Wires `action` to Enter on `input`; the keyboard closes too. */
 export function onEnter(input: HTMLInputElement, action: () => void): void {
   input.enterKeyHint = 'go'
   input.addEventListener('keydown', ev => {
     if (ev.key !== 'Enter') return
     ev.preventDefault()
-    input.blur()
+    dismissKeyboard()
     action()
   })
 }
 
-export function keyboardFriendly(root: HTMLElement): void {
-  const vv = window.visualViewport
-  // Tap outside any field: close the keyboard. Taps on buttons still click.
-  document.addEventListener(
-    'pointerdown',
-    ev => {
-      const t = ev.target as HTMLElement | null
-      if (t?.closest(FIELD)) return
-      dismissKeyboard()
-      setTimeout(update, 50)
-    },
-    { capture: true },
-  )
-
-  function update(): void {
-    const focused = document.activeElement instanceof HTMLElement && document.activeElement.matches(FIELD)
-    // Height the keyboard covers, when the WebView reports it; otherwise a
-    // generous fallback so the button under the field can be scrolled to.
-    const covered = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0
-    root.style.paddingBottom = focused ? `${Math.max(covered, Math.round(window.innerHeight * 0.45))}px` : ''
-  }
-  const reveal = (el: Element): void => {
-    update()
-    // After the keyboard animation, bring the field and its button into view.
-    setTimeout(() => el.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300)
-  }
-  root.addEventListener('focusin', ev => {
-    if (ev.target instanceof Element && ev.target.matches(FIELD)) reveal(ev.target)
+export function keyboardFriendly(): void {
+  // `click` only fires for a tap, so scrolling the page never closes the keyboard.
+  document.addEventListener('click', ev => {
+    const t = ev.target as HTMLElement | null
+    if (!t?.closest(FIELD)) dismissKeyboard()
   })
-  root.addEventListener('focusout', () => setTimeout(update, 50))
-  vv?.addEventListener('resize', update)
 }

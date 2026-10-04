@@ -9,7 +9,7 @@ const cmd = (text: string): string =>
   `<div class="g-cmd"><pre>${text}</pre><button type="button" class="g-copy secondary">Copy</button></div>`
 
 export const GUIDE_HTML = `
-  <p class="hint">Follow a Claude Code session on your glasses: watch it, talk to it, approve tools, answer questions, and stop it. You need Claude Code signed in with a Claude account, and <a href="https://bun.sh">Bun</a>, on your computer.</p>
+  <p class="hint">Follow a Claude Code session on your glasses: watch it, talk to it, approve tools, answer questions, and stop it. You need Claude Code signed in with a Claude account, and <a href="https://bun.sh">Bun</a>, on your computer (after installing the plugin, <code>/g2:setup</code> installs Bun for you).</p>
   <ol class="g-steps">
     <li>
       <strong>Install the plugin.</strong> In Claude Code on your computer, run:
