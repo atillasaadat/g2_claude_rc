@@ -79,9 +79,9 @@ Until the app is listed, install it as a private build: run `cd apps/glasses && 
 | Gesture | Action |
 |---|---|
 | Swipe up / down | Scroll the timeline 3 lines (the R1 ring works the same) |
-| Tap | Menu: Talk, Stop Claude, Exit app. On a card: confirm |
+| Tap | Menu: Talk, Stop Claude, End session (unpairs this phone, after a confirm). On a card: confirm |
 | Double tap | Jump to the newest line. On a card: leave it for later |
-| OS side menu | Switch sessions, or clear other sessions |
+| OS side menu | Switch sessions, clear other sessions, or Exit app |
 
 **Voice:**
 - Choose Talk from the menu. The words fill in as you speak; tap to finish, then tap to send, or double tap to cancel.

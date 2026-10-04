@@ -36,9 +36,9 @@ export const GUIDE_HTML = `
   <h3 class="g-h">On the glasses</h3>
   <table class="g-table">
     <tr><th>Swipe</th><td>Scroll the timeline (the R1 ring works too)</td></tr>
-    <tr><th>Tap</th><td>Menu: Talk, Stop Claude, Exit app. On a card, confirm</td></tr>
+    <tr><th>Tap</th><td>Menu: Talk, Stop Claude, End session (unpairs this phone; asks first). On a card, confirm</td></tr>
     <tr><th>Double tap</th><td>Back to the newest line. On a card, leave it for later</td></tr>
-    <tr><th>Side menu</th><td>Switch sessions, or clear old ones</td></tr>
+    <tr><th>Side menu</th><td>Switch sessions, clear old ones, or Exit app</td></tr>
   </table>
   <p class="hint">While talking, <strong>stop</strong>, <strong>cancel</strong>, <strong>approve</strong> and <strong>deny</strong> act right away instead of being sent. Approval cards start on Deny, so a stray tap never approves anything.</p>
   <h3 class="g-h">If something is off</h3>

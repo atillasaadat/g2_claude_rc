@@ -194,7 +194,7 @@ describe.skipIf(!RUN)('glasses app in the simulator', () => {
     await frameWhere(f => f.header.includes('working'), 'working header')
     await input('click')
     const menu = await frameWhere(f => f.overlay?.name === 'menu', 'menu')
-    expect(ov(menu).split('\n')).toEqual(['▶ Talk', '   Stop Claude', '   Exit app'])
+    expect(ov(menu).split('\n')).toEqual(['▶ Talk', '   Stop Claude', '   End session'])
     await Bun.sleep(600) // let the fade finish before the screenshot
     await screenshot('menu')
     await input('down')

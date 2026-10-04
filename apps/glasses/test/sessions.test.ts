@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { makeEnvelope, type AnyEnvelope, type Body, type Kind } from '@g2cc/protocol'
 import { render } from '../src/render'
-import { CLEAR_ITEM_ID, initialState, osMenu, reduce, sessionList, TOAST_MS, view, type AppState } from '../src/state'
+import { CLEAR_ITEM_ID, EXIT_ITEM_ID, initialState, osMenu, reduce, sessionList, TOAST_MS, view, type AppState } from '../src/state'
 import { frame, g, gs, NOW, perm, question } from './helpers'
 
 const A = 'aaaa-1'
@@ -47,18 +47,20 @@ describe('multiple sessions', () => {
   test('the OS side menu lists the sessions; choosing one switches and clears unread', () => {
     let s = recv(two(), at(B, 'reply', { text: 'Done in B.' }))
     const menu = osMenu(s)
-    expect(menu.map(m => m.label)).toEqual(['▶ repo-a', 'repo-b', 'Clear other sessions'])
+    expect(menu.map(m => m.label)).toEqual(['▶ repo-a', 'repo-b', 'Clear other sessions', 'Exit app'])
     expect(render(s).menu).toEqual(menu.map(({ id, label }) => ({ id, label })))
     s = reduce(s, { type: 'os_menu', itemID: menu.find(m => m.sid === B)!.id }).state
     expect([s.active, view(s, B).unread]).toEqual([B, false])
     expect(frame(s).timeline).toContain('Done in B.')
-    expect(osMenu(s).map(m => m.label)).toEqual(['repo-a', '▶ repo-b', 'Clear other sessions'])
+    expect(osMenu(s).map(m => m.label)).toEqual(['repo-a', '▶ repo-b', 'Clear other sessions', 'Exit app'])
   })
 
-  test('the OS side menu stays the default with one session, and labels fit 32 bytes', () => {
+  test('the OS side menu always has Exit app; sessions only with two or more; labels fit 32 bytes', () => {
+    expect(osMenu(initialState()).map(m => m.label)).toEqual(['Exit app'])
     let s: AppState = { ...initialState(), paired: true }
     s = recv(s, session(A, 'repo-a'))
-    expect(osMenu(s)).toEqual([])
+    expect(osMenu(s).map(m => m.label)).toEqual(['Exit app'])
+    expect(reduce(s, { type: 'os_menu', itemID: EXIT_ITEM_ID }).effects).toEqual([{ type: 'exit' }])
     s = recv(s, session(B, 'a-very-long-repository-name-that-goes-on'))
     for (const m of osMenu(s)) expect(new TextEncoder().encode(m.label).length).toBeLessThanOrEqual(32)
   })

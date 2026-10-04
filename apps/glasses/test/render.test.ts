@@ -70,7 +70,7 @@ describe('overlays', () => {
     const c = byId(gs(paired(), 'tap'), OVERLAY_ID)!
     expect(c.name).toBe('menu')
     expect(c.box.x).toBeGreaterThan(288)
-    expect(c.content.split('\n')).toEqual(['▶ Talk', '   Stop Claude', '   Exit app'])
+    expect(c.content.split('\n')).toEqual(['▶ Talk', '   Stop Claude', '   End session'])
   })
 
   test('permission card: title, description, preview, and side-by-side choices', () => {

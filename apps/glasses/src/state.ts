@@ -30,7 +30,7 @@ export type Link = 'offline' | 'relay' | 'online'
 export type ScreenId = 'timeline' | 'menu' | 'card' | 'question' | 'voice'
 
 export interface MenuItem {
-  id: 'review' | 'review_question' | 'talk' | 'stop' | 'exit'
+  id: 'review' | 'review_question' | 'talk' | 'stop' | 'end' | 'end_cancel' | 'end_confirm'
   label: string
   available: boolean
 }
@@ -83,6 +83,8 @@ export interface AppState {
   clock: number
   overlaySince: number
   menuIndex: number
+  /** The menu is asking whether to unpair (End session). */
+  confirmEnd: boolean
   /** Pending permission requests, oldest first. The first one is on screen. */
   cards: readonly PermissionCard[]
   /** Starts on deny, so a stray tap never approves anything. */
@@ -116,6 +118,8 @@ export type Msg =
 /** Commands name their target session (sid), since several share the relay room. */
 export type Effect =
   | { type: 'exit' }
+  /** Forget the pairing on this phone: every session goes, and /g2:pair reconnects. */
+  | { type: 'unpair' }
   | { type: 'send'; kind: 'stop'; body: Record<string, never>; sid: string }
   | { type: 'send'; kind: 'verdict'; body: Body<'verdict'>; sid: string }
   | { type: 'send'; kind: 'prompt'; body: Body<'prompt'>; sid: string }
@@ -141,6 +145,7 @@ export function initialState(): AppState {
     clock: 0,
     overlaySince: 0,
     menuIndex: 0,
+    confirmEnd: false,
     cards: [],
     cardChoice: 'deny',
     cardShownAt: 0,
@@ -176,6 +181,7 @@ export interface OsMenuItem {
   label: string
   sid?: string
   clear?: true
+  exit?: true
 }
 
 /** The OS menu takes UTF-8 labels of at most 32 bytes. */
@@ -191,15 +197,17 @@ function byteClip(text: string, max = 32): string {
 }
 
 export const CLEAR_ITEM_ID = 99
+export const EXIT_ITEM_ID = 98
 
 /**
- * The glasses OS side menu: one item per session (switch to it) plus Clear.
- * Only with two or more sessions; otherwise the OS default menu stays.
+ * The glasses OS side menu: with two or more sessions, one item per session
+ * (switch to it) plus Clear; always Exit app, the way out of the app.
  * Labels avoid live state so the menu (a page rebuild) changes rarely.
  */
 export function osMenu(s: AppState): OsMenuItem[] {
-  const list = sessionList(s).slice(0, 9)
-  if (list.length < 2) return []
+  const list = s.paired ? sessionList(s).slice(0, 9) : []
+  const exit = { id: EXIT_ITEM_ID, label: 'Exit app', exit: true as const }
+  if (list.length < 2) return [exit]
   return [
     ...list.map(({ sid, view: v }, i) => ({
       id: i + 1,
@@ -207,18 +215,26 @@ export function osMenu(s: AppState): OsMenuItem[] {
       sid,
     })),
     { id: CLEAR_ITEM_ID, label: 'Clear other sessions', clear: true as const },
+    exit,
   ]
 }
 
 export const sessionName = (s: AppState, sid: string): string => view(s, sid).session?.name ?? 'Claude Code'
 
 export function menuItems(s: AppState): MenuItem[] {
+  // End session asks first, on Cancel, so one stray tap never unpairs the phone.
+  if (s.confirmEnd) {
+    return [
+      { id: 'end_cancel', label: 'Cancel', available: true },
+      { id: 'end_confirm', label: 'Unpair phone', available: true },
+    ]
+  }
   return [
     ...(s.cards[0] ? [{ id: 'review' as const, label: `Review: ${s.cards[0].tool_name}`, available: true }] : []),
     ...(s.questions[0] ? [{ id: 'review_question' as const, label: 'Review question', available: true }] : []),
     { id: 'talk', label: s.voiceAvailable ? 'Talk' : 'Talk (no Groq key)', available: s.voiceAvailable },
     { id: 'stop', label: 'Stop Claude', available: true },
-    { id: 'exit', label: 'Exit app', available: true },
+    { id: 'end', label: 'End session', available: true },
   ]
 }
 
@@ -433,8 +449,12 @@ function confirmMenu(s: AppState, now: number): Result {
       return stopActive(s)
     case 'talk':
       return done(s.voiceAvailable ? startListening(s, now) : s)
-    case 'exit':
-      return done({ ...s, screen: 'timeline' }, [{ type: 'exit' }])
+    case 'end':
+      return done({ ...s, confirmEnd: true, menuIndex: 0 })
+    case 'end_cancel':
+      return done({ ...s, confirmEnd: false, screen: 'timeline' })
+    case 'end_confirm':
+      return done({ ...s, confirmEnd: false, screen: 'timeline' }, [{ type: 'unpair' }])
     default:
       return done(s)
   }
@@ -444,6 +464,7 @@ function confirmMenu(s: AppState, now: number): Result {
 function onOsMenu(s: AppState, itemID: number): Result {
   const item = osMenu(s).find(i => i.id === itemID)
   if (!item) return done(s)
+  if (item.exit) return done(s, [{ type: 'exit' }])
   if (item.clear) return done({ ...s, views: { [s.active]: view(s) }, toast: undefined })
   const sid = item.sid!
   // Overlays stay (a pending card or question still needs an answer).
@@ -516,7 +537,7 @@ function onGesture(s: AppState, gesture: Gesture, map: GestureMap, now: number):
     case 'timeline.live':
       return done(mapActive(s, x => ({ ...x, fromBottom: 0 })))
     case 'menu.open':
-      return done({ ...open(s, 'menu', now), menuIndex: 0 })
+      return done({ ...open(s, 'menu', now), menuIndex: 0, confirmEnd: false })
     case 'voice.start':
       return done(s.voiceAvailable ? startListening(s, now) : s)
     case 'nav.back':
@@ -560,7 +581,8 @@ export function reduce(s: AppState, msg: Msg): Result {
       // Without a clock (tests of non-card screens) the card guard is not applied.
       return onGesture(s, msg.gesture, msg.map, msg.now ?? Number.POSITIVE_INFINITY)
     case 'paired':
-      return done({ ...s, paired: msg.paired })
+      // Unpaired: every session, card and question goes with the pairing.
+      return done(msg.paired ? { ...s, paired: true } : { ...initialState(), voiceAvailable: s.voiceAvailable, clock: s.clock })
     case 'config':
       return done({ ...s, voiceAvailable: msg.voiceAvailable })
     case 'transcript':

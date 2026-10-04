@@ -90,6 +90,7 @@ function dispatch(msg: Msg): void {
   }
   for (const effect of result.effects) {
     if (effect.type === 'exit') void bridge.shutDownPageContainer(1)
+    if (effect.type === 'unpair') void unpair().catch(err => log('could not unpair:', (err as Error).message))
     if (effect.type === 'send') {
       link.send(effect.kind, effect.body, effect.sid).catch(err => log(`could not send ${effect.kind}:`, (err as Error).message))
     }
@@ -97,6 +98,13 @@ function dispatch(msg: Msg): void {
 }
 
 const link = new Link(dispatch)
+
+/** End session on the glasses, or Forget in the phone view. */
+async function unpair(): Promise<void> {
+  await storage.forgetPairing()
+  link.disconnect()
+  dispatch({ type: 'paired', paired: false })
+}
 
 mountUi({
   async savePairing(text) {
@@ -123,11 +131,7 @@ mountUi({
     setSttKey(k, check)
     return check
   },
-  async forgetPairing() {
-    await storage.forgetPairing()
-    link.disconnect()
-    dispatch({ type: 'paired', paired: false })
-  },
+  forgetPairing: () => unpair(),
   async saveGestures(map) {
     await storage.saveGestures(map)
     gestures = map

@@ -633,3 +633,9 @@ Four read-only reviews (crypto and pairing, the local channel surface, the relay
   - Decline or Esc cancels the code.
   - The request timeout is set to the code's remaining lifetime, because the SDK default of 60 s would cut the dialog short.
 - Plugin 0.3.2.
+
+## End session and Exit app (2026-10-03, user decision)
+
+- The tap menu's **Exit app** became **End session**. It unpairs this phone: the pairing is forgotten, every session, card and question goes, and `/g2:pair` reconnects. The user chose this over detaching just the one session on screen.
+- Unpairing is one tap from losing everything, so End session asks first ("End session: unpair?") and starts on **Cancel**, the same idea as permission cards starting on Deny.
+- **Exit app** moved to the glasses' OS side menu, which now always exists. It holds the session list and Clear when there are two or more sessions, and Exit app always, paired or not. The forget button in the phone view and End session share the same unpair path.

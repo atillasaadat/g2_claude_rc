@@ -125,8 +125,10 @@ function timelineText(s: AppState): string {
 
 function menuOverlay(s: AppState): { box: Box; content: string } {
   const items = menuItems(s)
-  const box = sideBox(items.length)
-  return { box, content: items.map((item, i) => indent(i === s.menuIndex, item.label, innerWidth(box))).join('\n') }
+  const title = s.confirmEnd ? ['End session: unpair?'] : []
+  const box = sideBox(items.length + title.length)
+  const lines = items.map((item, i) => indent(i === s.menuIndex, item.label, innerWidth(box)))
+  return { box, content: [...title.map(t => fitLine(t, innerWidth(box))), ...lines].join('\n') }
 }
 
 /** With several sessions, cards say which one is asking. */
@@ -249,7 +251,7 @@ export function render(s: AppState): Scene {
       { id: TIMELINE_ID, name: 'timeline', box: TIMELINE, content: timeline, brightness: over ? DIM : BRIGHT, capture: true, z: 2 },
       ...(over ? [{ id: OVERLAY_ID, name: over.name, box: over.box, content: over.content, brightness: fade(s), capture: false, z: 3 }] : []),
     ],
-    menu: s.paired ? osMenu(s).map(({ id, label }) => ({ id, label })) : [],
+    menu: osMenu(s).map(({ id, label }) => ({ id, label })),
   }
 }
 

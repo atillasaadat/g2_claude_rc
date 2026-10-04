@@ -42,7 +42,7 @@ export function validateGestureMap(map: GestureMap): string[] {
     }
   }
   const actions = (s: Screen): string[] => GESTURES.map(g => map[s]?.[g])
-  // The menu always offers Exit app, so reaching it is enough.
+  // The glasses' side menu always offers Exit app; the tap menu (or an exit gesture) must be reachable too.
   if (!actions('timeline').some(a => a === 'menu.open' || a === 'app.exit' || a === 'live.or.exit')) {
     errors.push('timeline: no gesture opens the menu or exits')
   }

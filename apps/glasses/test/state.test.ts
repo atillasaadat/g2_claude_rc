@@ -59,13 +59,30 @@ describe('timeline: scrolling', () => {
     expect(view(withLines(withLines(paired(), 30), 2)).fromBottom).toBe(0)
   })
 
-  test('double tap jumps back to live and never exits; Exit app is in the menu', () => {
+  test('double tap jumps back to live and never exits', () => {
     const scrolled = gs(withLines(paired(), 30), 'scroll_up', 'scroll_up')
     const r = g(scrolled, 'double_tap')
     expect(view(r.state).fromBottom).toBe(0)
     expect(r.effects).toEqual([])
     expect(g(r.state, 'double_tap').effects).toEqual([])
-    expect(g(gs(paired(), 'tap', 'scroll_down', 'scroll_down'), 'tap').effects).toEqual([{ type: 'exit' }])
+  })
+
+  test('End session asks first, starting on Cancel, and Unpair phone forgets everything', () => {
+    const base = recv(withLines(paired(), 3), env('session', { name: 'repo', cwd: '/r', state: 'idle' }))
+    const asking = gs(base, 'tap', 'scroll_down', 'scroll_down', 'tap')
+    expect(asking.confirmEnd).toBe(true)
+    expect(asking.menuIndex).toBe(0)
+    // Cancel (the default) closes the menu and keeps the pairing.
+    const kept = g(asking, 'tap')
+    expect([kept.effects, kept.state.screen, kept.state.paired]).toEqual([[], 'timeline', true])
+    // Unpair phone asks main to forget the pairing...
+    const gone = g(gs(asking, 'scroll_down'), 'tap')
+    expect(gone.effects).toEqual([{ type: 'unpair' }])
+    // ...and once it has, no session, card or question is left.
+    const after = reduce(gone.state, { type: 'paired', paired: false }).state
+    expect([after.paired, Object.keys(after.views), after.cards, after.questions]).toEqual([false, [], [], []])
+    // Reopening the menu starts fresh, not on the question.
+    expect(gs(asking, 'double_tap', 'tap').confirmEnd).toBe(false)
   })
 
   test('a fresh long reply lands on its first line; a short one stays at the bottom', () => {
