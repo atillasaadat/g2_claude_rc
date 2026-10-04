@@ -1,0 +1,74 @@
+# Nightly health check: is everything still working, even when nobody pushed?
+# Catches breakage from outside the repo too: a Claude Code update, a
+# Cloudflare change, an expired route, a dependency that moved. GitHub emails
+# the repo owner when a scheduled run fails. No secrets, no Anthropic
+# credentials; the production checks use throwaway keys and rooms.
+name: nightly
+on:
+  schedule:
+    - cron: '17 9 * * *' # 09:17 UTC daily
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tests:
+    name: All test suites (relay and channel end to end through wrangler dev)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with: { bun-version: 1.3.14 }
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - name: protocol
+        run: cd packages/protocol && bun test
+      - name: channel
+        run: cd channel && bun test
+      - name: relay
+        run: cd relay && bun test
+      - name: glasses app
+        run: cd apps/glasses && bunx tsc --noEmit && bun test --path-ignore-patterns 'test/sim.e2e.test.ts'
+      - name: plugin bundle matches the source
+        run: bun run build:plugin && git diff --exit-code -- plugin/dist
+      - name: app build and secret scan
+        run: cd apps/glasses && bun run build && bun run pack:bundled
+
+  simulator:
+    name: Glasses app in the Even Hub simulator
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with: { bun-version: 1.3.14 }
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - name: WebKitGTK and a virtual display for the simulator
+        run: sudo apt-get update -q && sudo apt-get install -y -q xvfb libwebkit2gtk-4.1-0 libsoup-3.0-0 libgtk-3-0
+      - name: Simulator end to end
+        run: cd apps/glasses && G2CC_SIM=1 xvfb-run -a bun test test/sim.e2e.test.ts
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: simulator-screenshots
+          path: apps/glasses/test/artifacts/
+          if-no-files-found: ignore
+
+  production:
+    name: Live site and relay at atillasaadat.com
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with: { bun-version: 1.3.14 }
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun channel/tools/smoke-prod.ts https://atillasaadat.com/g2-claude
+
+  plugin-install:
+    name: Fresh plugin install with the latest Claude Code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with: { bun-version: 1.3.14 }
+      # Deliberately unpinned: the point is to notice when a new Claude Code breaks the plugin.
+      - name: Latest Claude Code
+        run: npm install -g @anthropic-ai/claude-code && claude --version
+      - run: scripts/smoke-plugin.sh atillasaadat/g2_claude_rc
