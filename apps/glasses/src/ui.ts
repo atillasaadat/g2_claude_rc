@@ -75,7 +75,7 @@ export function mountUi(cb: UiCallbacks): void {
           <summary>Paste pairing text instead</summary>
           <p class="hint">For self-hosting or a local relay: <code>bun channel/pair.ts --text</code> prints it. It contains a secret key.</p>
           <p class="hint">Or pair by code through your own relay: enter its address, then the code above.</p>
-          <input id="relay-input" type="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="wss://your-relay.example" />
+          <input id="relay-input" type="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Your relay address (wss)" />
           <textarea id="pair-input" rows="4" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder='{"v":1,"relayUrl":...}'></textarea>
           <div class="row"><button id="pair-save">Save pairing</button></div>
         </details>

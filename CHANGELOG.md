@@ -4,6 +4,9 @@ Every release has a git tag and a GitHub Release with the full commit list. App 
 
 Add the entry here before running `scripts/release.sh`, which refuses a version without one.
 
+## App 0.3.9
+- The package no longer contains web addresses outside its network whitelist: setup guide links became plain text, and library strings that only look like URLs are escaped. Fixes the Even Hub review notice for 0.3.8.
+
 ## App 0.3.8
 - A question answered in the terminal disappears from the glasses.
 

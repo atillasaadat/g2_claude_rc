@@ -683,3 +683,16 @@ No secrets or Anthropic credentials are involved. **Verified:** the first run pa
   - Choosing "blue" in the terminal returned it to Claude, and the stand-in saw the card dismissed.
   - The stand-in answering "medium" closed the open terminal dialog and returned "medium (answered on the glasses)".
 - Old app builds drop the unknown `question_resolved` kind, so their card simply stays until answered. Answering it then does nothing.
+
+## Even Hub URL scan (2026-10-08)
+
+- **Review notice for 0.3.8:** the bundle named URLs outside `app.json`'s `network.whitelist`, even though the app never fetches them:
+  - `wss://your-relay.example`, the relay field placeholder
+  - `https://bun.sh` and `https://console.groq.com/keys`, guide links
+  - zod's IPv6 check, which builds `` `http://[${addr}]` `` to test an address
+- **Fixes:**
+  - The guide shows addresses as plain text. A link would also leave the app inside the Even WebView.
+  - The placeholder no longer has a URL.
+  - A Vite `generateBundle` step (after minification, which would undo it) writes the zod and JSON Schema strings with an escaped slash (`:\u002f/`), so the runtime value is unchanged.
+- `scripts/check-bundle.ts` now fails the build on any URL outside the whitelist. `pack:bundled` and `build` both run it, and so do CI and releases.
+- **Verified:** the built 0.3.9 bundle names only `https://api.groq.com` and `wss://atillasaadat.com`, and it starts in the simulator (`[g2cc] ready`, no errors).
