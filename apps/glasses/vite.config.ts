@@ -4,11 +4,12 @@ import { defineConfig, loadEnv, type Plugin } from 'vite'
  * Library code carries URL-shaped strings it never fetches: zod builds
  * `http://[addr]` to check IPv6 addresses, and names JSON Schema drafts by
  * URL. Even Hub's review flags every URL outside app.json's network
- * whitelist, so these are written with an escaped slash. The runtime value is
+ * whitelist, so these are written with an escaped slash. (zxing-wasm's default
+ * CDN address is never used: qr-scan.ts points it at the bundled WASM file.) The runtime value is
  * identical. scripts/check-bundle.ts fails the build on any URL left over.
  */
 function unlinkLibraryUrls(): Plugin {
-  const shapes = ['http://[${', 'https://json-schema.org', 'http://json-schema.org']
+  const shapes = ['http://[${', 'https://json-schema.org', 'http://json-schema.org', 'https://fastly.jsdelivr.net']
   return {
     name: 'g2cc-unlink-library-urls',
     // After minification, which would otherwise turn the escape back into a slash.

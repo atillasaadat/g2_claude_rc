@@ -16,7 +16,7 @@
 # The Even app reloads the app from this URL, so the entry page is never
 # cached; Vite's hashed assets can be cached forever.
 /g2-claude/app/*
-  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' wss://atillasaadat.com https://api.groq.com; base-uri 'none'; form-action 'none'; object-src 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' wss://atillasaadat.com https://api.groq.com; base-uri 'none'; form-action 'none'; object-src 'none'
 /g2-claude/app/
   Cache-Control: no-cache
 /g2-claude/app/index.html

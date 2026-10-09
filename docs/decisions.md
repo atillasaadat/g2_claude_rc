@@ -726,3 +726,17 @@ No secrets or Anthropic credentials are involved. **Verified:** the first run pa
   - The page has a strict CSP.
   - **Verified:** a half-scale JPEG screenshot of the whole browser window with the page open decodes with jsQR to the code.
 - The app needed no change: Scan QR reads a clean QR as it is.
+
+## Scan QR decoder: ZXing instead of jsQR (2026-10-09)
+
+- **User's iPhone photo of the clean QR page did not scan.** Running the same photo through both decoders:
+  - jsQR read it only at a few lucky sizes: 320 and 800 px with smooth downscaling, 500 px with nearest-neighbour. It failed at 1280 px, which the app used.
+  - ZXing (`zxing-wasm` 3.1.5, `tryHarder`) read it at every size.
+  - The likely cause is moire from photographing a screen.
+- **Switched to `zxing-wasm`:**
+  - **Bundled locally.** By default it fetches its WASM from jsDelivr, which the network whitelist forbids. `locateFile` points at the bundled `zxing_reader.wasm?url` asset (967 KB; the `.ehpk` is 566 KB compressed).
+  - **Loaded only on Scan QR**, through dynamic imports.
+  - **Library URL escaped.** The library's default CDN address is escaped like the other library URLs, so the URL check still passes.
+  - **Security headers.** The hosted app's CSP allows `'wasm-unsafe-eval'`.
+- **Image loading:** the image is now decoded with `createImageBitmap`. `img.decode()` never resolved in a hidden tab.
+- **Verified:** in Chrome, the app's own `readQrFromPhoto` reads the user's photo as `G2CC:49Z3-R11P` in 0.75 s, including loading the WASM.
