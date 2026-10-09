@@ -4,6 +4,9 @@ Every release has a git tag and a GitHub Release with the full commit list. App 
 
 Add the entry here before running `scripts/release.sh`, which refuses a version without one.
 
+## App 0.4.1
+- The setup guide explains the new pairing QR: run /g2:pair show, open its link on a screen, and tap Scan QR.
+
 ## App 0.4.0
 - Scan QR in Pairing: photograph the QR code from /g2:pair show with the phone camera instead of typing the code. Needs the camera permission, used only for this.
 
