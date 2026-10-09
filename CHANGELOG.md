@@ -4,6 +4,9 @@ Every release has a git tag and a GitHub Release with the full commit list. App 
 
 Add the entry here before running `scripts/release.sh`, which refuses a version without one.
 
+## Plugin 0.4.2
+- The QR page from `/g2:pair show` counts down to when the code expires, then hides the QR.
+
 ## App 0.4.2
 - Scan QR reads real photos of a screen. The old decoder (jsQR) missed them; the app now uses ZXing, bundled in the app and loaded only when you tap Scan QR.
 

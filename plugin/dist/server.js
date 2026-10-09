@@ -31843,10 +31843,11 @@ var INSTRUCTIONS = [
 ].join(" ");
 var ASK_WAIT_MS = 30 * 60 * 1000;
 var SHOWN_CODE_TTL_MS = 3 * 60 * 1000;
-function qrPageUrl(relayUrl, code) {
+function qrPageUrl(relayUrl, code, expiresAt) {
   const u = new URL(relayUrl.replace(/^ws/, "http"));
   const base = u.pathname.replace(/\/+$/, "") || "/g2-claude";
-  return `${u.origin}${base}/qr/#G2CC:${code}`;
+  const exp = expiresAt === undefined ? "" : `&exp=${Math.floor(expiresAt / 1000)}`;
+  return `${u.origin}${base}/qr/#G2CC:${code}${exp}`;
 }
 var PermissionRequestNotification = exports_external.object({
   method: exports_external.literal("notifications/claude/channel/permission_request"),
@@ -32007,6 +32008,7 @@ You can also answer on the glasses.`,
   };
   const pairInConversation = async () => {
     pairingCode?.cancel();
+    const expiresAt = Date.now() + SHOWN_CODE_TTL_MS;
     const open2 = await openCodePairing(pairing2, { ttlMs: SHOWN_CODE_TTL_MS });
     pairingCode = open2;
     open2.done.then((ok) => {
@@ -32018,7 +32020,7 @@ You can also answer on the glasses.`,
     });
     return [
       `Pairing code: ${open2.code}`,
-      `QR code to scan: ${qrPageUrl(pairing2.relayUrl, open2.code)}`,
+      `QR code to scan: ${qrPageUrl(pairing2.relayUrl, open2.code, expiresAt)}`,
       `It works once and expires in ${Math.round(SHOWN_CODE_TTL_MS / 60000)} minutes.`,
       "In the G2 Claude Code app on the phone: Pairing, then type the code, or open the link on another screen and tap Scan QR."
     ].join(`

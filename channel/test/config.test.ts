@@ -30,5 +30,8 @@ describe('pairing QR page link', () => {
     const { qrPageUrl } = await import('../src/channel')
     expect(qrPageUrl('wss://atillasaadat.com/g2-claude', 'ABCD-EFGH')).toBe('https://atillasaadat.com/g2-claude/qr/#G2CC:ABCD-EFGH')
     expect(qrPageUrl('ws://127.0.0.1:8789', 'ABCD-EFGH')).toBe('http://127.0.0.1:8789/g2-claude/qr/#G2CC:ABCD-EFGH')
+    expect(qrPageUrl('wss://atillasaadat.com/g2-claude', 'ABCD-EFGH', 1_700_000_180_999)).toBe(
+      'https://atillasaadat.com/g2-claude/qr/#G2CC:ABCD-EFGH&exp=1700000180',
+    )
   })
 })

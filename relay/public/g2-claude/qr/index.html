@@ -14,12 +14,16 @@
   canvas { background: #fff; border-radius: 12px; padding: 12px; width: min(320px, 80vw) !important; height: auto !important; }
   #code { font: 600 28px/1.2 ui-monospace, Menlo, monospace; letter-spacing: 0.08em; margin: 16px 0 8px; }
   p { color: var(--muted); margin: 8px 0; }
+  #timer { font: 600 18px/1.4 ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; min-height: 1.4em; }
+  #timer.soon { color: #dc2626; }
+  @media (prefers-color-scheme: dark) { #timer.soon { color: #f87171; } }
 </style>
 </head>
 <body>
 <main>
   <canvas id="qr" width="320" height="320" aria-label="Pairing QR code"></canvas>
   <div id="code"></div>
+  <div id="timer" role="timer" aria-live="off"></div>
   <p id="note">In the G2 Claude Code app, open Pairing and tap Scan QR, or type the code. It works once and expires 3 minutes after it was made.</p>
 </main>
 <script src="qr.js" defer></script>

@@ -740,3 +740,10 @@ No secrets or Anthropic credentials are involved. **Verified:** the first run pa
   - **Security headers.** The hosted app's CSP allows `'wasm-unsafe-eval'`.
 - **Image loading:** the image is now decoded with `createImageBitmap`. `img.decode()` never resolved in a hidden tab.
 - **Verified:** in Chrome, the app's own `readQrFromPhoto` reads the user's photo as `G2CC:49Z3-R11P` in 0.75 s, including loading the WASM.
+
+## QR page countdown (2026-10-09)
+- **User request:** show on the QR page when the code expires.
+- **How:** `/g2:pair show` adds the expiry to the link's fragment, `#G2CC:XXXX-XXXX&exp=<unix seconds>`. The QR still holds only `G2CC:XXXX-XXXX`, so the app is unchanged.
+- **Page:** counts down ("Expires in 2:41"), turns red in the last 30 seconds, then hides the QR and says to run `/g2:pair show` again. Links without `exp` (older plugins) show the QR with no timer. An `exp` more than 15 minutes ahead is ignored.
+- **Limits:** the timer trusts the viewing device's clock. The page does not learn when the phone pairs, so the QR stays up until the timer ends; the code itself works only once either way.
+- **Verified:** headless Chromium against the static page: countdown, red under 30 s, expiry hides the QR, no timer without `exp`.

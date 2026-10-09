@@ -275,7 +275,9 @@ describe('pairing from the conversation, and unpairing', () => {
     expect(text).toMatch(/^Pairing code: [0-9A-Z]{4}-[0-9A-Z]{4}$/m)
     expect(text).toContain('expires in 3 minutes')
     const code = /^Pairing code: (\S+)$/m.exec(text)![1]
-    expect(text).toContain(`/g2-claude/qr/#G2CC:${code}`)
+    expect(text).toContain(`/g2-claude/qr/#G2CC:${code}&exp=`)
+    const exp = Number(/&exp=(\d+)/.exec(text)![1])
+    expect(Math.abs(exp - (Date.now() + 3 * 60_000) / 1000)).toBeLessThan(10)
   })
 
   test('unpair gives a new key: the old room goes quiet, and the channel reconnects under the new one', async () => {

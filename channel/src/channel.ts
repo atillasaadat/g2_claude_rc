@@ -41,10 +41,12 @@ const SHOWN_CODE_TTL_MS = 3 * 60 * 1000
  * never send to the server. A real QR image scans reliably; one drawn with
  * text characters does not, because viewers space its lines into stripes.
  */
-export function qrPageUrl(relayUrl: string, code: string): string {
+export function qrPageUrl(relayUrl: string, code: string, expiresAt?: number): string {
   const u = new URL(relayUrl.replace(/^ws/, 'http'))
   const base = u.pathname.replace(/\/+$/, '') || '/g2-claude'
-  return `${u.origin}${base}/qr/#G2CC:${code}`
+  // The expiry (Unix seconds) drives the page's countdown; the QR holds only the code.
+  const exp = expiresAt === undefined ? '' : `&exp=${Math.floor(expiresAt / 1000)}`
+  return `${u.origin}${base}/qr/#G2CC:${code}${exp}`
 }
 
 const PermissionRequestNotification = z.object({
@@ -267,6 +269,7 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
    */
   const pairInConversation = async (): Promise<string> => {
     pairingCode?.cancel()
+    const expiresAt = Date.now() + SHOWN_CODE_TTL_MS
     const open = await openCodePairing(pairing, { ttlMs: SHOWN_CODE_TTL_MS })
     pairingCode = open
     void open.done.then(ok => {
@@ -276,7 +279,7 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
     })
     return [
       `Pairing code: ${open.code}`,
-      `QR code to scan: ${qrPageUrl(pairing.relayUrl, open.code)}`,
+      `QR code to scan: ${qrPageUrl(pairing.relayUrl, open.code, expiresAt)}`,
       `It works once and expires in ${Math.round(SHOWN_CODE_TTL_MS / 60_000)} minutes.`,
       'In the G2 Claude Code app on the phone: Pairing, then type the code, or open the link on another screen and tap Scan QR.',
     ].join('\n')
