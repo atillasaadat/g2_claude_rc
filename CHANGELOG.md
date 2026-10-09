@@ -58,6 +58,9 @@ Add the entry here before running `scripts/release.sh`, which refuses a version 
 ## App 0.1.0
 - Project spike: channel probe, Even Hub template and design notes.
 
+## Plugin 0.4.1
+- /g2:pair show links to a page with a real QR image instead of drawing one with text characters, which viewers space into stripes that cameras could not read.
+
 ## Plugin 0.4.0
 - /g2:pair show puts the code and a small QR code in the conversation, so you can pair from the Claude app or the web viewer. It is opt-in and lasts 3 minutes; plain /g2:pair keeps the private terminal dialog.
 - The session is told when a phone pairs.

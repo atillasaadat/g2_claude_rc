@@ -24,3 +24,11 @@ describe('relay URLs', () => {
     expect(relayPairUrl('wss://r.example', 'b'.repeat(32), 'glasses')).toBe(`wss://r.example/v1/pair/${'b'.repeat(32)}?role=glasses`)
   })
 })
+
+describe('pairing QR page link', () => {
+  test('points at the relay site, with the code in the fragment', async () => {
+    const { qrPageUrl } = await import('../src/channel')
+    expect(qrPageUrl('wss://atillasaadat.com/g2-claude', 'ABCD-EFGH')).toBe('https://atillasaadat.com/g2-claude/qr/#G2CC:ABCD-EFGH')
+    expect(qrPageUrl('ws://127.0.0.1:8789', 'ABCD-EFGH')).toBe('http://127.0.0.1:8789/g2-claude/qr/#G2CC:ABCD-EFGH')
+  })
+})

@@ -17,7 +17,7 @@ const withTimeout = <T>(p: Promise<T>, ms: number, fallback: T): Promise<T> =>
   Promise.race([p, new Promise<T>(r => setTimeout(() => r(fallback), ms))])
 
 // 1. Pages and their headers.
-for (const [path, wantCsp] of [['/', true], ['/app/', true]] as const) {
+for (const [path, wantCsp] of [['/', true], ['/app/', true], ['/qr/', true], ['/qr/qr.js', false]] as const) {
   const res = await fetch(`${SITE}${path}`)
   const h = res.headers
   check(`page ${path}`, res.status === 200, `HTTP ${res.status}`)

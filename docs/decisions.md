@@ -710,3 +710,19 @@ No secrets or Anthropic credentials are involved. **Verified:** the first run pa
   - Claude repeats it in its reply, and copying it exactly is part of the command's instructions.
   - **Verified** in a tmux session: Claude's reply, rasterized from the captured screen, decodes with jsQR to the exact code.
 - **App:** Scan QR uses `bridge.captureImageFromCamera()`, which needs the new `camera` permission. jsQR decodes with `inversionAttempts: 'attemptBoth'`, because dark terminals show the QR light on dark.
+
+## Text QR codes do not scan (2026-10-09)
+
+- **User report:** Scan QR said "no QR code found". The code was in the photo, and the decoder ran.
+- **Cause, found by simulating photos of the half-block QR:** every terminal, app and web viewer leaves space between lines, which cuts stripes through the QR.
+  - With no gap, it decodes every time.
+  - With gaps of 20% of a line or more, jsQR failed in every case.
+  - ZXing (`zxing-wasm`, tryHarder) read the 20% case in light mode only.
+  - Neither read 50% or more.
+  - A vertical morphological closing before decoding fixed up to 50%, but it is custom code, and slow on a phone.
+- **Fix, user preference "no lot of custom code":** do not scan text. `/g2:pair show` links to `/g2-claude/qr/#G2CC:XXXX-XXXX`, a static page that draws a real QR with the `qrcode` package, bundled by wrangler's `build` command from `relay/qr/qr.ts`.
+  - The code stays in the fragment, so no server sees it.
+  - The page removes the fragment from history once the QR is drawn.
+  - The page has a strict CSP.
+  - **Verified:** a half-scale JPEG screenshot of the whole browser window with the page open decodes with jsQR to the code.
+- The app needed no change: Scan QR reads a clean QR as it is.

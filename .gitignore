@@ -22,3 +22,6 @@ build/
 
 # The plugin runs this committed bundle (bun run build:plugin).
 !plugin/dist/
+
+# Built by wrangler (relay "build" command) from relay/qr/qr.ts
+relay/public/g2-claude/qr/qr.js

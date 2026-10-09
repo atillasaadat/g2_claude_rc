@@ -50,7 +50,7 @@ No clone needed.
    The flag is required because channels are a Claude Code research preview and g2 is not on Anthropic's allowlist. The first launch shows a warning; choose that you are using it for local development. Add `--rc` if you also want Remote Control (the Claude phone app). The glasses do not need it.
 4. **Install the glasses app:** G2 Claude Code from Even Hub in the Even app. Until the listing is live, see [Private build](#private-build-before-the-even-hub-listing).
 5. **Pair.** In a `cc-g2` session, run `/g2:pair`. A private dialog in the terminal shows a one-time code and stays open until the phone has paired. In the app's phone view, type the code under Pairing; it pairs as soon as all 8 characters are in. A code works once, for 10 minutes.
-   - **From the Claude app or the web viewer,** which cannot show that dialog, run `/g2:pair show`. The code and a small QR code appear in the conversation for 3 minutes. Type the code, or tap **Scan QR** in the app and photograph the QR code.
+   - **From the Claude app or the web viewer,** which cannot show that dialog, run `/g2:pair show`. The code and a link to its QR code appear in the conversation for 3 minutes. Type the code, or open the link on a screen and tap **Scan QR** in the app. The page draws the QR in your browser from the part of the link after `#`, which browsers never send to a server.
    - When a phone pairs, the session says so. If you did not pair one, run `/g2:unpair`: it gives the computer a new key, which cuts off every paired phone, including in running sessions.
 6. **Voice:** paste your Groq key in the app under Voice. The app shows it masked with a fingerprint, checks it with Groq, and keeps it on the phone.
 

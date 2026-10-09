@@ -5,7 +5,6 @@
 // controller sees them: `stop` (Phase 4) and `verdict` (Phase 5) so far.
 
 import { existsSync, readFileSync, unwatchFile, watchFile, writeFileSync } from 'node:fs'
-import QRCode from 'qrcode'
 import { join } from 'node:path'
 import { z } from 'zod'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
@@ -36,6 +35,17 @@ export const INSTRUCTIONS = [
 const ASK_WAIT_MS = 30 * 60 * 1000
 /** A code shown in the conversation is in the model's context, so it lives for 3 minutes, not 10. */
 const SHOWN_CODE_TTL_MS = 3 * 60 * 1000
+
+/**
+ * The relay's pairing QR page with the code in the #fragment, which browsers
+ * never send to the server. A real QR image scans reliably; one drawn with
+ * text characters does not, because viewers space its lines into stripes.
+ */
+export function qrPageUrl(relayUrl: string, code: string): string {
+  const u = new URL(relayUrl.replace(/^ws/, 'http'))
+  const base = u.pathname.replace(/\/+$/, '') || '/g2-claude'
+  return `${u.origin}${base}/qr/#G2CC:${code}`
+}
 
 const PermissionRequestNotification = z.object({
   method: z.literal('notifications/claude/channel/permission_request'),
@@ -264,14 +274,11 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
       log(ok ? 'phone paired by a shown code' : 'shown pairing code closed')
       if (ok) announcePairing()
     })
-    const qr = await QRCode.toString(`G2CC:${open.code}`, { type: 'utf8', errorCorrectionLevel: 'L', margin: 2 })
     return [
       `Pairing code: ${open.code}`,
+      `QR code to scan: ${qrPageUrl(pairing.relayUrl, open.code)}`,
       `It works once and expires in ${Math.round(SHOWN_CODE_TTL_MS / 60_000)} minutes.`,
-      'In the G2 Claude Code app on the phone: Pairing, then type the code or tap Scan QR.',
-      '',
-      'QR code (show it exactly as is, in a code block):',
-      qr.replace(/\s+$/, ''),
+      'In the G2 Claude Code app on the phone: Pairing, then type the code, or open the link on another screen and tap Scan QR.',
     ].join('\n')
   }
 
@@ -362,7 +369,7 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
       {
         name: 'pair',
         description:
-          'Pair the G2 Claude Code phone app with this computer. Call it only when the user asks to pair (for example through /g2:pair). By default it shows a one-time code in a private terminal dialog and the code never enters this conversation. With show: true, only when the user explicitly asked to show the code here (for example /g2:pair show), it returns the code and a QR code for the conversation instead, valid for 3 minutes; show both to the user exactly as returned and never send them anywhere else.',
+          'Pair the G2 Claude Code phone app with this computer. Call it only when the user asks to pair (for example through /g2:pair). By default it shows a one-time code in a private terminal dialog and the code never enters this conversation. With show: true, only when the user explicitly asked to show the code here (for example /g2:pair show), it returns the code and a link to a page with its QR code instead, valid for 3 minutes; show both to the user exactly as returned and never send them anywhere else.',
         inputSchema: {
           type: 'object',
           properties: { show: { type: 'boolean', description: 'Show the code and a QR in the conversation (only when the user asked for that).' } },

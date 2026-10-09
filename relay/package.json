@@ -10,7 +10,11 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p test",
     "test": "bun test"
   },
+  "dependencies": {
+    "qrcode": "^1.5.4"
+  },
   "devDependencies": {
+    "@types/qrcode": "^1.5.5",
     "@g2cc/protocol": "workspace:*",
     "@types/bun": "^1.3.10",
     "typescript": "^5.7.0",

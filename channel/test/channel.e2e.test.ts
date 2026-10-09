@@ -274,7 +274,8 @@ describe('pairing from the conversation, and unpairing', () => {
     const text = (mcpOut().find(m => m.id === 40) as { result: { content: Array<{ text: string }> } }).result.content[0]!.text
     expect(text).toMatch(/^Pairing code: [0-9A-Z]{4}-[0-9A-Z]{4}$/m)
     expect(text).toContain('expires in 3 minutes')
-    expect(text).toMatch(/[█▀▄]{7}/) // the QR
+    const code = /^Pairing code: (\S+)$/m.exec(text)![1]
+    expect(text).toContain(`/g2-claude/qr/#G2CC:${code}`)
   })
 
   test('unpair gives a new key: the old room goes quiet, and the channel reconnects under the new one', async () => {

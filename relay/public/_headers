@@ -23,3 +23,9 @@
   Cache-Control: no-cache
 /g2-claude/app/assets/*
   Cache-Control: public, max-age=31536000, immutable
+
+# The pairing QR page: the code arrives in the #fragment; no framing, no network.
+/g2-claude/qr/*
+  Cache-Control: no-cache
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
