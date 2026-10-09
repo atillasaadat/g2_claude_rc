@@ -16,8 +16,8 @@ describe('phone setup guide', () => {
     }
   })
 
-  test('no longer asks for a clone, an install script, or a QR code', () => {
-    for (const gone of ['git clone', 'install.sh', 'QR']) expect(GUIDE_HTML).not.toContain(gone)
+  test('no longer asks for a clone, an install script, or the old Even Hub QR scan', () => {
+    for (const gone of ['git clone', 'install.sh', 'pair.ts --relay', 'scan it in Even Hub']) expect(GUIDE_HTML).not.toContain(gone)
   })
 
   test('follows the writing rule (no em dashes) and has no scripts', () => {

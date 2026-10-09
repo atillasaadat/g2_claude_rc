@@ -696,3 +696,17 @@ No secrets or Anthropic credentials are involved. **Verified:** the first run pa
   - A Vite `generateBundle` step (after minification, which would undo it) writes the zod and JSON Schema strings with an escaped slash (`:\u002f/`), so the runtime value is unchanged.
 - `scripts/check-bundle.ts` now fails the build on any URL outside the whitelist. `pack:bundled` and `build` both run it, and so do CI and releases.
 - **Verified:** the built 0.3.9 bundle names only `https://api.groq.com` and `wss://atillasaadat.com`, and it starts in the simulator (`[g2cc] ready`, no errors).
+
+## Pairing from the Claude app and web viewer (2026-10-08, user decision)
+
+- **Problem:** the pairing dialog (MCP elicitation) only shows in the terminal. Remote Control viewers (the Claude app, claude.ai) show only the conversation.
+- **User decision:** an opt-in `/g2:pair show` puts the code and a QR in the conversation, with Scan QR in the app. Plain `/g2:pair` keeps the private dialog.
+- **Accepted risk:** a shown code is in the model's context, so a prompt injection could try to exfiltrate it. Mitigations:
+  - it lives 3 minutes instead of 10
+  - it is single use, with CPace, first good join wins
+  - the session gets a channel message when a phone pairs
+  - `/g2:unpair` rotates the key, and every running channel watches `pairing.json` (`watchFile`, 2 s) and reconnects under the new key, so cut-off phones lose every session at once
+- **QR:** the text `G2CC:XXXX-XXXX` (alphanumeric, version 1, 21x21), rendered with `qrcode` as UTF-8 half blocks, 11 lines.
+  - Claude repeats it in its reply, and copying it exactly is part of the command's instructions.
+  - **Verified** in a tmux session: Claude's reply, rasterized from the captured screen, decodes with jsQR to the exact code.
+- **App:** Scan QR uses `bridge.captureImageFromCamera()`, which needs the new `camera` permission. jsQR decodes with `inversionAttempts: 'attemptBoth'`, because dark terminals show the QR light on dark.

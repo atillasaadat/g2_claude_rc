@@ -9,6 +9,7 @@ import { DEFAULT_GESTURES, type GestureMap } from './gestures'
 import { toSignal } from './input'
 import { Link } from './link'
 import { pairWithCode } from './code-pair'
+import { pairCodeFromQrText, readQrFromPhoto } from './qr-scan'
 import { frameOf, render } from './render'
 import { transcribe } from './asr/stt'
 import { checkGroqKey, type KeyCheck } from './asr/key-status'
@@ -112,6 +113,15 @@ mountUi({
     if (pairing.sttKey) setSttKey(pairing.sttKey)
     dispatch({ type: 'paired', paired: true })
     await link.connect(pairing)
+  },
+  async scanPairCode() {
+    const photo = await bridge.captureImageFromCamera()
+    if (!photo) throw new Error('no photo (cancelled, or the camera permission is off)')
+    const text = await readQrFromPhoto(photo.base64, photo.mimeType)
+    if (!text) throw new Error('no QR code found in the photo. Try again closer, or type the code')
+    const code = pairCodeFromQrText(text)
+    if (!code) throw new Error('that QR code is not a G2 pairing code')
+    await this.savePairing(await pairWithCode(code))
   },
   async pairWithCode(code, relayUrl) {
     await this.savePairing(await pairWithCode(code, relayUrl || undefined))

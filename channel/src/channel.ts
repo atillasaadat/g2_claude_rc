@@ -4,7 +4,8 @@
 // Inbound envelopes from the glasses are decrypted and validated before the
 // controller sees them: `stop` (Phase 4) and `verdict` (Phase 5) so far.
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, unwatchFile, watchFile, writeFileSync } from 'node:fs'
+import QRCode from 'qrcode'
 import { join } from 'node:path'
 import { z } from 'zod'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
@@ -16,7 +17,7 @@ import { ensurePrivateDirs, SAFE_SID, startHookSocket, type HookResponse, type H
 import { SessionController } from './controller'
 import { ownToolPrefix, type HookPayload } from './hooks'
 import { openCodePairing, type OpenCodePairing } from './code-pairing'
-import { loadOrCreatePairing, pairingPath } from './pairing-store'
+import { loadOrCreatePairing, pairingPath, type StoredPairing } from './pairing-store'
 import { clip, oneLine, redact } from './redact'
 import { RelayClient } from '@g2cc/protocol'
 
@@ -33,6 +34,8 @@ export const INSTRUCTIONS = [
 
 /** How long ask waits for an answer before leaving it to a later channel message. */
 const ASK_WAIT_MS = 30 * 60 * 1000
+/** A code shown in the conversation is in the model's context, so it lives for 3 minutes, not 10. */
+const SHOWN_CODE_TTL_MS = 3 * 60 * 1000
 
 const PermissionRequestNotification = z.object({
   method: z.literal('notifications/claude/channel/permission_request'),
@@ -51,7 +54,7 @@ export interface RunningChannel {
 }
 
 export async function runChannel(cfg: ChannelConfig, transport: Transport): Promise<RunningChannel> {
-  const pairing = await loadOrCreatePairing(cfg.home, {
+  let pairing = await loadOrCreatePairing(cfg.home, {
     relayUrl: cfg.relayUrlOverride ?? (existsSync(pairingPath(cfg.home)) ? undefined : DEFAULT_RELAY_URL),
   })
   // A channel restarted within the same session (for example by /mcp) must
@@ -64,7 +67,7 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
       return 0
     }
   })()
-  const secure = await SecureChannel.create(pairing.key, 'computer', { notBefore: lastAccepted + 1 })
+  let secure = await SecureChannel.create(pairing.key, 'computer', { notBefore: lastAccepted + 1 })
 
   // Sealing is async; a promise chain keeps envelopes in hook order.
   let outbound: Promise<void> = Promise.resolve()
@@ -75,8 +78,9 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
   }
 
   let glassesPresent = 0
-  const relay: RelayClient = new RelayClient({
-    url: relayRoomUrl(pairing.relayUrl, secure.roomId, 'computer', await relayAuthToken(pairing.key, secure.roomId)),
+  /** The relay connection for one key. Rebuilt when the key changes (/g2:unpair, in this or another session). */
+  const openRelay = async (p: StoredPairing, link: SecureChannel<'computer'>): Promise<RelayClient> => new RelayClient({
+    url: relayRoomUrl(p.relayUrl, link.roomId, 'computer', await relayAuthToken(p.key, link.roomId)),
     onStatus: s => {
       log(`relay ${s}`)
       if (s === 'open') controller.resync()
@@ -94,7 +98,7 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
     },
     onRateLimited: () => log('relay rate limit hit'),
     onFrame: async frame => {
-      const env = await secure.open(frame)
+      const env = await link.open(frame)
       if (!env) return // failed decryption, schema, or replay checks: drop silently
       log(`inbound ${env.kind}`)
       if (lastPath) {
@@ -107,6 +111,35 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
       controller.onInbound(env)
     },
   })
+  let relay = await openRelay(pairing, secure)
+
+  /**
+   * Picks up a new key from ~/.g2cc/pairing.json: every phone paired with the
+   * old one is cut off, in every running session, within a few seconds.
+   */
+  const rekey = async (): Promise<boolean> => {
+    let next: StoredPairing
+    try {
+      next = await loadOrCreatePairing(cfg.home)
+    } catch (err) {
+      log(`could not reload the pairing: ${(err as Error).message}`)
+      return false
+    }
+    const same = next.relayUrl === pairing.relayUrl && next.key.length === pairing.key.length && next.key.every((b, i) => b === pairing.key[i])
+    if (same) return false
+    const nextSecure = await SecureChannel.create(next.key, 'computer', { notBefore: Date.now() })
+    const nextRelay = await openRelay(next, nextSecure)
+    relay.stop()
+    pairing = next
+    secure = nextSecure
+    relay = nextRelay
+    glassesPresent = 0
+    controller.setGlassesPresent(false)
+    relay.start()
+    log('pairing key changed: reconnected with the new key')
+    return true
+  }
+  watchFile(pairingPath(cfg.home), { interval: 2_000 }, () => void rekey())
 
   // Only this session's hooks count: others may share the port's settings.json.
   const controller = new SessionController({
@@ -204,6 +237,52 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
    * sees: if the model saw it, a prompt injection could leak it and whoever
    * typed it first would get the key.
    */
+  /** Tells the session a phone paired, so an unexpected pairing does not go unnoticed. */
+  const announcePairing = (): void => {
+    void mcp
+      .notification({
+        method: 'notifications/claude/channel',
+        params: {
+          content: 'A phone just paired with this computer using a pairing code. Tell the user in one line. If they did not just pair a phone, they should run /g2:unpair.',
+          meta: { source_kind: 'pairing' },
+        },
+      })
+      .catch(err => log(`pairing notice not delivered: ${(err as Error).message}`))
+  }
+
+  /**
+   * /g2:pair show: the code and a QR for this conversation, so the Claude app
+   * and the web viewer see it too. That puts the code in the model's context,
+   * so it is opt-in and short-lived, and the session hears about the pairing.
+   */
+  const pairInConversation = async (): Promise<string> => {
+    pairingCode?.cancel()
+    const open = await openCodePairing(pairing, { ttlMs: SHOWN_CODE_TTL_MS })
+    pairingCode = open
+    void open.done.then(ok => {
+      if (pairingCode === open) pairingCode = null
+      log(ok ? 'phone paired by a shown code' : 'shown pairing code closed')
+      if (ok) announcePairing()
+    })
+    const qr = await QRCode.toString(`G2CC:${open.code}`, { type: 'utf8', errorCorrectionLevel: 'L', margin: 2 })
+    return [
+      `Pairing code: ${open.code}`,
+      `It works once and expires in ${Math.round(SHOWN_CODE_TTL_MS / 60_000)} minutes.`,
+      'In the G2 Claude Code app on the phone: Pairing, then type the code or tap Scan QR.',
+      '',
+      'QR code (show it exactly as is, in a code block):',
+      qr.replace(/\s+$/, ''),
+    ].join('\n')
+  }
+
+  /** /g2:unpair: a new key. Every paired phone is cut off until it pairs again. */
+  const unpairAll = async (): Promise<string> => {
+    pairingCode?.cancel()
+    await loadOrCreatePairing(cfg.home, { rotate: true })
+    await rekey()
+    return 'Unpaired: this computer has a new key, so every phone that was paired is cut off. Run /g2:pair to pair a phone again.'
+  }
+
   const pairByCode = async (): Promise<string> => {
     if (!mcp.getClientCapabilities()?.elicitation) {
       return 'Pairing needs an interactive Claude Code session, which can show the code in a dialog. Start one (cc-g2) and run /g2:pair there.'
@@ -214,6 +293,7 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
     void open.done.then(ok => {
       if (pairingCode === open) pairingCode = null
       log(ok ? 'phone paired by code' : 'pairing code closed')
+      if (ok) announcePairing()
     })
     let result: boolean | null = null
     void open.done.then(ok => (result = ok))
@@ -282,7 +362,16 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
       {
         name: 'pair',
         description:
-          'Pair the G2 Claude Code phone app with this computer. Shows the user a one-time code in a Claude Code dialog; the code never appears in this conversation. Call it only when the user asks to pair (for example through /g2:pair).',
+          'Pair the G2 Claude Code phone app with this computer. Call it only when the user asks to pair (for example through /g2:pair). By default it shows a one-time code in a private terminal dialog and the code never enters this conversation. With show: true, only when the user explicitly asked to show the code here (for example /g2:pair show), it returns the code and a QR code for the conversation instead, valid for 3 minutes; show both to the user exactly as returned and never send them anywhere else.',
+        inputSchema: {
+          type: 'object',
+          properties: { show: { type: 'boolean', description: 'Show the code and a QR in the conversation (only when the user asked for that).' } },
+        },
+      },
+      {
+        name: 'unpair',
+        description:
+          'Give this computer a new pairing key, which cuts off every paired phone until it pairs again. Call it only when the user asks to unpair or reset pairing (for example through /g2:unpair).',
         inputSchema: { type: 'object', properties: {} },
       },
       {
@@ -300,7 +389,11 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
       if (!mcp.getClientCapabilities()?.elicitation) return { content: [{ type: 'text', text: later }] }
       return { content: [{ type: 'text', text: await askEverywhere(r.question, later, extra.signal) }] }
     }
-    if (req.params.name === 'pair') return { content: [{ type: 'text', text: await pairByCode() }] }
+    if (req.params.name === 'pair') {
+      const show = (req.params.arguments as { show?: unknown } | undefined)?.show === true
+      return { content: [{ type: 'text', text: show ? await pairInConversation() : await pairByCode() }] }
+    }
+    if (req.params.name === 'unpair') return { content: [{ type: 'text', text: await unpairAll() }] }
     if (req.params.name !== 'glance') throw new Error(`unknown tool ${req.params.name}`)
     const text = (req.params.arguments as { text?: unknown } | undefined)?.text
     if (typeof text !== 'string' || !text.trim()) throw new Error('glance needs non-empty text')
@@ -311,6 +404,7 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
   const stop = async (): Promise<void> => {
     if (stopped) return
     stopped = true
+    unwatchFile(pairingPath(cfg.home))
     pairingCode?.cancel()
     hooks?.stop()
     // Tell the glasses this session is gone, so it leaves the session list.

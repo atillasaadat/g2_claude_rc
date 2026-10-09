@@ -4,6 +4,9 @@ Every release has a git tag and a GitHub Release with the full commit list. App 
 
 Add the entry here before running `scripts/release.sh`, which refuses a version without one.
 
+## App 0.4.0
+- Scan QR in Pairing: photograph the QR code from /g2:pair show with the phone camera instead of typing the code. Needs the camera permission, used only for this.
+
 ## App 0.3.9
 - The package no longer contains web addresses outside its network whitelist: setup guide links became plain text, and library strings that only look like URLs are escaped. Fixes the Even Hub review notice for 0.3.8.
 
@@ -54,6 +57,11 @@ Add the entry here before running `scripts/release.sh`, which refuses a version 
 
 ## App 0.1.0
 - Project spike: channel probe, Even Hub template and design notes.
+
+## Plugin 0.4.0
+- /g2:pair show puts the code and a small QR code in the conversation, so you can pair from the Claude app or the web viewer. It is opt-in and lasts 3 minutes; plain /g2:pair keeps the private terminal dialog.
+- The session is told when a phone pairs.
+- /g2:unpair gives the computer a new key, cutting off every paired phone; running sessions switch to the new key on their own.
 
 ## Plugin 0.3.4
 - Claude's questions show on the glasses and in the terminal at the same time. Answer in either; the other closes, and Claude gets the choice in the same turn instead of a later message.

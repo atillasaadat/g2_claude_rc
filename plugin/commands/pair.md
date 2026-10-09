@@ -1,7 +1,11 @@
 ---
-description: Pair the G2 Claude Code phone app with this computer using a one-time code
+description: Pair the G2 Claude Code phone app with this computer. Add "show" to see the code in the Claude app or web viewer too.
+argument-hint: "[show]"
 ---
 
-Call the g2 `pair` tool (no arguments). It shows the user a one-time code in a Claude Code dialog that stays up until the phone has paired, then closes by itself. The code never appears in this conversation, so do not ask the user for it. When the tool returns, tell the user its result in one line.
+Arguments: $ARGUMENTS
 
-If the tool says the session cannot show a dialog, tell the user to run `/g2:pair` in an interactive `cc-g2` session.
+Call the g2 `pair` tool.
+
+- **Without "show" in the arguments:** call it with no arguments. It shows a one-time code in a private Claude Code dialog that stays up until the phone has paired, then closes. The code never appears in this conversation, so do not ask for it. When the tool returns, tell the user its result in one line. If it says this session cannot show a dialog (for example in the Claude app or the web viewer), tell the user to run `/g2:pair show` instead.
+- **With "show" in the arguments:** call it with `show: true`. It returns a code and a QR code. Reply with the code on its own line, then the QR code copied exactly, character for character, inside a code block, then one line: type the code in the G2 Claude Code app under Pairing, or tap Scan QR there; it works once, for 3 minutes. Do not send the code anywhere else or use it for anything else.

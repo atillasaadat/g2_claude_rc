@@ -13,6 +13,8 @@ import type { Link } from './state'
 export interface UiCallbacks {
   savePairing(text: string): Promise<void>
   pairWithCode(code: string, relayUrl?: string): Promise<void>
+  /** Photographs the pairing QR with the phone camera and pairs with its code. */
+  scanPairCode(): Promise<void>
   forgetPairing(): Promise<void>
   saveGestures(map: GestureMap): Promise<void>
   saveDisplaySleep(seconds: number): Promise<void>
@@ -63,11 +65,12 @@ export function mountUi(cb: UiCallbacks): void {
       </section>
       <details id="pairing">
         <summary>Pairing</summary>
-        <p class="hint">In Claude Code on your computer, run <code>/g2:pair</code>. Type the code it shows here.</p>
+        <p class="hint">In Claude Code on your computer, run <code>/g2:pair</code> and type the code it shows here. From the Claude app or the web viewer, run <code>/g2:pair show</code> and type the code, or tap Scan QR and photograph the QR code.</p>
         <input id="code-input" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD-EFGH" maxlength="12" />
         <p class="hint">It pairs as soon as all 8 characters are in.</p>
         <div class="row">
           <button id="code-pair">Pair</button>
+          <button id="code-scan" class="secondary">Scan QR</button>
           <button id="pair-forget" class="secondary">Forget</button>
         </div>
         <div id="pair-msg" class="msg"></div>
@@ -192,6 +195,16 @@ export function mountUi(cb: UiCallbacks): void {
       .finally(() => (codeButton.disabled = false))
   }
   codeButton.addEventListener('click', pairNow)
+  const scanButton = app.querySelector<HTMLButtonElement>('#code-scan')!
+  scanButton.addEventListener('click', () => {
+    scanButton.disabled = true
+    message(els.pairMsg, 'Point the camera at the QR code...', false)
+    void cb
+      .scanPairCode()
+      .then(() => message(els.pairMsg, 'Paired.', false))
+      .catch(err => message(els.pairMsg, `Not paired: ${(err as Error).message}`, true))
+      .finally(() => (scanButton.disabled = false))
+  })
   onEnter(codeInput, pairNow)
   // A complete code pairs on its own, so the keyboard never has to be got out of the way.
   codeInput.addEventListener('input', () => {

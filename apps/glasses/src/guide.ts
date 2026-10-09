@@ -26,7 +26,7 @@ export const GUIDE_HTML = `
     <li>
       <strong>Pair this app.</strong> In that session, run
       ${cmd('/g2:pair')}
-      and type the code it shows under <em>Pairing</em> below. Each code works once, for 10 minutes.
+      and type the code it shows under <em>Pairing</em> below. Each code works once, for 10 minutes. From the Claude app or the web viewer, run <code>/g2:pair show</code> instead: type the code, or tap <em>Scan QR</em> and photograph the QR code it shows. If a phone you do not know pairs, <code>/g2:unpair</code> cuts off every phone.
     </li>
     <li>
       <strong>Add your Groq key</strong> for voice under <em>Voice</em> below. A free key from <strong>console.groq.com/keys</strong> works. It is stored on this phone only. Once saved, Voice shows it masked with a short fingerprint and whether Groq accepts it; a new key replaces it only if Groq accepts the new one.

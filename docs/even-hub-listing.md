@@ -43,6 +43,7 @@ First public release. Pair with a one-time code from the Claude Code plugin, the
 
 - **Glasses microphone:** records voice prompts only while you choose Talk. Audio goes to Groq for transcription with your own key and is not stored by this app.
 - **Network:** the encrypted relay at atillasaadat.com, and api.groq.com for transcription and for checking that the saved key works.
+- **Camera:** only when you tap Scan QR, to photograph the pairing QR code. The photo is read on the phone and not kept or sent anywhere.
 
 ## Still needed before submitting
 

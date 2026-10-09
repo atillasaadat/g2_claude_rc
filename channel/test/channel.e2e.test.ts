@@ -266,3 +266,43 @@ describe('channel feed end to end', () => {
     expect(mcpOut().filter(isVerdict)).toHaveLength(1)
   })
 })
+
+describe('pairing from the conversation, and unpairing', () => {
+  test('pair with show: true returns the code and a QR for the conversation', async () => {
+    mcpSend({ jsonrpc: '2.0', id: 40, method: 'tools/call', params: { name: 'pair', arguments: { show: true } } })
+    await until(() => mcpOut().some(m => m.id === 40))
+    const text = (mcpOut().find(m => m.id === 40) as { result: { content: Array<{ text: string }> } }).result.content[0]!.text
+    expect(text).toMatch(/^Pairing code: [0-9A-Z]{4}-[0-9A-Z]{4}$/m)
+    expect(text).toContain('expires in 3 minutes')
+    expect(text).toMatch(/[█▀▄]{7}/) // the QR
+  })
+
+  test('unpair gives a new key: the old room goes quiet, and the channel reconnects under the new one', async () => {
+    const before = await loadOrCreatePairing(home)
+    mcpSend({ jsonrpc: '2.0', id: 41, method: 'tools/call', params: { name: 'unpair', arguments: {} } })
+    await until(() => mcpOut().some(m => m.id === 41))
+    const after = await loadOrCreatePairing(home)
+    expect(Buffer.from(after.key).equals(Buffer.from(before.key))).toBe(false)
+
+    // A phone with the new key hears from the channel (its state on connect).
+    const fresh = await SecureChannel.create(after.key, 'glasses')
+    const heard: AnyEnvelope[] = []
+    const r = new RelayClient({
+      url: relayRoomUrl(relayUrl, fresh.roomId, 'glasses', await relayAuthToken(after.key, fresh.roomId)),
+      onFrame: async f => {
+        const env = await fresh.open(f)
+        if (env) heard.push(env)
+      },
+    })
+    r.start()
+    try {
+      const end = Date.now() + 10_000
+      while (!heard.some(e => e.kind === 'session')) {
+        if (Date.now() > end) throw new Error('no session state under the new key')
+        await Bun.sleep(100)
+      }
+    } finally {
+      r.stop()
+    }
+  })
+})
