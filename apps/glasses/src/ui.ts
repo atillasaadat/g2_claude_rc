@@ -8,7 +8,7 @@ import { dismissKeyboard, keyboardFriendly, onEnter } from './keyboard'
 import { checkGroqKey, keyFingerprint, maskKey, type KeyCheck } from './asr/key-status'
 import { ACTIONS, DEFAULT_GESTURES, GESTURES, SCREENS, validateGestureMap, type GestureMap } from './gestures'
 import type { Frame } from './render'
-import type { Link } from './state'
+import type { Link, MutedSession } from './state'
 
 export interface UiCallbacks {
   savePairing(text: string): Promise<void>
@@ -20,6 +20,21 @@ export interface UiCallbacks {
   saveDisplaySleep(seconds: number): Promise<void>
   /** Saves (replacing any saved key) after Groq accepts it. Empty removes the key. */
   saveSttKey(key: string): Promise<KeyCheck | null>
+  /** Puts a session on the glasses. */
+  selectSession(sid: string): void
+  /** This phone stops showing a session; Claude Code keeps running. */
+  disconnectSession(sid: string): void
+  reconnectSession(sid: string): void
+}
+
+/** A live session as the phone view lists it. */
+export interface SessionRow {
+  sid: string
+  name: string
+  cwd: string
+  state: string
+  active: boolean
+  unread: boolean
 }
 
 const GESTURE_LABELS: Record<(typeof GESTURES)[number], string> = {
@@ -45,7 +60,11 @@ let els: {
   sttInput: HTMLInputElement
   sttSave: HTMLButtonElement
   sttRemove: HTMLButtonElement
+  sessions: HTMLDetailsElement
+  sessionList: HTMLDivElement
+  mutedList: HTMLDivElement
 }
+let callbacks: UiCallbacks | null = null
 let currentMap: GestureMap = DEFAULT_GESTURES
 
 export function mountUi(cb: UiCallbacks): void {
@@ -63,6 +82,11 @@ export function mountUi(cb: UiCallbacks): void {
           <pre id="m-overlay" class="m-overlay" hidden></pre>
         </div>
       </section>
+      <details id="sessions" open hidden>
+        <summary>Sessions</summary>
+        <div id="session-list" class="sessions"></div>
+        <div id="muted-list" class="sessions"></div>
+      </details>
       <details id="pairing">
         <summary>Pairing</summary>
         <p class="hint">In Claude Code on your computer, run <code>/g2:pair</code> and type the code it shows here. From the Claude app or the web viewer, run <code>/g2:pair show</code> and type the code, or tap Scan QR and photograph the QR code.</p>
@@ -140,7 +164,11 @@ export function mountUi(cb: UiCallbacks): void {
     sttInput: app.querySelector('#stt-input')!,
     sttSave: app.querySelector('#stt-save')!,
     sttRemove: app.querySelector('#stt-remove')!,
+    sessions: app.querySelector('#sessions')!,
+    sessionList: app.querySelector('#session-list')!,
+    mutedList: app.querySelector('#muted-list')!,
   }
+  callbacks = cb
   const sttInput = app.querySelector<HTMLInputElement>('#stt-input')!
   const sttMsg = app.querySelector<HTMLDivElement>('#stt-msg')!
   app.querySelector('#stt-save')!.addEventListener('click', () => {
@@ -314,6 +342,74 @@ export function setVoiceStatus(key: string, opts: { known?: KeyCheck | null; fak
   }
 }
 
+let sessionsShown = ''
+
+/**
+ * The Sessions section: each live session with Show on glasses and
+ * Disconnect, then the disconnected ones with Reconnect. Rebuilt only when
+ * something listed changes, so a tap never lands on a button being replaced.
+ */
+export function setSessions(info: { paired: boolean; live: readonly SessionRow[]; muted: readonly MutedSession[] }): void {
+  if (!els || !callbacks) return
+  const key = JSON.stringify(info)
+  if (key === sessionsShown) return
+  sessionsShown = key
+  const cb = callbacks
+  els.sessions.hidden = !info.paired && info.muted.length === 0
+  els.sessionList.replaceChildren(
+    ...(info.live.length
+      ? info.live.map(row =>
+          sessionItem(row.name, `${row.state}${row.unread ? ' · new' : ''} · ${row.cwd}`, row.active, [
+            row.active ? null : button('Show on glasses', false, () => cb.selectSession(row.sid)),
+            button('Disconnect', true, () => cb.disconnectSession(row.sid)),
+          ]))
+      : [hint('No sessions connected. Start Claude Code with the g2 plugin and they show up here.')]),
+  )
+  els.mutedList.replaceChildren(
+    ...(info.muted.length
+      ? [
+          hint('Disconnected (Claude Code keeps running there; this phone just stops showing it):'),
+          ...info.muted.map(m => sessionItem(m.name, '', false, [button('Reconnect', true, () => cb.reconnectSession(m.sid))])),
+        ]
+      : []),
+  )
+}
+
+function sessionItem(name: string, detail: string, active: boolean, buttons: Array<HTMLButtonElement | null>): HTMLDivElement {
+  const item = document.createElement('div')
+  item.className = active ? 'session session-active' : 'session'
+  const title = document.createElement('div')
+  title.className = 'session-name'
+  title.textContent = active ? `▶ ${name}` : name
+  item.append(title)
+  if (detail) {
+    const sub = document.createElement('div')
+    sub.className = 'session-detail'
+    sub.textContent = detail
+    item.append(sub)
+  }
+  const row = document.createElement('div')
+  row.className = 'row'
+  row.append(...buttons.filter((b): b is HTMLButtonElement => b !== null))
+  item.append(row)
+  return item
+}
+
+function button(label: string, secondary: boolean, onClick: () => void): HTMLButtonElement {
+  const b = document.createElement('button')
+  b.textContent = label
+  if (secondary) b.className = 'secondary'
+  b.addEventListener('click', onClick)
+  return b
+}
+
+function hint(text: string): HTMLParagraphElement {
+  const p = document.createElement('p')
+  p.className = 'hint'
+  p.textContent = text
+  return p
+}
+
 export function mirror(frame: Frame): void {
   if (!els) return
   const off = !frame.header && !frame.timeline && !frame.overlay
@@ -413,6 +509,11 @@ function injectStyles(): void {
     button { background: #3CFA44; color: #000; border: 0; border-radius: 8px; padding: 8px 14px; font-weight: 600; }
     button.secondary { background: #3E3E3E; color: #E5E5E5; }
     .msg { font-size: 13px; margin-top: 8px; color: #A7A7A7; }
+    .session { border-top: 1px solid #3E3E3E; padding: 10px 0; }
+    .session:first-child { border-top: 0; }
+    .session-name { font-weight: 600; overflow-wrap: anywhere; }
+    .session-active .session-name { color: #3CFA44; }
+    .session-detail { font: 12px ui-monospace, Menlo, monospace; color: #A7A7A7; overflow-wrap: anywhere; }
     .msg-error { color: #FF453A; }
     fieldset { border: 1px solid #3E3E3E; border-radius: 8px; margin: 8px 0; }
     legend { text-transform: capitalize; color: #A7A7A7; }

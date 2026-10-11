@@ -14,9 +14,9 @@ import { frameOf, render } from './render'
 import { transcribe } from './asr/stt'
 import { checkGroqKey, type KeyCheck } from './asr/key-status'
 import { VoiceRecorder } from './recorder'
-import { initialState, isAnimating, micWanted, reduce, type AppState, type Msg } from './state'
+import { initialState, isAnimating, micWanted, reduce, sessionList, type AppState, type Msg } from './state'
 import { Storage, STT_KEY_SHAPE } from './storage'
-import { mirror, mountUi, setDisplaySleep, setGestureMap, setStatus, setVoiceStatus } from './ui'
+import { mirror, mountUi, setDisplaySleep, setGestureMap, setSessions, setStatus, setVoiceStatus } from './ui'
 
 const log = (...args: unknown[]): void => console.log('[g2cc]', ...args)
 
@@ -74,6 +74,18 @@ function paint(): void {
   display?.show(scene)
   mirror(frame)
   setStatus(state.link, state.paired)
+  setSessions({
+    paired: state.paired,
+    live: sessionList(state).map(({ sid, view: v }) => ({
+      sid,
+      name: v.session?.name ?? 'Claude Code',
+      cwd: v.session?.cwd ?? '',
+      state: v.session?.state ?? 'idle',
+      active: sid === state.active,
+      unread: v.unread,
+    })),
+    muted: state.muted,
+  })
   // Dev only: lets simulator automation assert on exactly what was drawn.
   const logged = JSON.stringify(frame)
   if (import.meta.env.DEV && started && logged !== lastLogged) log('frame', logged)
@@ -92,6 +104,8 @@ function dispatch(msg: Msg): void {
   for (const effect of result.effects) {
     if (effect.type === 'exit') void bridge.shutDownPageContainer(1)
     if (effect.type === 'unpair') void unpair().catch(err => log('could not unpair:', (err as Error).message))
+    if (effect.type === 'save_muted') void storage.saveMuted(effect.sessions).catch(err => log('could not save sessions:', (err as Error).message))
+    if (effect.type === 'resync') void link.reconnect().catch(err => log('could not reconnect:', (err as Error).message))
     if (effect.type === 'send') {
       link.send(effect.kind, effect.body, effect.sid).catch(err => log(`could not send ${effect.kind}:`, (err as Error).message))
     }
@@ -146,6 +160,9 @@ mountUi({
     await storage.saveDisplaySleep(seconds)
     dispatch({ type: 'config', displaySleepMs: seconds * 1000 })
   },
+  selectSession: sid => dispatch({ type: 'select_session', sid }),
+  disconnectSession: sid => dispatch({ type: 'mute_session', sid }),
+  reconnectSession: sid => dispatch({ type: 'unmute_session', sid }),
   async saveGestures(map) {
     await storage.saveGestures(map)
     gestures = map
@@ -183,6 +200,7 @@ setGestureMap(gestures)
 const displaySleep = await storage.loadDisplaySleep().catch(() => 0)
 setDisplaySleep(displaySleep)
 state = reduce(state, { type: 'config', displaySleepMs: displaySleep * 1000 }).state
+state = reduce(state, { type: 'muted', sessions: await storage.loadMuted().catch(() => []) }).state
 await pairFromFragment()
 const stored = await storage.loadPairing().catch(() => null)
 state = reduce(state, { type: 'paired', paired: stored !== null }).state

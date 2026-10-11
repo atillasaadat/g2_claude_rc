@@ -28928,6 +28928,8 @@ class SecureChannel {
   }
 }
 // packages/protocol/src/relay-client.ts
+var DEAD_AFTER_PINGS = 2.5;
+
 class RelayClient {
   opts;
   ws = null;
@@ -28978,17 +28980,27 @@ class RelayClient {
     const ws = new WebSocket(this.opts.url);
     ws.binaryType = "arraybuffer";
     this.ws = ws;
+    let lastHeard = Date.now();
+    let answersPings = false;
     ws.onopen = () => {
       this.attempt = 0;
+      lastHeard = Date.now();
       this.opts.onStatus?.("open");
       for (const frame of this.buffer.splice(0))
         ws.send(frame);
       this.pingTimer = setInterval(() => {
+        if (answersPings && Date.now() - lastHeard > this.pingIntervalMs * DEAD_AFTER_PINGS) {
+          this.drop(ws);
+          return;
+        }
         if (ws.readyState === WebSocket.OPEN)
           ws.send("ping");
       }, this.pingIntervalMs);
     };
     ws.onmessage = (ev) => {
+      lastHeard = Date.now();
+      if (ev.data === "pong")
+        answersPings = true;
       if (typeof ev.data !== "string") {
         this.opts.onFrame(new Uint8Array(ev.data));
         return;
@@ -29013,6 +29025,19 @@ class RelayClient {
         this.scheduleReconnect();
     };
     ws.onerror = () => {};
+  }
+  drop(ws) {
+    if (this.ws !== ws)
+      return;
+    ws.onopen = ws.onmessage = ws.onclose = null;
+    try {
+      ws.close(4000, "no answer");
+    } catch {}
+    this.clearPing();
+    this.ws = null;
+    this.opts.onStatus?.("closed");
+    if (!this.stopped)
+      this.scheduleReconnect();
   }
   scheduleReconnect() {
     const ceiling = Math.min(this.maxBackoffMs, this.minBackoffMs * 2 ** this.attempt);

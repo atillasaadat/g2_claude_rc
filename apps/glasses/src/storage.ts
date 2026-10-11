@@ -4,11 +4,13 @@ import type { EvenAppBridge } from '@evenrealities/even_hub_sdk'
 import { decodePairing, type Pairing } from '@g2cc/protocol'
 import type { BridgeQueue } from './bridge-queue'
 import { DEFAULT_GESTURES, parseGestureMap, type GestureMap } from './gestures'
+import { MAX_MUTED, type MutedSession } from './state'
 
 const PAIRING_KEY = 'g2cc.pairing'
 const GESTURES_KEY = 'g2cc.gestures'
 const STT_KEY = 'g2cc.sttKey'
 const DISPLAY_SLEEP_KEY = 'g2cc.displaySleep'
+const MUTED_KEY = 'g2cc.mutedSessions'
 
 /** Display sleep choices in seconds; 0 keeps the display on. */
 export const DISPLAY_SLEEP_CHOICES = [0, 5, 10, 15, 30, 60, 120, 300] as const
@@ -77,6 +79,24 @@ export class Storage {
   async loadDisplaySleep(): Promise<number> {
     const n = Number(await this.get(DISPLAY_SLEEP_KEY))
     return (DISPLAY_SLEEP_CHOICES as readonly number[]).includes(n) ? n : 0
+  }
+
+  /** Sessions disconnected in the phone view. Anything unreadable counts as none. */
+  async loadMuted(): Promise<MutedSession[]> {
+    try {
+      const raw: unknown = JSON.parse((await this.get(MUTED_KEY)) || '[]')
+      if (!Array.isArray(raw)) return []
+      return raw
+        .filter((m): m is MutedSession => typeof m?.sid === 'string' && typeof m?.name === 'string' && m.sid.length <= 64)
+        .map(m => ({ sid: m.sid, name: m.name.slice(0, 80) }))
+        .slice(-MAX_MUTED)
+    } catch {
+      return []
+    }
+  }
+
+  async saveMuted(sessions: readonly MutedSession[]): Promise<void> {
+    await this.set(MUTED_KEY, JSON.stringify(sessions.slice(-MAX_MUTED)))
   }
 
   async saveDisplaySleep(seconds: number): Promise<void> {

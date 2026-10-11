@@ -7,6 +7,8 @@ function fakeRelay() {
   const received: Uint8Array[] = []
   const texts: string[] = []
   const sockets = new Set<ServerWebSocket<unknown>>()
+  // Silent: the link is dead but nobody closed it (a laptop slept, the network changed).
+  const state = { silent: false, pongs: true }
   const server = Bun.serve({
     port: 0,
     hostname: '127.0.0.1',
@@ -19,9 +21,10 @@ function fakeRelay() {
         ws.send(JSON.stringify({ t: 'presence', computer: 1, glasses: 0 }))
       },
       message(ws, msg) {
+        if (state.silent) return
         if (typeof msg === 'string') {
           texts.push(msg)
-          if (msg === 'ping') ws.send('pong')
+          if (msg === 'ping' && state.pongs) ws.send('pong')
         } else {
           received.push(new Uint8Array(msg))
         }
@@ -36,6 +39,7 @@ function fakeRelay() {
     received,
     texts,
     sockets,
+    state,
     send: (data: Uint8Array) => sockets.forEach(s => s.send(data)),
     dropAll: () => sockets.forEach(s => s.close(1012, 'restart')),
     stop: () => server.stop(true),
@@ -138,6 +142,31 @@ describe('RelayClient', () => {
     const { c } = client(relay.url, { pingIntervalMs: 30 })
     c.start()
     await until(() => relay.texts.includes('ping'))
+  })
+
+  test('a link that stops answering pings is dropped and reopened', async () => {
+    const relay = fakeRelay()
+    cleanup.push(relay.stop)
+    const { c, statuses } = client(relay.url, { pingIntervalMs: 30 })
+    c.start()
+    await until(() => relay.texts.includes('ping'))
+    await Bun.sleep(50)
+    relay.state.silent = true
+    await until(() => statuses.includes('closed'))
+    relay.state.silent = false
+    await until(() => statuses.filter(s => s === 'open').length === 2)
+    c.send(Uint8Array.of(7))
+    await until(() => relay.received.some(f => f[0] === 7))
+  })
+
+  test('a relay that never answers pings is not treated as dead', async () => {
+    const relay = fakeRelay()
+    relay.state.pongs = false
+    cleanup.push(relay.stop)
+    const { c, statuses } = client(relay.url, { pingIntervalMs: 20 })
+    c.start()
+    await Bun.sleep(400)
+    expect(statuses).toEqual(['connecting', 'open'])
   })
 
   test('stop closes the socket and stops reconnecting', async () => {

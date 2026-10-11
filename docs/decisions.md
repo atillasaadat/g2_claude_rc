@@ -758,3 +758,12 @@ No secrets or Anthropic credentials are involved. **Verified:** the first run pa
 - **Missing sessions:** the relay history and the resync on glasses join looked right in a live dump of the room (both running sessions re-announced within a second). Two other causes fit "sometimes":
   - The phone holds one pairing, and each computer has its own key and room, so sessions on a computer the phone is not paired with never show.
   - Liveness needs the session frame to be under 60 s old by the phone's clock, so a computer clock that runs over a minute behind (WSL2 after sleep, for example) keeps its sessions out of the list. This machine was 1 s off when checked.
+
+## Dead relay links, and sessions in the phone view (2026-10-11)
+- **Report:** sessions still did not reliably show in the side menu after plugin 0.4.3.
+- **Cause, found live:** the fprime-probe channel's socket had 25 KB stuck in its send queue with TCP retransmits backed off to 120 s, yet it still read as open. The client sent a ping every 25 s but never checked for an answer, so it never reconnected, never saw presence changes, and never re-announced its session. The relay already answers `ping` with `pong` through `setWebSocketAutoResponse` (checked in production).
+- **Fix:** once a connection has answered a ping, the client treats 2.5 ping intervals (about 62 s) of silence as a dead link, drops it and reconnects. A relay that never answers pings is not judged, so an older self-hosted relay keeps working. The same client runs in the channel and in the app.
+- **Sessions in the phone view (user request):** a Sessions section lists live sessions with state and folder, with Show on glasses and Disconnect, plus the disconnected ones with Reconnect.
+  - Disconnect is phone-side: the app ignores that session's envelopes, cards and questions, and remembers the session id in SDK storage (at most 20). Claude Code keeps running and keeps its terminal prompts, and no plugin change is needed. Detaching the channel itself was the alternative, but reconnecting it would then need a command in that terminal.
+  - Reconnect reconnects the app to the relay, so every channel announces its session again and the session returns at once.
+  - A disconnected session that ends leaves the list.

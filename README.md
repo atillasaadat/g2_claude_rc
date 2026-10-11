@@ -92,6 +92,7 @@ The relay admits a socket to a room only with the room's auth token (an HMAC of 
 | Double tap | Jump to the newest line. On a card: leave it for later. In the menu: back |
 | OS side menu | Switch sessions or clear other sessions (with two or more). The glasses OS adds its own Close, Display off and brightness items. |
 
+- **Sessions** (phone view): every connected session with its state and folder. Show on glasses switches to it, and Disconnect stops this phone showing it (Claude Code keeps running, and the terminal still asks for approvals). Disconnected sessions are listed with Reconnect.
 - **Display off** blanks the glasses until something needs you. Any gesture wakes them, and that first gesture does nothing else.
 - **Display sleep** (phone view, Display): keep the display always on (the default), or let it turn off after 5 s to 5 min while Claude works. It wakes for a reply, the end of a turn, an approval card, a question, or an alert from another session. It then stays on until you turn it off or start a new prompt.
 - **End session** unpairs this phone, after a confirm that starts on Cancel. Every session leaves the glasses, and `/g2:pair` reconnects.

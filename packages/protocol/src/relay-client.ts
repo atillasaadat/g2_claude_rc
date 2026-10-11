@@ -1,5 +1,9 @@
 // The channel's single outbound connection to the relay. Reconnects with
 // exponential backoff and jitter, and buffers the newest frames while offline.
+// A link can die without closing (a laptop sleeps, the network changes): TCP
+// then retries for many minutes while the socket still reads as open. So once
+// the relay has answered a ping, silence for DEAD_AFTER_PINGS ping intervals
+// counts as a dead link, and the client drops it and reconnects.
 
 export type RelayStatus = 'connecting' | 'open' | 'closed'
 
@@ -22,6 +26,9 @@ export interface RelayClientOptions {
   maxBackoffMs?: number
   pingIntervalMs?: number
 }
+
+/** Ping intervals without hearing anything before an answering relay counts as gone. */
+const DEAD_AFTER_PINGS = 2.5
 
 export class RelayClient {
   private ws: WebSocket | null = null
@@ -75,16 +82,27 @@ export class RelayClient {
     ws.binaryType = 'arraybuffer'
     this.ws = ws
 
+    let lastHeard = Date.now()
+    // Only a relay that answers pings can be judged by silence (older ones did not).
+    let answersPings = false
+
     ws.onopen = () => {
       this.attempt = 0
+      lastHeard = Date.now()
       this.opts.onStatus?.('open')
       for (const frame of this.buffer.splice(0)) ws.send(frame)
       this.pingTimer = setInterval(() => {
+        if (answersPings && Date.now() - lastHeard > this.pingIntervalMs * DEAD_AFTER_PINGS) {
+          this.drop(ws)
+          return
+        }
         if (ws.readyState === WebSocket.OPEN) ws.send('ping')
       }, this.pingIntervalMs)
     }
 
     ws.onmessage = ev => {
+      lastHeard = Date.now()
+      if (ev.data === 'pong') answersPings = true
       if (typeof ev.data !== 'string') {
         this.opts.onFrame(new Uint8Array(ev.data as ArrayBuffer))
         return
@@ -108,6 +126,21 @@ export class RelayClient {
     }
     // onclose always follows onerror, so reconnect is handled there.
     ws.onerror = () => {}
+  }
+
+  /** Gives up on a dead link at once, without waiting for TCP to notice. */
+  private drop(ws: WebSocket): void {
+    if (this.ws !== ws) return
+    ws.onopen = ws.onmessage = ws.onclose = null
+    try {
+      ws.close(4000, 'no answer')
+    } catch {
+      // Already closing.
+    }
+    this.clearPing()
+    this.ws = null
+    this.opts.onStatus?.('closed')
+    if (!this.stopped) this.scheduleReconnect()
   }
 
   private scheduleReconnect(): void {

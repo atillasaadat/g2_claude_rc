@@ -63,6 +63,14 @@ export interface SessionView {
   liveEpoch: number
 }
 
+/** A session this phone was told to stop showing (phone view: Disconnect). */
+export interface MutedSession {
+  sid: string
+  name: string
+}
+/** Disconnected sessions remembered at most; the oldest go first. */
+export const MAX_MUTED = 20
+
 export type PermissionCard = Body<'permission'> & { ts: number; sid: string }
 export type QuestionCard = Body<'question'> & { ts: number; sid: string }
 
@@ -108,6 +116,8 @@ export interface AppState {
   /** Last gesture or wake: the sleep timer counts from here. */
   awakeSince: number
   toast?: { text: string; until: number }
+  /** Sessions disconnected in the phone view: their envelopes are ignored. */
+  muted: readonly MutedSession[]
 }
 
 export type Msg =
@@ -124,6 +134,12 @@ export type Msg =
   | { type: 'tick'; now: number }
   /** An item of the glasses OS side menu was chosen (see osMenu). */
   | { type: 'os_menu'; itemID: number }
+  /** Phone view: put a session on the glasses, disconnect one, or reconnect it. */
+  | { type: 'select_session'; sid: string }
+  | { type: 'mute_session'; sid: string }
+  | { type: 'unmute_session'; sid: string }
+  /** The saved list of disconnected sessions, loaded at start. */
+  | { type: 'muted'; sessions: readonly MutedSession[] }
 
 /** Commands name their target session (sid), since several share the relay room. */
 export type Effect =
@@ -134,6 +150,9 @@ export type Effect =
   | { type: 'send'; kind: 'verdict'; body: Body<'verdict'>; sid: string }
   | { type: 'send'; kind: 'prompt'; body: Body<'prompt'>; sid: string }
   | { type: 'send'; kind: 'answer'; body: Body<'answer'>; sid: string }
+  | { type: 'save_muted'; sessions: readonly MutedSession[] }
+  /** Reconnect to the relay, so every channel announces its session again. */
+  | { type: 'resync' }
 
 export interface Result {
   state: AppState
@@ -167,6 +186,7 @@ export function initialState(): AppState {
     displaySleepMs: 0,
     dark: false,
     awakeSince: 0,
+    muted: [],
   }
 }
 
@@ -541,9 +561,23 @@ function onOsMenu(s: AppState, itemID: number): Result {
   const item = osMenu(s).find(i => i.id === itemID)
   if (!item) return done(s)
   if (item.clear) return done({ ...s, views: { [s.active]: view(s) }, toast: undefined })
-  const sid = item.sid!
-  // Overlays stay (a pending card or question still needs an answer).
-  return done(withView({ ...s, active: sid, toast: undefined }, sid, { ...view(s, sid), unread: false }))
+  return done(selectSession(s, item.sid!))
+}
+
+/** Puts a listed session on the glasses. Overlays stay (a pending card or question still needs an answer). */
+function selectSession(s: AppState, sid: string): AppState {
+  if (!sessionList(s).some(x => x.sid === sid)) return s
+  return withView({ ...s, active: sid, toast: undefined }, sid, { ...view(s, sid), unread: false })
+}
+
+/** Phone view Disconnect: the session, its cards and its questions leave this phone. */
+function muteSession(s: AppState, sid: string): Result {
+  if (!s.views[sid] || s.muted.some(m => m.sid === sid)) return done(s)
+  const muted = [...s.muted, { sid, name: sessionName(s, sid) }].slice(-MAX_MUTED)
+  let next: AppState = { ...endSession(s, sid), muted }
+  for (const c of s.cards.filter(c => c.sid === sid)) next = dropCard(next, c.request_id, next.clock)
+  for (const q of s.questions.filter(q => q.sid === sid)) next = dropQuestion(next, q.question_id, next.clock)
+  return done(next, [{ type: 'save_muted', sessions: muted }])
 }
 
 const voiceIdle = (s: AppState): AppState => ({
@@ -649,8 +683,16 @@ function onGesture(s: AppState, gesture: Gesture, map: GestureMap, now: number):
 
 export function reduce(s: AppState, msg: Msg): Result {
   switch (msg.type) {
-    case 'envelope':
+    case 'envelope': {
+      const sid = msg.env.sid ?? ''
+      if (s.muted.some(m => m.sid === sid)) {
+        // A disconnected session that ends no longer needs remembering.
+        if (msg.env.kind !== 'session' || msg.env.body.state !== 'ended') return done(s)
+        const muted = s.muted.filter(m => m.sid !== sid)
+        return done({ ...s, muted }, [{ type: 'save_muted', sessions: muted }])
+      }
       return done(afterEnvelope(s, onEnvelope(s, msg.env, msg.now), msg.env, msg.now))
+    }
     case 'relay': {
       const relayOpen = msg.status === 'open'
       const computers = relayOpen ? s.computers : 0
@@ -674,7 +716,11 @@ export function reduce(s: AppState, msg: Msg): Result {
     }
     case 'paired':
       // Unpaired: every session, card and question goes with the pairing.
-      return done(msg.paired ? { ...s, paired: true } : { ...initialState(), voiceAvailable: s.voiceAvailable, displaySleepMs: s.displaySleepMs, clock: s.clock })
+      return done(
+        msg.paired
+          ? { ...s, paired: true }
+          : { ...initialState(), voiceAvailable: s.voiceAvailable, displaySleepMs: s.displaySleepMs, clock: s.clock, muted: s.muted },
+      )
     case 'config': {
       const next = {
         ...s,
@@ -701,5 +747,16 @@ export function reduce(s: AppState, msg: Msg): Result {
     }
     case 'os_menu':
       return onOsMenu(s, msg.itemID)
+    case 'select_session':
+      return done(selectSession(s, msg.sid))
+    case 'mute_session':
+      return muteSession(s, msg.sid)
+    case 'unmute_session': {
+      const muted = s.muted.filter(m => m.sid !== msg.sid)
+      if (muted.length === s.muted.length) return done(s)
+      return done({ ...s, muted }, [{ type: 'save_muted', sessions: muted }, { type: 'resync' }])
+    }
+    case 'muted':
+      return done({ ...s, muted: msg.sessions.slice(-MAX_MUTED) })
   }
 }

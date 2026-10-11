@@ -4,6 +4,13 @@ Every release has a git tag and a GitHub Release with the full commit list. App 
 
 Add the entry here before running `scripts/release.sh`, which refuses a version without one.
 
+## App 0.4.4
+- The phone view has a Sessions section: every connected session with its state and folder. Show on glasses switches to it. Disconnect makes this phone stop showing it and its approvals (Claude Code keeps running, and the terminal still asks), and Reconnect brings it back.
+- A connection to the relay that dies without closing (the phone sleeps, the network changes) is noticed within about a minute and reopened.
+
+## Plugin 0.4.4
+- A channel whose relay connection died without closing (a laptop slept, Wi-Fi changed) now notices within about a minute and reconnects. Before, it could sit on the dead link for many minutes, and its session disappeared from the glasses.
+
 ## App 0.4.3
 - The side menu drops Exit app, which repeated the glasses' own Close. With one session the app adds nothing to that menu.
 - A session that died without saying goodbye (a closed terminal, a killed process) leaves the session list as soon as its computer drops off the relay, instead of showing up twice next to its replacement.

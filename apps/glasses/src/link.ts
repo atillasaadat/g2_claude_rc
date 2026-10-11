@@ -6,11 +6,13 @@ import type { Msg } from './state'
 export class Link {
   private relay: RelayClient | null = null
   private secure: SecureChannel<'glasses'> | null = null
+  private pairing: Pairing | null = null
 
   constructor(private readonly dispatch: (msg: Msg) => void) {}
 
   async connect(pairing: Pairing): Promise<void> {
     this.disconnect()
+    this.pairing = pairing
     const secure = await SecureChannel.create(pairing.key, 'glasses')
     this.secure = secure
     const url = relayRoomUrl(pairing.relayUrl, secure.roomId, 'glasses', await relayAuthToken(pairing.key, secure.roomId))
@@ -32,6 +34,11 @@ export class Link {
   async send<K extends OutKind<'glasses'>>(kind: K, body: Body<K>, sid: string): Promise<void> {
     if (!this.secure || !this.relay) throw new Error('not paired')
     this.relay.send(await this.secure.seal(kind, body, sid ? { sid } : {}))
+  }
+
+  /** Connects again: on every glasses connect, each channel announces its session. */
+  async reconnect(): Promise<void> {
+    if (this.pairing) await this.connect(this.pairing)
   }
 
   disconnect(): void {
