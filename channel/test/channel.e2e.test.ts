@@ -267,6 +267,21 @@ describe('channel feed end to end', () => {
   })
 })
 
+describe('session liveness', () => {
+  test('when another computer leaves the room, the channel announces its session again', async () => {
+    const pairing = await loadOrCreatePairing(home)
+    const other = new RelayClient({
+      url: relayRoomUrl(relayUrl, glasses.roomId, 'computer', await relayAuthToken(pairing.key, glasses.roomId)),
+      onFrame: () => {},
+    })
+    other.start()
+    await Bun.sleep(1_000)
+    received.length = 0
+    other.stop()
+    await until(() => received.some(e => e.kind === 'session' && e.sid === SESSION))
+  })
+})
+
 describe('pairing from the conversation, and unpairing', () => {
   test('pair with show: true returns the code and a QR for the conversation', async () => {
     mcpSend({ jsonrpc: '2.0', id: 40, method: 'tools/call', params: { name: 'pair', arguments: { show: true } } })

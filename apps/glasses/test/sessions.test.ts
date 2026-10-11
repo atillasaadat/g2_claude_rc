@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { makeEnvelope, type AnyEnvelope, type Body, type Kind } from '@g2cc/protocol'
 import { render } from '../src/render'
-import { CLEAR_ITEM_ID, EXIT_ITEM_ID, initialState, osMenu, reduce, sessionList, TOAST_MS, view, type AppState } from '../src/state'
+import { CLEAR_ITEM_ID, initialState, osMenu, reduce, sessionList, TOAST_MS, view, type AppState } from '../src/state'
 import { frame, g, gs, NOW, perm, question } from './helpers'
 
 const A = 'aaaa-1'
@@ -47,20 +47,20 @@ describe('multiple sessions', () => {
   test('the OS side menu lists the sessions; choosing one switches and clears unread', () => {
     let s = recv(two(), at(B, 'reply', { text: 'Done in B.' }))
     const menu = osMenu(s)
-    expect(menu.map(m => m.label)).toEqual(['▶ repo-a', 'repo-b', 'Clear other sessions', 'Exit app'])
+    expect(menu.map(m => m.label)).toEqual(['▶ repo-a', 'repo-b', 'Clear other sessions'])
     expect(render(s).menu).toEqual(menu.map(({ id, label }) => ({ id, label })))
     s = reduce(s, { type: 'os_menu', itemID: menu.find(m => m.sid === B)!.id }).state
     expect([s.active, view(s, B).unread]).toEqual([B, false])
     expect(frame(s).timeline).toContain('Done in B.')
-    expect(osMenu(s).map(m => m.label)).toEqual(['repo-a', '▶ repo-b', 'Clear other sessions', 'Exit app'])
+    expect(osMenu(s).map(m => m.label)).toEqual(['repo-a', '▶ repo-b', 'Clear other sessions'])
   })
 
-  test('the OS side menu always has Exit app; sessions only with two or more; labels fit 32 bytes', () => {
-    expect(osMenu(initialState()).map(m => m.label)).toEqual(['Exit app'])
+  test('the OS side menu lists sessions only with two or more (the OS adds its own Close); labels fit 32 bytes', () => {
+    expect(osMenu(initialState())).toEqual([])
     let s: AppState = { ...initialState(), paired: true }
     s = recv(s, session(A, 'repo-a'))
-    expect(osMenu(s).map(m => m.label)).toEqual(['Exit app'])
-    expect(reduce(s, { type: 'os_menu', itemID: EXIT_ITEM_ID }).effects).toEqual([{ type: 'exit' }])
+    expect(osMenu(s)).toEqual([])
+    expect(render(s).menu).toEqual([])
     s = recv(s, session(B, 'a-very-long-repository-name-that-goes-on'))
     for (const m of osMenu(s)) expect(new TextEncoder().encode(m.label).length).toBeLessThanOrEqual(32)
   })
@@ -108,6 +108,26 @@ describe('stale sessions', () => {
     expect(s.active).toBe('dead-1')
     s = recv(s, session(A, 'repo-a', 'idle', NOW))
     expect(s.active).toBe(A)
+  })
+
+  test('a session whose computer leaves the room drops out once the others re-announce', () => {
+    let s = reduce(open(two()), { type: 'presence', computers: 2 }).state
+    s = recv(s, session(A, 'repo-a', 'idle', NOW + 2))
+    s = recv(s, session(B, 'repo-b', 'idle', NOW + 3))
+    expect(sessionList(s).map(x => x.sid)).toEqual([A, B])
+    // B's channel died without saying so; A's channel answers the presence change.
+    s = reduce(s, { type: 'presence', computers: 1 }).state
+    s = recv(s, session(A, 'repo-a', 'idle', NOW + 4))
+    expect(sessionList(s).map(x => x.sid)).toEqual([A])
+    expect(osMenu(s)).toEqual([])
+  })
+
+  test('a computer joining does not hide anyone', () => {
+    let s = reduce(open(two()), { type: 'presence', computers: 1 }).state
+    s = recv(s, session(A, 'repo-a', 'idle', NOW + 2))
+    s = recv(s, session(B, 'repo-b', 'idle', NOW + 3))
+    s = reduce(s, { type: 'presence', computers: 2 }).state
+    expect(sessionList(s).map(x => x.sid)).toEqual([A, B])
   })
 
   test('a reconnect makes everyone prove they are alive again', () => {

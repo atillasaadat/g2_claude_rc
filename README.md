@@ -90,7 +90,7 @@ The relay admits a socket to a room only with the room's auth token (an HMAC of 
 | Swipe up / down | Scroll the timeline 3 lines (the R1 ring works the same) |
 | Tap | Menu: Talk, Stop Claude, Display off, End session. On a card: confirm |
 | Double tap | Jump to the newest line. On a card: leave it for later. In the menu: back |
-| OS side menu | Switch sessions, clear other sessions, or Exit app |
+| OS side menu | Switch sessions or clear other sessions (with two or more). The glasses OS adds its own Close, Display off and brightness items. |
 
 - **Display off** blanks the glasses until something needs you. Any gesture wakes them, and that first gesture does nothing else.
 - **Display sleep** (phone view, Display): keep the display always on (the default), or let it turn off after 5 s to 5 min while Claude works. It wakes for a reply, the end of a turn, an approval card, a question, or an alert from another session. It then stays on until you turn it off or start a new prompt.

@@ -15,5 +15,7 @@ const shutdown = (): void => {
 }
 process.on('SIGTERM', shutdown)
 process.on('SIGINT', shutdown)
+// A closed terminal: say goodbye to the glasses too.
+process.on('SIGHUP', shutdown)
 // Claude Code closing stdin means the session ended.
 process.stdin.on('end', shutdown)

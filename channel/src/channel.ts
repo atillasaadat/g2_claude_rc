@@ -90,6 +90,7 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
   }
 
   let glassesPresent = 0
+  let computersPresent = 0
   /** The relay connection for one key. Rebuilt when the key changes (/g2:unpair, in this or another session). */
   const openRelay = async (p: StoredPairing, link: SecureChannel<'computer'>): Promise<RelayClient> => new RelayClient({
     url: relayRoomUrl(p.relayUrl, link.roomId, 'computer', await relayAuthToken(p.key, link.roomId)),
@@ -98,14 +99,19 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
       if (s === 'open') controller.resync()
       if (s === 'closed') {
         glassesPresent = 0
+        computersPresent = 0
         controller.setGlassesPresent(false)
       }
     },
     onPresence: p => {
       // A glasses socket joined: re-send state and pending requests with fresh
       // timestamps, since the glasses ignore stale permission cards from history.
-      if (p.glasses > glassesPresent) controller.resync()
+      // Another session's channel left: the glasses then keep only the sessions
+      // that announce themselves again, which drops one that died without
+      // saying so (a closed terminal, a killed process).
+      if (p.glasses > glassesPresent || p.computer < computersPresent) controller.resync()
       glassesPresent = p.glasses
+      computersPresent = p.computer
       controller.setGlassesPresent(p.glasses > 0)
     },
     onRateLimited: () => log('relay rate limit hit'),

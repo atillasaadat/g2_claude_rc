@@ -747,3 +747,14 @@ No secrets or Anthropic credentials are involved. **Verified:** the first run pa
 - **Page:** counts down ("Expires in 2:41"), turns red in the last 30 seconds, then hides the QR and says to run `/g2:pair show` again. Links without `exp` (older plugins) show the QR with no timer. An `exp` more than 15 minutes ahead is ignored.
 - **Limits:** the timer trusts the viewing device's clock. The page does not learn when the phone pairs, so the QR stays up until the timer ends; the code itself works only once either way.
 - **Verified:** headless Chromium against the static page: countdown, red under 30 s, expiry hides the QR, no timer without `exp`.
+
+## Side menu cleanup and dead sessions (2026-10-10, user report)
+- **Report:** the side menu sometimes misses sessions and sometimes lists one twice. It also shows Exit app next to the OS's own Close and Display off.
+- **Exit app removed.** The OS adds Close, Display off and brightness to every app's side menu, and the SDK cannot remove them, so Exit app only repeated Close. With fewer than two sessions the app now registers no menu items. Double tap on the live feed still exits.
+- **Duplicates:** a session lived in the list until the next reconnect, even if its channel died without sending `ended` (a closed terminal sends SIGHUP, which the channel did not handle; a killed process sends nothing). Its replacement in the same repo then showed next to it.
+  - The relay's presence message already counts computer sockets, one per channel. When that count drops, the app starts a new liveness round, as it does on reconnect, and every channel re-announces its session on the same signal. The dead one does not, so it leaves the list. The session on screen stays until a live one takes over.
+  - The channel also handles SIGHUP like SIGTERM.
+  - Needs both plugin 0.4.3 and app 0.4.3. An older channel does not re-announce, so with app 0.4.3 its session drops out of the side menu until the glasses reconnect.
+- **Missing sessions:** the relay history and the resync on glasses join looked right in a live dump of the room (both running sessions re-announced within a second). Two other causes fit "sometimes":
+  - The phone holds one pairing, and each computer has its own key and room, so sessions on a computer the phone is not paired with never show.
+  - Liveness needs the session frame to be under 60 s old by the phone's clock, so a computer clock that runs over a minute behind (WSL2 after sleep, for example) keeps its sessions out of the list. This machine was 1 s off when checked.

@@ -41,7 +41,7 @@ export const GUIDE_HTML = `
     <tr><th>Swipe</th><td>Scroll the timeline (the R1 ring works too)</td></tr>
     <tr><th>Tap</th><td>Menu: Talk, Stop Claude, Display off, End session (unpairs this phone; asks first). On a card, confirm</td></tr>
     <tr><th>Double tap</th><td>Back to the newest line. On a card, leave it for later</td></tr>
-    <tr><th>Side menu</th><td>Switch sessions, clear old ones, or Exit app</td></tr>
+    <tr><th>Side menu</th><td>Switch sessions or clear old ones. The glasses add Close, Display off and brightness.</td></tr>
   </table>
   <p class="hint">Reviewing a spoken prompt, swipe to scroll it before you send. To turn the display off on its own while Claude works, see <em>Display</em> below.</p>
   <p class="hint">While talking, <strong>stop</strong>, <strong>cancel</strong>, <strong>approve</strong> and <strong>deny</strong> act right away instead of being sent. Approval cards start on Deny, so a stray tap never approves anything.</p>

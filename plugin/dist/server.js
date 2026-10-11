@@ -31875,6 +31875,7 @@ async function runChannel(cfg, transport) {
     outbound = outbound.then(async () => relay.send(await secure.seal(kind, body, cfg.sessionId ? { sid: cfg.sessionId } : {}))).catch((err) => log(`dropped ${kind}: ${err.message}`));
   };
   let glassesPresent = 0;
+  let computersPresent = 0;
   const openRelay = async (p, link) => new RelayClient({
     url: relayRoomUrl(p.relayUrl, link.roomId, "computer", await relayAuthToken(p.key, link.roomId)),
     onStatus: (s) => {
@@ -31883,13 +31884,15 @@ async function runChannel(cfg, transport) {
         controller.resync();
       if (s === "closed") {
         glassesPresent = 0;
+        computersPresent = 0;
         controller.setGlassesPresent(false);
       }
     },
     onPresence: (p2) => {
-      if (p2.glasses > glassesPresent)
+      if (p2.glasses > glassesPresent || p2.computer < computersPresent)
         controller.resync();
       glassesPresent = p2.glasses;
+      computersPresent = p2.computer;
       controller.setGlassesPresent(p2.glasses > 0);
     },
     onRateLimited: () => log("relay rate limit hit"),
@@ -32171,4 +32174,5 @@ var shutdown = () => {
 };
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
+process.on("SIGHUP", shutdown);
 process.stdin.on("end", shutdown);

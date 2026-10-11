@@ -4,6 +4,14 @@ Every release has a git tag and a GitHub Release with the full commit list. App 
 
 Add the entry here before running `scripts/release.sh`, which refuses a version without one.
 
+## App 0.4.3
+- The side menu drops Exit app, which repeated the glasses' own Close. With one session the app adds nothing to that menu.
+- A session that died without saying goodbye (a closed terminal, a killed process) leaves the session list as soon as its computer drops off the relay, instead of showing up twice next to its replacement.
+
+## Plugin 0.4.3
+- When another session's channel leaves the relay, every channel announces its session again, so the glasses can drop the one that is gone.
+- A closed terminal (SIGHUP) now tells the glasses the session ended.
+
 ## Plugin 0.4.2
 - The QR page from `/g2:pair show` counts down to when the code expires, then hides the QR.
 

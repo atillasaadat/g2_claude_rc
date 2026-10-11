@@ -194,7 +194,6 @@ export interface OsMenuItem {
   label: string
   sid?: string
   clear?: true
-  exit?: true
 }
 
 /** The OS menu takes UTF-8 labels of at most 32 bytes. */
@@ -210,17 +209,16 @@ function byteClip(text: string, max = 32): string {
 }
 
 export const CLEAR_ITEM_ID = 99
-export const EXIT_ITEM_ID = 98
 
 /**
  * The glasses OS side menu: with two or more sessions, one item per session
- * (switch to it) plus Clear; always Exit app, the way out of the app.
+ * (switch to it) plus Clear. The OS adds its own items (Close, Display off,
+ * brightness) after these, so the app adds no exit of its own.
  * Labels avoid live state so the menu (a page rebuild) changes rarely.
  */
 export function osMenu(s: AppState): OsMenuItem[] {
   const list = s.paired ? sessionList(s).slice(0, 9) : []
-  const exit = { id: EXIT_ITEM_ID, label: 'Exit app', exit: true as const }
-  if (list.length < 2) return [exit]
+  if (list.length < 2) return []
   return [
     ...list.map(({ sid, view: v }, i) => ({
       id: i + 1,
@@ -228,7 +226,6 @@ export function osMenu(s: AppState): OsMenuItem[] {
       sid,
     })),
     { id: CLEAR_ITEM_ID, label: 'Clear other sessions', clear: true as const },
-    exit,
   ]
 }
 
@@ -543,7 +540,6 @@ function confirmMenu(s: AppState, now: number): Result {
 function onOsMenu(s: AppState, itemID: number): Result {
   const item = osMenu(s).find(i => i.id === itemID)
   if (!item) return done(s)
-  if (item.exit) return done(s, [{ type: 'exit' }])
   if (item.clear) return done({ ...s, views: { [s.active]: view(s) }, toast: undefined })
   const sid = item.sid!
   // Overlays stay (a pending card or question still needs an answer).
@@ -661,8 +657,13 @@ export function reduce(s: AppState, msg: Msg): Result {
       const connectEpoch = relayOpen && !s.relayOpen ? s.connectEpoch + 1 : s.connectEpoch
       return done({ ...s, relayOpen, computers, connectEpoch, link: link(relayOpen, computers) })
     }
-    case 'presence':
-      return done({ ...s, computers: msg.computers, link: link(s.relayOpen, msg.computers) })
+    case 'presence': {
+      // A computer left: its session may have died without saying so. Every
+      // live channel re-announces on this, so the dead one drops out of the list.
+      const left = s.relayOpen && msg.computers < s.computers
+      const connectEpoch = left ? s.connectEpoch + 1 : s.connectEpoch
+      return done({ ...s, computers: msg.computers, connectEpoch, link: link(s.relayOpen, msg.computers) })
+    }
     case 'gesture': {
       const clock = msg.now ?? s.clock
       // A dark display only wakes: a blind tap must not open the menu or confirm a card.
