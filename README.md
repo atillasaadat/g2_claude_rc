@@ -42,6 +42,7 @@ No clone needed.
    /plugin marketplace add atillasaadat/g2_claude_rc
    /plugin install g2@g2cc
    ```
+   Then turn on auto-update, so new sessions always get the latest version: run `/plugin`, open Marketplaces, choose `g2cc`, and enable auto-update. Claude Code leaves it off for marketplaces it does not run.
 2. **Check Bun.** Run `/g2:setup`. It confirms Bun is installed, or installs it with Bun's official installer after you approve the command.
 3. **Add the launch command** to `~/.zshrc` or `~/.bashrc`, then open a new terminal:
    ```bash
@@ -60,7 +61,7 @@ Without the flag (plain `claude`), the plugin still sends the feed and Stop stil
 
 **Alerts while you are in another app:** in `/config`, enable `inputNeededNotifEnabled` and `agentPushNotifEnabled` (Remote Control push notifications). Allow notifications for the Claude app on your phone, then enable the Claude app in the Even app's notification mirroring.
 
-**Updates:** run `/plugin marketplace update g2cc` and restart the session, or turn on auto-update for the marketplace under `/plugin`. The plugin pins a version, so only a release reaches users, not every commit.
+**Updates:** with auto-update on (step 1), each new session starts on the latest release; a running session picks it up with `/reload-plugins`. Without it, run `/plugin marketplace update g2cc`, then `/reload-plugins`. When a newer release is out, the session says so as it starts: the plugin reads the released version number from GitHub at most every 6 hours (set `G2CC_NO_UPDATE_CHECK=1` to turn that off). The plugin pins a version, so only a release reaches users, not every commit.
 
 **Coming from the old `scripts/install.sh` setup?** Run `scripts/install.sh --remove` (from a clone) to drop its http hooks on port 27183, or they fire alongside the plugin. Existing pairings keep working.
 

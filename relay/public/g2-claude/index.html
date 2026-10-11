@@ -148,6 +148,7 @@
       <p>In Claude Code, add this marketplace and install the plugin. It brings the channel and the hooks it needs, for every project.</p>
       <div class="cmd"><pre>/plugin marketplace add atillasaadat/g2_claude_rc
 /plugin install g2@g2cc</pre><button type="button">Copy</button></div>
+      <p>Then turn on auto-update, so new sessions always get the latest version: run <code>/plugin</code>, open Marketplaces, choose <code>g2cc</code>, and enable auto-update. Claude Code leaves it off for marketplaces it does not run.</p>
       <p class="note">The plugin installs from the public repository, <a href="https://github.com/atillasaadat/g2_claude_rc">github.com/atillasaadat/g2_claude_rc</a>, where you can read every line it runs.</p>
     </li>
     <li>
@@ -209,7 +210,7 @@
 
   <footer>
     <p>Built by Atilla Saadat with Claude Code. Messages are encrypted end to end with AES-256-GCM using a key that only your computer and your phone hold; the relay forwards ciphertext and keeps a short buffer so the glasses can catch up after reconnecting.</p>
-    <p>To update the plugin, run <code>/plugin marketplace update g2cc</code>, or turn on auto-update for the g2cc marketplace under <code>/plugin</code>. New sessions use the update.</p>
+    <p>With auto-update on, new sessions use the latest release. Without it, run <code>/plugin marketplace update g2cc</code>, then <code>/reload-plugins</code>. A session tells you when it starts if a newer release is out (it reads the released version number from GitHub at most every 6 hours; <code>G2CC_NO_UPDATE_CHECK=1</code> turns that off).</p>
     <p>Source code, issues and the design log: <a href="https://github.com/atillasaadat/g2_claude_rc">github.com/atillasaadat/g2_claude_rc</a>.</p>
   </footer>
 </main>

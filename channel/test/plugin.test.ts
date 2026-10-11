@@ -31,11 +31,13 @@ describe('plugin package', () => {
     expect(json('.claude-plugin/marketplace.json').plugins[0]).toMatchObject({ name: 'g2', source: './plugin' })
   })
 
-  test('SessionStart warns, as a message to the user, only when Bun is missing', async () => {
+  test('SessionStart warns when Bun is missing, and otherwise runs the bundled update check', async () => {
     const [group] = json('plugin/hooks/hooks.json').hooks.SessionStart as { hooks: { command: string }[] }[]
     const cmd = group!.hooks[0]!.command
-    const run = (PATH: string) => Bun.spawnSync(['/bin/sh', '-c', cmd], { env: { PATH } })
-    expect(run(process.env.PATH ?? '').stdout.toString()).toBe('')
+    const run = (PATH: string) =>
+      Bun.spawnSync(['/bin/sh', '-c', cmd], { env: { PATH, CLAUDE_PLUGIN_ROOT: join(root, 'plugin'), G2CC_NO_UPDATE_CHECK: '1' } })
+    const ok = run(process.env.PATH ?? '')
+    expect([ok.exitCode, ok.stdout.toString(), ok.stderr.toString()]).toEqual([0, '', ''])
     const out = run('/usr/bin:/bin').stdout.toString().trim()
     expect(JSON.parse(out).systemMessage).toContain('https://bun.sh')
   })

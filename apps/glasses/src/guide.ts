@@ -17,6 +17,7 @@ export const GUIDE_HTML = `
     <li>
       <strong>Install the plugin.</strong> In Claude Code on your computer, run:
       ${cmd('/plugin marketplace add atillasaadat/g2_claude_rc\n/plugin install g2@g2cc')}
+      Then turn on auto-update, so new sessions always get the latest version: run <code>/plugin</code>, open Marketplaces, choose <code>g2cc</code>, and enable auto-update.
     </li>
     <li>
       <strong>Add the launch command</strong> to <code>~/.zshrc</code> or <code>~/.bashrc</code>, then open a new terminal.
@@ -35,7 +36,7 @@ export const GUIDE_HTML = `
       <strong>Get alerts in other apps.</strong> In a session, run <code>/config</code> and turn on <code>inputNeededNotifEnabled</code> and <code>agentPushNotifEnabled</code>. Allow notifications for the Claude app, then allow it in the Even app's notification settings.
     </li>
   </ol>
-  <p class="hint">Every <code>cc-g2</code> session shows up on your glasses within a second. With two or more, the glasses' side menu lists them. To update the plugin, run <code>/plugin marketplace update g2cc</code>, or turn on auto-update for it under <code>/plugin</code>.</p>
+  <p class="hint">Every <code>cc-g2</code> session shows up on your glasses within a second. With two or more, the glasses' side menu lists them. Without auto-update, update the plugin with <code>/plugin marketplace update g2cc</code>, then <code>/reload-plugins</code>. A session tells you when a newer release is out.</p>
   <h3 class="g-h">On the glasses</h3>
   <table class="g-table">
     <tr><th>Swipe</th><td>Scroll the timeline (the R1 ring works too)</td></tr>

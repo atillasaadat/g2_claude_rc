@@ -1,12 +1,12 @@
 {
-  "description": "Every hook runs dist/hook.js, which hands the payload to this session's g2 channel over its private Unix socket (~/.g2cc/sessions/<session>.sock). It prints nothing and exits 0 when no channel is running, so it fails open. SessionStart only checks that Bun is installed, and tells the user if it is not.",
+  "description": "Every hook runs dist/hook.js, which hands the payload to this session's g2 channel over its private Unix socket (~/.g2cc/sessions/<session>.sock). It prints nothing and exits 0 when no channel is running, so it fails open. SessionStart checks that Bun is installed, then runs dist/version-check.js, which says when a newer g2 plugin is out (one request to GitHub at most every 6 hours; G2CC_NO_UPDATE_CHECK=1 turns it off).",
   "hooks": {
     "SessionStart": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "command -v bun >/dev/null 2>&1 || echo '{\"systemMessage\":\"The g2 plugin needs Bun, which is not installed or not on PATH. Run /g2:setup to install it (or get it from https://bun.sh), then restart Claude Code. Until then the glasses get nothing from this session.\"}'",
+            "command": "command -v bun >/dev/null 2>&1 || { echo '{\"systemMessage\":\"The g2 plugin needs Bun, which is not installed or not on PATH. Run /g2:setup to install it (or get it from https://bun.sh), then restart Claude Code. Until then the glasses get nothing from this session.\"}'; exit 0; }; exec bun \"${CLAUDE_PLUGIN_ROOT}/dist/version-check.js\"",
             "timeout": 5
           }
         ]

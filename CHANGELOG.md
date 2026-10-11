@@ -4,6 +4,9 @@ Every release has a git tag and a GitHub Release with the full commit list. App 
 
 Add the entry here before running `scripts/release.sh`, which refuses a version without one.
 
+## Plugin 0.4.5
+- A new session tells you when a newer g2 plugin is out, and how to update or turn on auto-update. It reads the released version number from GitHub at most every 6 hours; `G2CC_NO_UPDATE_CHECK=1` turns it off.
+
 ## App 0.4.4
 - The phone view has a Sessions section: every connected session with its state and folder. Show on glasses switches to it. Disconnect makes this phone stop showing it and its approvals (Claude Code keeps running, and the terminal still asks), and Reconnect brings it back.
 - A connection to the relay that dies without closing (the phone sleeps, the network changes) is noticed within about a minute and reopened.

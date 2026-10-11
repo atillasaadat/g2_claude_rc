@@ -20,7 +20,7 @@ const LAUNCH = "alias cc-g2='claude --dangerously-load-development-channels plug
 describe('user docs agree', () => {
   for (const [name, text] of Object.entries(DOCS)) {
     test(`${name} has the current install steps and launch command`, () => {
-      for (const needle of ['/plugin marketplace add atillasaadat/g2_claude_rc', '/plugin install g2@g2cc', LAUNCH, '/g2:pair', '/g2:setup'])
+      for (const needle of ['/plugin marketplace add atillasaadat/g2_claude_rc', '/plugin install g2@g2cc', LAUNCH, '/g2:pair', '/g2:setup', 'enable auto-update'])
         expect(text).toContain(needle)
     })
 

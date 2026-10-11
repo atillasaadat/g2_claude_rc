@@ -767,3 +767,9 @@ No secrets or Anthropic credentials are involved. **Verified:** the first run pa
   - Disconnect is phone-side: the app ignores that session's envelopes, cards and questions, and remembers the session id in SDK storage (at most 20). Claude Code keeps running and keeps its terminal prompts, and no plugin change is needed. Detaching the channel itself was the alternative, but reconnecting it would then need a command in that terminal.
   - Reconnect reconnects the app to the relay, so every channel announces its session again and the session returns at once.
   - A disconnected session that ends leaves the list.
+
+## Update notice at session start (2026-10-11, user request)
+- **Ask:** avoid the manual `/plugin marketplace update`, ideally by updating on `/g2:pair`.
+- **Not done that way:** a command can update the plugin files, but the running channel keeps the old code until `/reload-plugins`, which a command cannot run and which would end the pairing in progress. It would also need a Bash prompt each time, and a pairing command that swaps the plugin's code is a poor surprise.
+- **Instead:** the install steps now include turning on auto-update for `g2cc` (Claude Code leaves it off for marketplaces it does not run). And the SessionStart hook, after the Bun check, runs `dist/version-check.js`: it reads `plugin/.claude-plugin/plugin.json` from `main` on GitHub (versions change only through `scripts/release.sh`, so main holds the latest release), caches the answer in `~/.g2cc/latest-version.json` for 6 hours, and prints a `systemMessage` when the installed version is older. Any failure prints nothing. `G2CC_NO_UPDATE_CHECK=1` turns it off.
+- No URL was added to the app bundle (the guide text names no site), so the Even Hub URL check is unaffected.
