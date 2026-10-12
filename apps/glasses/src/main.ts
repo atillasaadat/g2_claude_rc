@@ -7,7 +7,7 @@ import { BridgeQueue } from './bridge-queue'
 import { Display } from './display'
 import { DEFAULT_GESTURES, type GestureMap } from './gestures'
 import { toSignal } from './input'
-import { Link } from './link'
+import { Links } from './link'
 import { pairWithCode } from './code-pair'
 import { pairCodeFromQrText, readQrFromPhoto } from './qr-scan'
 import { frameOf, render } from './render'
@@ -15,8 +15,8 @@ import { transcribe } from './asr/stt'
 import { checkGroqKey, type KeyCheck } from './asr/key-status'
 import { VoiceRecorder } from './recorder'
 import { initialState, isAnimating, micWanted, reduce, sessionList, type AppState, type Msg } from './state'
-import { Storage, STT_KEY_SHAPE } from './storage'
-import { mirror, mountUi, setDisplaySleep, setGestureMap, setSessions, setStatus, setVoiceStatus } from './ui'
+import { Storage, STT_KEY_SHAPE, type StoredPairing } from './storage'
+import { mirror, mountUi, setComputers, setDisplaySleep, setGestureMap, setSessions, setStatus, setVoiceStatus } from './ui'
 
 const log = (...args: unknown[]): void => console.log('[g2cc]', ...args)
 
@@ -30,6 +30,8 @@ let state: AppState = initialState()
 let gestures: GestureMap = DEFAULT_GESTURES
 let display: Display | null = null
 let started = false
+/** Paired computers, oldest first (see Storage.loadPairings). */
+let computers: StoredPairing[] = []
 
 /** Groq key: from the pairing or the phone UI. The bundle never contains one. */
 let sttKey = ''
@@ -74,18 +76,33 @@ function paint(): void {
   display?.show(scene)
   mirror(frame)
   setStatus(state.link, state.paired)
+  const live = sessionList(state)
+  const label = (roomId: string): string => `Computer ${computers.findIndex(c => c.pairing.roomId === roomId) + 1}`
   setSessions({
     paired: state.paired,
-    live: sessionList(state).map(({ sid, view: v }) => ({
+    live: live.map(({ sid, view: v }) => ({
       sid,
       name: v.session?.name ?? 'Claude Code',
       cwd: v.session?.cwd ?? '',
       state: v.session?.state ?? 'idle',
       active: sid === state.active,
       unread: v.unread,
+      ...(computers.length > 1 && computers.some(c => c.pairing.roomId === v.room) ? { computer: label(v.room) } : {}),
     })),
     muted: state.muted,
   })
+  setComputers(
+    computers.map(c => {
+      const r = state.rooms[c.pairing.roomId]
+      return {
+        roomId: c.pairing.roomId,
+        label: label(c.pairing.roomId),
+        addedAt: c.addedAt,
+        status: !r?.open ? 'offline' : r.computers > 0 ? 'online' : 'relay',
+        sessions: live.filter(x => x.view.room === c.pairing.roomId).map(x => x.view.session?.name ?? 'Claude Code'),
+      }
+    }),
+  )
   // Dev only: lets simulator automation assert on exactly what was drawn.
   const logged = JSON.stringify(frame)
   if (import.meta.env.DEV && started && logged !== lastLogged) log('frame', logged)
@@ -105,28 +122,46 @@ function dispatch(msg: Msg): void {
     if (effect.type === 'exit') void bridge.shutDownPageContainer(1)
     if (effect.type === 'unpair') void unpair().catch(err => log('could not unpair:', (err as Error).message))
     if (effect.type === 'save_muted') void storage.saveMuted(effect.sessions).catch(err => log('could not save sessions:', (err as Error).message))
-    if (effect.type === 'resync') void link.reconnect().catch(err => log('could not reconnect:', (err as Error).message))
+    if (effect.type === 'resync') void links.reconnect().catch(err => log('could not reconnect:', (err as Error).message))
     if (effect.type === 'send') {
-      link.send(effect.kind, effect.body, effect.sid).catch(err => log(`could not send ${effect.kind}:`, (err as Error).message))
+      links.send(effect.kind, effect.body, effect.sid, effect.room).catch(err => log(`could not send ${effect.kind}:`, (err as Error).message))
     }
   }
 }
 
-const link = new Link(dispatch)
+const links = new Links(dispatch)
 
-/** End session on the glasses, or Forget in the phone view. */
+/** End session on the glasses, or Forget all in the phone view: every computer goes. */
 async function unpair(): Promise<void> {
-  await storage.forgetPairing()
-  link.disconnect()
+  await storage.forgetPairings()
+  links.closeAll()
+  computers = []
   dispatch({ type: 'paired', paired: false })
+}
+
+/** Forget one computer in the phone view; the others stay connected. */
+async function forgetComputer(roomId: string): Promise<void> {
+  await storage.removePairing(roomId)
+  computers = computers.filter(c => c.pairing.roomId !== roomId)
+  links.close(roomId)
+  dispatch({ type: 'room_removed', room: roomId })
+  if (!computers.length) dispatch({ type: 'paired', paired: false })
 }
 
 mountUi({
   async savePairing(text) {
-    const pairing = await storage.savePairing(text)
+    const pairing = await storage.addPairing(text)
     if (pairing.sttKey) setSttKey(pairing.sttKey)
+    // Pairing another computer adds it; past MAX_PAIRINGS the oldest goes.
+    const before = computers
+    computers = await storage.loadPairings()
+    for (const gone of before.filter(b => !computers.some(c => c.pairing.roomId === b.pairing.roomId))) {
+      links.close(gone.pairing.roomId)
+      dispatch({ type: 'room_removed', room: gone.pairing.roomId })
+    }
     dispatch({ type: 'paired', paired: true })
-    await link.connect(pairing)
+    await links.connect(pairing)
+    return computers.length
   },
   async scanPairCode() {
     const photo = await bridge.captureImageFromCamera()
@@ -135,10 +170,10 @@ mountUi({
     if (!text) throw new Error('no QR code found in the photo. Try again closer, or type the code')
     const code = pairCodeFromQrText(text)
     if (!code) throw new Error('that QR code is not a G2 pairing code')
-    await this.savePairing(await pairWithCode(code))
+    return this.savePairing(await pairWithCode(code))
   },
   async pairWithCode(code, relayUrl) {
-    await this.savePairing(await pairWithCode(code, relayUrl || undefined))
+    return this.savePairing(await pairWithCode(code, relayUrl || undefined))
   },
   async saveSttKey(key) {
     const k = key.trim()
@@ -156,6 +191,7 @@ mountUi({
     return check
   },
   forgetPairing: () => unpair(),
+  forgetComputer: roomId => forgetComputer(roomId),
   async saveDisplaySleep(seconds) {
     await storage.saveDisplaySleep(seconds)
     dispatch({ type: 'config', displaySleepMs: seconds * 1000 })
@@ -175,19 +211,21 @@ const storage = new Storage(bridge, queue)
 
 /**
  * Dev convenience: `#pair=<base64url of the pairing text>` in the app URL pairs
- * on load. Dev builds only: in a release, a crafted link could silently swap
- * the user's pairing for someone else's.
+ * on load; several, comma separated, pair several computers. Dev builds only:
+ * in a release, a crafted link could silently add someone else's computer.
  */
 async function pairFromFragment(): Promise<void> {
   if (!import.meta.env.DEV) return
-  const m = /^#pair=([A-Za-z0-9_-]+)$/.exec(location.hash)
+  const m = /^#pair=([A-Za-z0-9_,-]+)$/.exec(location.hash)
   if (!m?.[1]) return
   history.replaceState(null, '', location.pathname + location.search) // keep the key out of the URL bar
-  try {
-    await storage.savePairing(new TextDecoder().decode(fromBase64Url(m[1])))
-    log('paired from URL')
-  } catch (err) {
-    log('pairing from URL rejected:', (err as Error).message)
+  for (const part of m[1].split(',')) {
+    try {
+      await storage.addPairing(new TextDecoder().decode(fromBase64Url(part)))
+      log('paired from URL')
+    } catch (err) {
+      log('pairing from URL rejected:', (err as Error).message)
+    }
   }
 }
 
@@ -202,9 +240,9 @@ setDisplaySleep(displaySleep)
 state = reduce(state, { type: 'config', displaySleepMs: displaySleep * 1000 }).state
 state = reduce(state, { type: 'muted', sessions: await storage.loadMuted().catch(() => []) }).state
 await pairFromFragment()
-const stored = await storage.loadPairing().catch(() => null)
-state = reduce(state, { type: 'paired', paired: stored !== null }).state
-sttKey = stored?.pairing.sttKey || (await storage.loadSttKey().catch(() => '')) || __DEV_STT_KEY__
+computers = await storage.loadPairings().catch(() => [])
+state = reduce(state, { type: 'paired', paired: computers.length > 0 }).state
+sttKey = (await storage.loadSttKey().catch(() => '')) || computers.findLast(c => c.pairing.sttKey)?.pairing.sttKey || __DEV_STT_KEY__
 setVoiceStatus(sttKey, { fake: Boolean(FAKE_STT) })
 state = reduce(state, { type: 'config', voiceAvailable: Boolean(sttKey || FAKE_STT) }).state
 
@@ -217,7 +255,7 @@ try {
 started = true
 paint()
 log('ready')
-if (stored) await link.connect(stored.pairing)
+for (const c of computers) await links.connect(c.pairing)
 
 let cleanedUp = false
 const unsubscribe = bridge.onEvenHubEvent(event => {
@@ -251,7 +289,7 @@ function cleanup(): void {
   if (micOn) void bridge.audioControl(false)
   recorder.setListening(false, state.voice.attempt)
   if (ticker) clearInterval(ticker)
-  link.disconnect()
+  links.closeAll()
   unsubscribe()
 }
 window.addEventListener('beforeunload', cleanup)

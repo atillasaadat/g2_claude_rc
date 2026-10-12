@@ -120,7 +120,7 @@ describe('menu and stop', () => {
 
   test('Stop Claude sends stop and marks stopping until the session settles', () => {
     const r = g(gs(working(), 'tap', 'scroll_down'), 'tap')
-    expect(r.effects).toEqual([{ type: 'send', kind: 'stop', body: {}, sid: '' }])
+    expect(r.effects).toEqual([{ type: 'send', kind: 'stop', body: {}, sid: '', room: '' }])
     expect(view(r.state).stopPending).toBe(true)
     expect(view(recv(r.state, env('session', { name: 'r', cwd: '/r', state: 'working' }, NOW + 2))).stopPending).toBe(true)
     expect(view(recv(r.state, env('session', { name: 'r', cwd: '/r', state: 'stopped' }, NOW + 2))).stopPending).toBe(false)

@@ -25,6 +25,10 @@ let tmp = ''
 let automation = ''
 let computer: SecureChannel<'computer'>
 let relay: RelayClient
+/** A second paired computer, in its own relay room. */
+let computerB: SecureChannel<'computer'>
+let relayB: RelayClient
+const inboundB: AnyEnvelope[] = []
 let lastConsoleId = -1
 const inbound: AnyEnvelope[] = []
 
@@ -126,9 +130,22 @@ beforeAll(async () => {
   })
   relay.start()
 
+  const keyB = generateKey()
+  const pairingB = await encodePairing({ relayUrl: `ws://127.0.0.1:${wranglerPort}`, key: keyB })
+  computerB = await SecureChannel.create(keyB, 'computer')
+  relayB = new RelayClient({
+    url: relayRoomUrl(`ws://127.0.0.1:${wranglerPort}`, computerB.roomId, 'computer', await relayAuthToken(keyB, computerB.roomId)),
+    onFrame: async f => {
+      const env = await computerB.open(f)
+      if (env) inboundB.push(env)
+    },
+  })
+  relayB.start()
+
   const autoPort = freePort()
   automation = `http://127.0.0.1:${autoPort}`
-  const url = `http://127.0.0.1:${vitePort}/#pair=${toBase64Url(new TextEncoder().encode(pairing))}`
+  const fragment = [pairing, pairingB].map(p => toBase64Url(new TextEncoder().encode(p))).join(',')
+  const url = `http://127.0.0.1:${vitePort}/#pair=${fragment}`
   procs.push(Bun.spawn(['./node_modules/.bin/evenhub-simulator', '--no-glow', '--automation-port', String(autoPort), url], { cwd: APP, stdout: 'ignore', stderr: 'ignore' }))
   await waitFor(async () => (await (await fetch(`${automation}/api/ping`)).text()) === 'pong', 'simulator')
   await waitFor(async () => (await consoleSince()).some(e => e.message.includes('[g2cc] ready')), 'app ready', 30_000)
@@ -136,6 +153,7 @@ beforeAll(async () => {
 
 afterAll(() => {
   relay?.stop()
+  relayB?.stop()
   for (const p of procs.reverse()) p.kill()
   // The launcher spawns the native simulator window as a separate process that
   // outlives it; close that window by its unique automation port.
@@ -289,5 +307,24 @@ describe.skipIf(!RUN)('glasses app in the simulator', () => {
     await input('click')
     await waitFor(async () => inbound.some(e => e.kind === 'answer'), 'answer at the computer', 5_000)
     expect(inbound.find(e => e.kind === 'answer')!.body).toEqual({ question_id: 'q0000abcd', choice: 'dev' })
+  })
+
+  test('a second computer: its sessions show next to the first, and its approvals go back to it', async () => {
+    const sid = 'b2b2b2b2-0000-4000-8000-000000000001'
+    const sendB = async <K extends 'session' | 'reply' | 'permission'>(kind: K, body: Body<K>): Promise<void> => relayB.send(await computerB.seal(kind, body, { sid }))
+    await sendB('session', { name: 'desktop', cwd: '/d', state: 'idle', mode: 'auto' })
+    await sendB('reply', { text: 'Desktop finished.' })
+    // The first computer's session stays on screen; the second one raises a toast.
+    await frameWhere(f => f.header.includes('desktop: reply ready'), 'toast from the second computer')
+    await screenshot('second-computer-toast')
+    await sendB('permission', { request_id: 'mnopq', tool_name: 'Bash', description: 'List files', input_preview: '{ "command": "ls" }' })
+    await frameWhere(f => ov(f).startsWith('Allow Bash?'), 'card from the second computer')
+    await Bun.sleep(700)
+    await input('click') // the card starts on Deny
+    await waitFor(async () => inboundB.some(e => e.kind === 'verdict'), 'verdict at the second computer', 5_000)
+    expect(inboundB.find(e => e.kind === 'verdict')!.body).toEqual({ request_id: 'mnopq', behavior: 'deny' })
+    expect(inbound.some(e => e.kind === 'verdict' && (e.body as Body<'verdict'>).request_id === 'mnopq')).toBe(false)
+    const phone = new Uint8Array(await (await fetch(`${automation}/api/screenshot/webview`)).arrayBuffer())
+    await Bun.write(join(ARTIFACTS, 'phone-two-computers.png'), phone)
   })
 })

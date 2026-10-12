@@ -10,12 +10,16 @@ import { ACTIONS, DEFAULT_GESTURES, GESTURES, SCREENS, validateGestureMap, type 
 import type { Frame } from './render'
 import type { Link, MutedSession } from './state'
 
+/** Pairing calls resolve to how many computers this phone now pairs with. */
 export interface UiCallbacks {
-  savePairing(text: string): Promise<void>
-  pairWithCode(code: string, relayUrl?: string): Promise<void>
+  savePairing(text: string): Promise<number>
+  pairWithCode(code: string, relayUrl?: string): Promise<number>
   /** Photographs the pairing QR with the phone camera and pairs with its code. */
-  scanPairCode(): Promise<void>
+  scanPairCode(): Promise<number>
+  /** Forgets every computer. */
   forgetPairing(): Promise<void>
+  /** Forgets one computer; the others stay. */
+  forgetComputer(roomId: string): Promise<void>
   saveGestures(map: GestureMap): Promise<void>
   saveDisplaySleep(seconds: number): Promise<void>
   /** Saves (replacing any saved key) after Groq accepts it. Empty removes the key. */
@@ -35,6 +39,17 @@ export interface SessionRow {
   state: string
   active: boolean
   unread: boolean
+  /** Which paired computer, when there are several. */
+  computer?: string
+}
+
+/** A paired computer as the Pairing section lists it. */
+export interface ComputerRow {
+  roomId: string
+  label: string
+  addedAt: number
+  status: 'online' | 'relay' | 'offline'
+  sessions: readonly string[]
 }
 
 const GESTURE_LABELS: Record<(typeof GESTURES)[number], string> = {
@@ -63,6 +78,7 @@ let els: {
   sessions: HTMLDetailsElement
   sessionList: HTMLDivElement
   mutedList: HTMLDivElement
+  computerList: HTMLDivElement
 }
 let callbacks: UiCallbacks | null = null
 let currentMap: GestureMap = DEFAULT_GESTURES
@@ -89,13 +105,14 @@ export function mountUi(cb: UiCallbacks): void {
       </details>
       <details id="pairing">
         <summary>Pairing</summary>
-        <p class="hint">In Claude Code on your computer, run <code>/g2:pair</code> and type the code it shows here. From the Claude app or the web viewer, run <code>/g2:pair show</code> and type the code, or tap Scan QR and photograph the QR code.</p>
+        <div id="computer-list" class="sessions"></div>
+        <p class="hint">In Claude Code on your computer, run <code>/g2:pair</code> and type the code it shows here. From the Claude app or the web viewer, run <code>/g2:pair show</code> and type the code, or tap Scan QR and photograph the QR code. Pair each computer once: this phone keeps them all and shows the sessions from every one.</p>
         <input id="code-input" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD-EFGH" maxlength="12" />
         <p class="hint">It pairs as soon as all 8 characters are in.</p>
         <div class="row">
           <button id="code-pair">Pair</button>
           <button id="code-scan" class="secondary">Scan QR</button>
-          <button id="pair-forget" class="secondary">Forget</button>
+          <button id="pair-forget" class="secondary">Forget all</button>
         </div>
         <div id="pair-msg" class="msg"></div>
         <details class="sub">
@@ -167,6 +184,7 @@ export function mountUi(cb: UiCallbacks): void {
     sessions: app.querySelector('#sessions')!,
     sessionList: app.querySelector('#session-list')!,
     mutedList: app.querySelector('#muted-list')!,
+    computerList: app.querySelector('#computer-list')!,
   }
   callbacks = cb
   const sttInput = app.querySelector<HTMLInputElement>('#stt-input')!
@@ -198,9 +216,9 @@ export function mountUi(cb: UiCallbacks): void {
   app.querySelector('#pair-save')!.addEventListener('click', () => {
     void cb
       .savePairing(els.pairInput.value)
-      .then(() => {
+      .then(n => {
         els.pairInput.value = ''
-        message(els.pairMsg, 'Paired.', false)
+        message(els.pairMsg, pairedText(n), false)
       })
       .catch(err => message(els.pairMsg, `Not saved: ${(err as Error).message}`, true))
   })
@@ -215,9 +233,9 @@ export function mountUi(cb: UiCallbacks): void {
     message(els.pairMsg, 'Looking for your computer (up to 30 seconds)...', false)
     void cb
       .pairWithCode(codeInput.value, app.querySelector<HTMLInputElement>('#relay-input')!.value.trim())
-      .then(() => {
+      .then(n => {
         codeInput.value = ''
-        message(els.pairMsg, 'Paired.', false)
+        message(els.pairMsg, pairedText(n), false)
       })
       .catch(err => message(els.pairMsg, `Not paired: ${(err as Error).message}`, true))
       .finally(() => (codeButton.disabled = false))
@@ -229,7 +247,7 @@ export function mountUi(cb: UiCallbacks): void {
     message(els.pairMsg, 'Point the camera at the QR code...', false)
     void cb
       .scanPairCode()
-      .then(() => message(els.pairMsg, 'Paired.', false))
+      .then(n => message(els.pairMsg, pairedText(n), false))
       .catch(err => message(els.pairMsg, `Not paired: ${(err as Error).message}`, true))
       .finally(() => (scanButton.disabled = false))
   })
@@ -244,7 +262,7 @@ export function mountUi(cb: UiCallbacks): void {
   app.querySelector('#pair-forget')!.addEventListener('click', () => {
     void cb
       .forgetPairing()
-      .then(() => message(els.pairMsg, 'Pairing removed.', false))
+      .then(() => message(els.pairMsg, 'Every computer forgotten.', false))
       .catch(err => message(els.pairMsg, (err as Error).message, true))
   })
   app.querySelector('#g-save')!.addEventListener('click', () => {
@@ -276,6 +294,8 @@ export function mountUi(cb: UiCallbacks): void {
   })
   injectStyles()
 }
+
+const pairedText = (n: number): string => (n > 1 ? `Paired. This phone now shows sessions from ${n} computers.` : 'Paired.')
 
 function message(el: HTMLDivElement, text: string, error: boolean): void {
   el.textContent = text
@@ -359,7 +379,7 @@ export function setSessions(info: { paired: boolean; live: readonly SessionRow[]
   els.sessionList.replaceChildren(
     ...(info.live.length
       ? info.live.map(row =>
-          sessionItem(row.name, `${row.state}${row.unread ? ' · new' : ''} · ${row.cwd}`, row.active, [
+          sessionItem(row.name, `${row.state}${row.unread ? ' · new' : ''}${row.computer ? ` · ${row.computer}` : ''} · ${row.cwd}`, row.active, [
             row.active ? null : button('Show on glasses', false, () => cb.selectSession(row.sid)),
             button('Disconnect', true, () => cb.disconnectSession(row.sid)),
           ]))
@@ -372,6 +392,32 @@ export function setSessions(info: { paired: boolean; live: readonly SessionRow[]
           ...info.muted.map(m => sessionItem(m.name, '', false, [button('Reconnect', true, () => cb.reconnectSession(m.sid))])),
         ]
       : []),
+  )
+}
+
+let computersShown = ''
+const STATUS_TEXT: Record<ComputerRow['status'], string> = { online: 'connected', relay: 'waiting for Claude Code', offline: 'offline' }
+
+/** The paired computers, each with Forget. Rebuilt only when something listed changes. */
+export function setComputers(rows: readonly ComputerRow[]): void {
+  if (!els || !callbacks) return
+  const key = JSON.stringify(rows)
+  if (key === computersShown) return
+  computersShown = key
+  const cb = callbacks
+  els.computerList.replaceChildren(
+    ...rows.map(row => {
+      const since = row.addedAt ? ` · paired ${new Date(row.addedAt).toLocaleDateString()}` : ''
+      const sessions = row.sessions.length ? ` · ${row.sessions.join(', ')}` : ''
+      return sessionItem(row.label, `${STATUS_TEXT[row.status]}${since}${sessions}`, false, [
+        button('Forget', true, () => {
+          void cb
+            .forgetComputer(row.roomId)
+            .then(() => message(els.pairMsg, `${row.label} forgotten. Run /g2:pair there to pair it again.`, false))
+            .catch(err => message(els.pairMsg, (err as Error).message, true))
+        }),
+      ])
+    }),
   )
 }
 

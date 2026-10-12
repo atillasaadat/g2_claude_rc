@@ -36,13 +36,13 @@ export const GUIDE_HTML = `
       <strong>Get alerts in other apps.</strong> In a session, run <code>/config</code> and turn on <code>inputNeededNotifEnabled</code> and <code>agentPushNotifEnabled</code>. Allow notifications for the Claude app, then allow it in the Even app's notification settings.
     </li>
   </ol>
-  <p class="hint">Every <code>cc-g2</code> session shows up on your glasses within a second. With two or more, the glasses' side menu lists them. Without auto-update, update the plugin with <code>/plugin marketplace update g2cc</code>, then <code>/reload-plugins</code>. A session tells you when a newer release is out.</p>
+  <p class="hint">Every <code>cc-g2</code> session shows up on your glasses within a second. With two or more, the glasses' side menu lists them. Using several computers? Run <code>/g2:pair</code> on each: the phone keeps them all. Without auto-update, update the plugin with <code>/plugin marketplace update g2cc</code>, then <code>/reload-plugins</code>. A session tells you when a newer release is out.</p>
   <h3 class="g-h">On the glasses</h3>
   <table class="g-table">
     <tr><th>Swipe</th><td>Scroll the timeline (the R1 ring works too)</td></tr>
-    <tr><th>Tap</th><td>Menu: Talk, Stop Claude, Display off, End session (unpairs this phone; asks first). On a card, confirm</td></tr>
+    <tr><th>Tap</th><td>Menu: Talk, Stop Claude, Display off, End session (unpairs this phone from every computer; asks first). On a card, confirm</td></tr>
     <tr><th>Double tap</th><td>Back to the newest line. On a card, leave it for later</td></tr>
-    <tr><th>Phone view</th><td>Sessions: show one on the glasses, disconnect it, or reconnect it</td></tr>
+    <tr><th>Phone view</th><td>Sessions from every computer: show one on the glasses, disconnect it, or reconnect it. Pairing: your computers, each with Forget</td></tr>
     <tr><th>Side menu</th><td>Switch sessions or clear old ones. The glasses add Close, Display off and brightness.</td></tr>
   </table>
   <p class="hint">Reviewing a spoken prompt, swipe to scroll it before you send. To turn the display off on its own while Claude works, see <em>Display</em> below.</p>

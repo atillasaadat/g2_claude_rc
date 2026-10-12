@@ -51,6 +51,7 @@ No clone needed.
    The flag is required because channels are a Claude Code research preview and g2 is not on Anthropic's allowlist. The first launch shows a warning; choose that you are using it for local development. Add `--rc` if you also want Remote Control (the Claude phone app). The glasses do not need it.
 4. **Install the glasses app:** G2 Claude Code from Even Hub in the Even app. Until the listing is live, see [Private build](#private-build-before-the-even-hub-listing).
 5. **Pair.** In a `cc-g2` session, run `/g2:pair`. A private dialog in the terminal shows a one-time code and stays open until the phone has paired. In the app's phone view, type the code under Pairing; it pairs as soon as all 8 characters are in. A code works once, for 10 minutes.
+   - **More computers:** run `/g2:pair` on each one. The phone keeps every pairing (up to 8) and shows the sessions from all of them together. Pairing another computer never replaces the first; the Pairing section lists them, each with Forget.
    - **From the Claude app or the web viewer,** which cannot show that dialog, run `/g2:pair show`. The code and a link to its QR code appear in the conversation for 3 minutes. Type the code, or open the link on a screen and tap **Scan QR** in the app. The page draws the QR in your browser from the part of the link after `#`, which browsers never send to a server.
    - When a phone pairs, the session says so. If you did not pair one, run `/g2:unpair`: it gives the computer a new key, which cuts off every paired phone, including in running sessions.
 6. **Voice:** paste your Groq key in the app under Voice. The app shows it masked with a fingerprint, checks it with Groq, and keeps it on the phone.
@@ -93,10 +94,10 @@ The relay admits a socket to a room only with the room's auth token (an HMAC of 
 | Double tap | Jump to the newest line. On a card: leave it for later. In the menu: back |
 | OS side menu | Switch sessions or clear other sessions (with two or more). The glasses OS adds its own Close, Display off and brightness items. |
 
-- **Sessions** (phone view): every connected session with its state and folder. Show on glasses switches to it, and Disconnect stops this phone showing it (Claude Code keeps running, and the terminal still asks for approvals). Disconnected sessions are listed with Reconnect.
+- **Sessions** (phone view): every connected session, from every paired computer, with its state and folder. Show on glasses switches to it, and Disconnect stops this phone showing it (Claude Code keeps running, and the terminal still asks for approvals). Disconnected sessions are listed with Reconnect.
 - **Display off** blanks the glasses until something needs you. Any gesture wakes them, and that first gesture does nothing else.
 - **Display sleep** (phone view, Display): keep the display always on (the default), or let it turn off after 5 s to 5 min while Claude works. It wakes for a reply, the end of a turn, an approval card, a question, or an alert from another session. It then stays on until you turn it off or start a new prompt.
-- **End session** unpairs this phone, after a confirm that starts on Cancel. Every session leaves the glasses, and `/g2:pair` reconnects.
+- **End session** unpairs this phone from every computer, after a confirm that starts on Cancel. Every session leaves the glasses, and `/g2:pair` reconnects. To drop just one computer, use Forget next to it under Pairing in the phone view.
 - **Voice:**
   - Choose Talk. The words fill in as you speak; tap to finish. Review the prompt (swipe to scroll a long one), then tap to send or double tap to cancel.
   - Spoken keywords are handled on the glasses and never sent: **stop**, **cancel**, and **approve** / **deny** (the last two only while a card is showing).

@@ -67,18 +67,18 @@ describe('multiple sessions', () => {
 
   test('stop and prompts go to the session on screen', () => {
     const s = two()
-    expect(g(gs(s, 'tap', 'scroll_down'), 'tap').effects).toEqual([{ type: 'send', kind: 'stop', body: {}, sid: A }])
+    expect(g(gs(s, 'tap', 'scroll_down'), 'tap').effects).toEqual([{ type: 'send', kind: 'stop', body: {}, sid: A, room: '' }])
     const review = reduce(gs(s, 'tap', 'tap', 'tap'), { type: 'transcript', attempt: 1, text: 'run it', now: NOW }).state
-    expect(g(review, 'tap').effects).toEqual([{ type: 'send', kind: 'prompt', body: { text: 'run it' }, sid: A }])
+    expect(g(review, 'tap').effects).toEqual([{ type: 'send', kind: 'prompt', body: { text: 'run it' }, sid: A, room: '' }])
   })
 
   test('cards and questions from another session say so, and answer that session', () => {
     let s = recv(two(), at(B, 'permission', perm()))
     expect(frame(s).overlay!.content.split('\n')[0]).toBe('Allow Bash? · repo-b')
-    expect(g(s, 'tap').effects).toEqual([{ type: 'send', kind: 'verdict', body: { request_id: 'abcde', behavior: 'deny' }, sid: B }])
+    expect(g(s, 'tap').effects).toEqual([{ type: 'send', kind: 'verdict', body: { request_id: 'abcde', behavior: 'deny' }, sid: B, room: '' }])
     s = recv(two(), at(B, 'question', question()))
     expect(frame(s).overlay!.content.split('\n')[0]).toContain('repo-b asks:')
-    expect(g(s, 'tap').effects).toEqual([{ type: 'send', kind: 'answer', body: { question_id: 'q00000001', choice: 'main' }, sid: B }])
+    expect(g(s, 'tap').effects).toEqual([{ type: 'send', kind: 'answer', body: { question_id: 'q00000001', choice: 'main' }, sid: B, room: '' }])
   })
 
   test('an ended session leaves; if it was on screen, the next one takes over', () => {

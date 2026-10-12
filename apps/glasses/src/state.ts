@@ -61,6 +61,8 @@ export interface SessionView {
   unread: boolean
   /** The relay connection during which this session last sent something live. */
   liveEpoch: number
+  /** The paired computer (relay room) the session talks through. */
+  room: string
 }
 
 /** A session this phone was told to stop showing (phone view: Disconnect). */
@@ -71,22 +73,30 @@ export interface MutedSession {
 /** Disconnected sessions remembered at most; the oldest go first. */
 export const MAX_MUTED = 20
 
-export type PermissionCard = Body<'permission'> & { ts: number; sid: string }
-export type QuestionCard = Body<'question'> & { ts: number; sid: string }
+export type PermissionCard = Body<'permission'> & { ts: number; sid: string; room: string }
+export type QuestionCard = Body<'question'> & { ts: number; sid: string; room: string }
+
+/**
+ * One paired computer's relay link. The phone keeps a pairing per computer
+ * (each has its own key and room) and stays connected to all of them.
+ * `epoch` counts this room's connections: on every connect each live channel
+ * re-announces itself (resync), so a session is alive if it spoke during the
+ * current one; sessions only seen in replayed history are dead and stay hidden.
+ */
+export interface RoomLink {
+  open: boolean
+  computers: number
+  epoch: number
+}
 
 export interface AppState {
   paired: boolean
-  relayOpen: boolean
-  computers: number
+  /** Relay links by room id ('' in tests and for a single unnamed link). */
+  rooms: Readonly<Record<string, RoomLink>>
+  /** All rooms together, for the status indicator. */
   link: Link
   /** Views by session id ('' for envelopes without one). */
   views: Readonly<Record<string, SessionView>>
-  /**
-   * Counts relay connections. On every connect each live channel re-announces
-   * itself (resync), so a session is alive if it spoke during this connection;
-   * sessions only seen in replayed history are dead and stay hidden.
-   */
-  connectEpoch: number
   active: string
   screen: ScreenId
   /** Animation clock (ms), advanced by ticks while something animates. */
@@ -121,9 +131,12 @@ export interface AppState {
 }
 
 export type Msg =
-  | { type: 'envelope'; env: AnyEnvelope; now: number }
-  | { type: 'relay'; status: 'connecting' | 'open' | 'closed' }
-  | { type: 'presence'; computers: number }
+  /** `room` names the paired computer the message came through (default ''). */
+  | { type: 'envelope'; env: AnyEnvelope; now: number; room?: string }
+  | { type: 'relay'; status: 'connecting' | 'open' | 'closed'; room?: string }
+  | { type: 'presence'; computers: number; room?: string }
+  /** A paired computer was forgotten: its sessions, cards and questions go. */
+  | { type: 'room_removed'; room: string }
   | { type: 'gesture'; gesture: Gesture; map: GestureMap; now?: number }
   | { type: 'paired'; paired: boolean }
   | { type: 'config'; voiceAvailable?: boolean; displaySleepMs?: number }
@@ -141,17 +154,20 @@ export type Msg =
   /** The saved list of disconnected sessions, loaded at start. */
   | { type: 'muted'; sessions: readonly MutedSession[] }
 
-/** Commands name their target session (sid), since several share the relay room. */
+/**
+ * Commands name their target session (sid), since several share a relay room,
+ * and the room (paired computer) that session talks through.
+ */
 export type Effect =
   | { type: 'exit' }
-  /** Forget the pairing on this phone: every session goes, and /g2:pair reconnects. */
+  /** Forget every pairing on this phone: every session goes, and /g2:pair reconnects. */
   | { type: 'unpair' }
-  | { type: 'send'; kind: 'stop'; body: Record<string, never>; sid: string }
-  | { type: 'send'; kind: 'verdict'; body: Body<'verdict'>; sid: string }
-  | { type: 'send'; kind: 'prompt'; body: Body<'prompt'>; sid: string }
-  | { type: 'send'; kind: 'answer'; body: Body<'answer'>; sid: string }
+  | { type: 'send'; kind: 'stop'; body: Record<string, never>; sid: string; room: string }
+  | { type: 'send'; kind: 'verdict'; body: Body<'verdict'>; sid: string; room: string }
+  | { type: 'send'; kind: 'prompt'; body: Body<'prompt'>; sid: string; room: string }
+  | { type: 'send'; kind: 'answer'; body: Body<'answer'>; sid: string; room: string }
   | { type: 'save_muted'; sessions: readonly MutedSession[] }
-  /** Reconnect to the relay, so every channel announces its session again. */
+  /** Reconnect to every relay room, so every channel announces its session again. */
   | { type: 'resync' }
 
 export interface Result {
@@ -159,16 +175,14 @@ export interface Result {
   effects: Effect[]
 }
 
-const EMPTY_VIEW: SessionView = { sessionTs: 0, entries: [], fromBottom: 0, stopPending: false, lastSeen: 0, unread: false, liveEpoch: -1 }
+const EMPTY_VIEW: SessionView = { sessionTs: 0, entries: [], fromBottom: 0, stopPending: false, lastSeen: 0, unread: false, liveEpoch: -1, room: '' }
 
 export function initialState(): AppState {
   return {
     paired: false,
-    relayOpen: false,
-    computers: 0,
+    rooms: {},
     link: 'offline',
     views: {},
-    connectEpoch: 0,
     active: '',
     screen: 'timeline',
     clock: 0,
@@ -196,7 +210,14 @@ export const view = (s: AppState, sid: string = s.active): SessionView => s.view
 const withView = (s: AppState, sid: string, v: SessionView): AppState => ({ ...s, views: { ...s.views, [sid]: v } })
 const mapActive = (s: AppState, f: (v: SessionView) => SessionView): AppState => withView(s, s.active, f(view(s)))
 
-const alive = (s: AppState, sid: string): boolean => view(s, sid).liveEpoch === s.connectEpoch
+const NO_ROOM: RoomLink = { open: false, computers: 0, epoch: 0 }
+const room = (s: AppState, id: string): RoomLink => s.rooms[id] ?? NO_ROOM
+const roomOf = (s: AppState, sid: string): string => view(s, sid).room
+
+const alive = (s: AppState, sid: string): boolean => {
+  const v = view(s, sid)
+  return v.liveEpoch === room(s, v.room).epoch
+}
 
 /**
  * Live sessions (and the one on screen), in a stable order (name, then id):
@@ -292,7 +313,15 @@ export function isAnimating(s: AppState): boolean {
 export const totalLines = (entries: readonly TimelineEntry[]): number => buildTimeline(entries).lines.length
 const maxScroll = (entries: readonly TimelineEntry[]): number => Math.max(0, totalLines(entries) - TIMELINE_LINES)
 
-const link = (relayOpen: boolean, computers: number): Link => (!relayOpen ? 'offline' : computers > 0 ? 'online' : 'relay')
+/** Online if any paired computer is there, relay if only the relay answers, else offline. */
+function linkOf(rooms: AppState['rooms']): Link {
+  const all = Object.values(rooms)
+  return all.some(r => r.open && r.computers > 0) ? 'online' : all.some(r => r.open) ? 'relay' : 'offline'
+}
+const withRoom = (s: AppState, id: string, r: RoomLink): AppState => {
+  const rooms = { ...s.rooms, [id]: r }
+  return { ...s, rooms, link: linkOf(rooms) }
+}
 const done = (state: AppState, effects: Effect[] = []): Result => ({ state, effects })
 const open = (s: AppState, screen: ScreenId, now: number): AppState => ({
   ...s,
@@ -358,10 +387,10 @@ function endSession(s: AppState, sid: string): AppState {
   return { ...next, active: first?.sid ?? '' }
 }
 
-function onSessionEnvelope(s: AppState, sid: string, env: AnyEnvelope, now: number): AppState {
+function onSessionEnvelope(s: AppState, sid: string, env: AnyEnvelope, now: number, from: string): AppState {
   const v = view(s, sid)
   const fresh = now - env.ts <= FRESH_MS
-  const seen = { ...v, lastSeen: Math.max(v.lastSeen, env.ts), liveEpoch: fresh ? s.connectEpoch : v.liveEpoch }
+  const seen = { ...v, room: from, lastSeen: Math.max(v.lastSeen, env.ts), liveEpoch: fresh ? room(s, from).epoch : v.liveEpoch }
   // The first session seen goes on screen; a live one replaces a dead one from history.
   const takeOver = (s.active === '' && !s.views['']) || (fresh && env.kind === 'session' && sid !== s.active && !alive(s, s.active))
   const base = takeOver ? { ...s, active: sid } : s
@@ -391,14 +420,14 @@ function onSessionEnvelope(s: AppState, sid: string, env: AnyEnvelope, now: numb
   }
 }
 
-function onEnvelope(s: AppState, env: AnyEnvelope, now: number): AppState {
+function onEnvelope(s: AppState, env: AnyEnvelope, now: number, from: string): AppState {
   const sid = env.sid ?? ''
   switch (env.kind) {
     case 'permission': {
       // Stale cards come from history replay; the channel re-sends live ones fresh on connect.
       if (now - env.ts > FRESH_MS) return s
       if (s.cards.some(c => c.request_id === env.body.request_id)) return s
-      const cards = [...s.cards, { ...env.body, ts: env.ts, sid }]
+      const cards = [...s.cards, { ...env.body, ts: env.ts, sid, room: from }]
       return s.screen === 'card' ? { ...s, cards } : showCard({ ...s, cards }, now)
     }
     case 'permission_resolved':
@@ -406,14 +435,14 @@ function onEnvelope(s: AppState, env: AnyEnvelope, now: number): AppState {
     case 'question': {
       if (now - env.ts > FRESH_MS) return s
       if (s.questions.some(q => q.question_id === env.body.question_id)) return s
-      const next = { ...s, questions: [...s.questions, { ...env.body, ts: env.ts, sid }] }
+      const next = { ...s, questions: [...s.questions, { ...env.body, ts: env.ts, sid, room: from }] }
       // Behind a permission card or an existing question, it waits its turn.
       return s.screen === 'card' || s.screen === 'question' ? next : showQuestion(next, now, 0)
     }
     case 'question_resolved':
       return dropQuestion(s, env.body.question_id, now)
     default:
-      return onSessionEnvelope(s, sid, env, now)
+      return onSessionEnvelope(s, sid, env, now, from)
   }
 }
 
@@ -509,7 +538,7 @@ function dropQuestion(s: AppState, questionId: string, now: number): AppState {
 function confirmCard(s: AppState, now: number): Result {
   const card = s.cards[0]
   if (!card || now - s.cardShownAt < CARD_GUARD_MS) return done(s)
-  const verdict: Effect = { type: 'send', kind: 'verdict', body: { request_id: card.request_id, behavior: s.cardChoice }, sid: card.sid }
+  const verdict: Effect = { type: 'send', kind: 'verdict', body: { request_id: card.request_id, behavior: s.cardChoice }, sid: card.sid, room: card.room }
   return done(dropCard(s, card.request_id, now), [verdict])
 }
 
@@ -519,14 +548,14 @@ function confirmQuestion(s: AppState, now: number): Result {
   if (!q || choice === undefined || now - s.questionShownAt < CARD_GUARD_MS) return done(s)
   const rest = { ...s, questions: s.questions.slice(1) }
   const next = rest.questions[0] ? showQuestion(rest, now, 0) : { ...rest, screen: 'timeline' as const }
-  return done(next, [{ type: 'send', kind: 'answer', body: { question_id: q.question_id, choice }, sid: q.sid }])
+  return done(next, [{ type: 'send', kind: 'answer', body: { question_id: q.question_id, choice }, sid: q.sid, room: q.room }])
 }
 
 // Menu, sessions, voice ---------------------------------------------------
 
 const stopActive = (s: AppState): Result =>
   done(mapActive({ ...s, screen: s.screen === 'voice' || s.screen === 'menu' ? 'timeline' : s.screen }, v => ({ ...v, stopPending: true })), [
-    { type: 'send', kind: 'stop', body: {}, sid: s.active },
+    { type: 'send', kind: 'stop', body: {}, sid: s.active, room: roomOf(s, s.active) },
   ])
 
 function startListening(s: AppState, now: number): AppState {
@@ -574,10 +603,24 @@ function selectSession(s: AppState, sid: string): AppState {
 function muteSession(s: AppState, sid: string): Result {
   if (!s.views[sid] || s.muted.some(m => m.sid === sid)) return done(s)
   const muted = [...s.muted, { sid, name: sessionName(s, sid) }].slice(-MAX_MUTED)
-  let next: AppState = { ...endSession(s, sid), muted }
-  for (const c of s.cards.filter(c => c.sid === sid)) next = dropCard(next, c.request_id, next.clock)
-  for (const q of s.questions.filter(q => q.sid === sid)) next = dropQuestion(next, q.question_id, next.clock)
+  const next = dropAll({ ...endSession(s, sid), muted }, c => c.sid === sid)
   return done(next, [{ type: 'save_muted', sessions: muted }])
+}
+
+/** Drops the cards and questions that match, as if each were settled elsewhere. */
+function dropAll(s: AppState, match: (x: { sid: string; room: string }) => boolean): AppState {
+  let next = s
+  for (const c of s.cards.filter(match)) next = dropCard(next, c.request_id, next.clock)
+  for (const q of s.questions.filter(match)) next = dropQuestion(next, q.question_id, next.clock)
+  return next
+}
+
+/** A forgotten computer: its link, sessions, cards and questions leave this phone. */
+function removeRoom(s: AppState, id: string): AppState {
+  const { [id]: _gone, ...rooms } = s.rooms
+  let next: AppState = { ...s, rooms, link: linkOf(rooms) }
+  for (const [sid, v] of Object.entries(s.views)) if (v.room === id) next = endSession(next, sid)
+  return dropAll(next, x => x.room === id)
 }
 
 const voiceIdle = (s: AppState): AppState => ({
@@ -595,7 +638,7 @@ function onVoiceGesture(s: AppState, action: 'voice.send' | 'voice.cancel', now:
       return done({ ...s, voice: { ...s.voice, phase: 'transcribing' } })
     case 'review': {
       const text = s.voice.text ?? ''
-      return done(voiceIdle(s), text ? [{ type: 'send', kind: 'prompt', body: { text }, sid: s.active }] : [])
+      return done(voiceIdle(s), text ? [{ type: 'send', kind: 'prompt', body: { text }, sid: s.active, room: roomOf(s, s.active) }] : [])
     }
     case 'error':
       return done(startListening(s, now))
@@ -617,7 +660,7 @@ function onTranscript(s: AppState, text: string, now: number): Result {
       if (!card || s.screen !== 'card') return done(voiceError(open(s, 'voice', now), 'No approval is waiting'))
       const behavior = cmd.type === 'approve' ? 'allow' : 'deny'
       const next = dropCard({ ...s, voice: { phase: 'idle', attempt: s.voice.attempt } }, card.request_id, now)
-      return done(next, [{ type: 'send', kind: 'verdict', body: { request_id: card.request_id, behavior }, sid: card.sid }])
+      return done(next, [{ type: 'send', kind: 'verdict', body: { request_id: card.request_id, behavior }, sid: card.sid, room: card.room }])
     }
     case 'empty':
       return done(voiceError(s, "Didn't catch that"))
@@ -691,21 +734,24 @@ export function reduce(s: AppState, msg: Msg): Result {
         const muted = s.muted.filter(m => m.sid !== sid)
         return done({ ...s, muted }, [{ type: 'save_muted', sessions: muted }])
       }
-      return done(afterEnvelope(s, onEnvelope(s, msg.env, msg.now), msg.env, msg.now))
+      return done(afterEnvelope(s, onEnvelope(s, msg.env, msg.now, msg.room ?? ''), msg.env, msg.now))
     }
     case 'relay': {
-      const relayOpen = msg.status === 'open'
-      const computers = relayOpen ? s.computers : 0
-      const connectEpoch = relayOpen && !s.relayOpen ? s.connectEpoch + 1 : s.connectEpoch
-      return done({ ...s, relayOpen, computers, connectEpoch, link: link(relayOpen, computers) })
+      const id = msg.room ?? ''
+      const r = room(s, id)
+      const open = msg.status === 'open'
+      return done(withRoom(s, id, { open, computers: open ? r.computers : 0, epoch: open && !r.open ? r.epoch + 1 : r.epoch }))
     }
     case 'presence': {
       // A computer left: its session may have died without saying so. Every
-      // live channel re-announces on this, so the dead one drops out of the list.
-      const left = s.relayOpen && msg.computers < s.computers
-      const connectEpoch = left ? s.connectEpoch + 1 : s.connectEpoch
-      return done({ ...s, computers: msg.computers, connectEpoch, link: link(s.relayOpen, msg.computers) })
+      // live channel in the room re-announces on this, so the dead one drops out of the list.
+      const id = msg.room ?? ''
+      const r = room(s, id)
+      const left = r.open && msg.computers < r.computers
+      return done(withRoom(s, id, { ...r, computers: msg.computers, epoch: left ? r.epoch + 1 : r.epoch }))
     }
+    case 'room_removed':
+      return done(removeRoom(s, msg.room))
     case 'gesture': {
       const clock = msg.now ?? s.clock
       // A dark display only wakes: a blind tap must not open the menu or confirm a card.

@@ -4,6 +4,9 @@ Every release has a git tag and a GitHub Release with the full commit list. App 
 
 Add the entry here before running `scripts/release.sh`, which refuses a version without one.
 
+## App 0.4.5
+- The phone pairs with several computers at once. Pairing another computer adds it instead of replacing the first, and sessions from every paired computer show together on the glasses, in the side menu and in the phone view (up to 8 computers). Pairing lists your computers with their status, each with Forget; Forget all and End session still unpair everything. An existing pairing carries over.
+
 ## Plugin 0.4.5
 - A new session tells you when a newer g2 plugin is out, and how to update or turn on auto-update. It reads the released version number from GitHub at most every 6 hours; `G2CC_NO_UPDATE_CHECK=1` turns it off.
 

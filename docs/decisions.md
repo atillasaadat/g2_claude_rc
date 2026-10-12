@@ -773,3 +773,13 @@ No secrets or Anthropic credentials are involved. **Verified:** the first run pa
 - **Not done that way:** a command can update the plugin files, but the running channel keeps the old code until `/reload-plugins`, which a command cannot run and which would end the pairing in progress. It would also need a Bash prompt each time, and a pairing command that swaps the plugin's code is a poor surprise.
 - **Instead:** the install steps now include turning on auto-update for `g2cc` (Claude Code leaves it off for marketplaces it does not run). And the SessionStart hook, after the Bun check, runs `dist/version-check.js`: it reads `plugin/.claude-plugin/plugin.json` from `main` on GitHub (versions change only through `scripts/release.sh`, so main holds the latest release), caches the answer in `~/.g2cc/latest-version.json` for 6 hours, and prints a `systemMessage` when the installed version is older. Any failure prints nothing. `G2CC_NO_UPDATE_CHECK=1` turns it off.
 - No URL was added to the app bundle (the guide text names no site), so the Even Hub URL check is unaffected.
+
+## Several paired computers (2026-10-12, user report)
+- **Report:** with sessions on two machines, pairing the second machine replaced the first one's pairing, so only one machine's sessions showed.
+- **Cause:** the app stored one pairing. Each computer makes its own key at pairing time, so it has its own relay room, and the app was connected to one room only.
+- **Fix (app only):** the app keeps a list of pairings in SDK storage (`g2cc.pairings`, at most 8, the oldest goes; the old single `g2cc.pairing` moves in on first load) and keeps one relay link per room.
+  - Messages carry the room they came through. Each session view records its room; liveness counts connections per room, so one computer reconnecting or losing a channel only re-checks that computer's sessions.
+  - Commands (stop, prompt, verdict, answer) go to the room of their session, card or question. If the room is unknown, they go to every room; channels ignore commands for other sessions.
+  - The phone view lists computers ("Computer 1", ...) with status, paired date and session names, each with Forget, which drops its link, sessions, cards and questions. Forget all and End session unpair everything, as before.
+- **Not chosen:** sharing one key across computers (the phone handing its key to the next computer it pairs). It would need a protocol change in both the channel and the app, and one compromised computer would expose every other computer's sessions.
+- No plugin change: the channel side was already per computer.
