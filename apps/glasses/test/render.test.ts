@@ -22,7 +22,7 @@ describe('scene structure', () => {
   })
 
   test('an overlay dims the timeline and fades in', () => {
-    const open = gs(paired(), 'tap')
+    const open = recv(paired(), env('permission', perm()))
     expect(byId(open, TIMELINE_ID)!.brightness).toBe(1)
     const at = (t: number) => byId(reduce(open, { type: 'tick', now: t }).state, OVERLAY_ID)!.brightness
     const since = open.overlaySince
@@ -66,11 +66,21 @@ describe('header', () => {
 })
 
 describe('overlays', () => {
-  test('menu is a compact box on the right', () => {
-    const c = byId(gs(paired(), 'tap'), OVERLAY_ID)!
+  test('menu is a native list on the right, which takes the input so the firmware scrolls it', () => {
+    const scene = render(gs(paired(), 'tap'))
+    const c = scene.containers.find(x => x.id === OVERLAY_ID)!
     expect(c.name).toBe('menu')
     expect(c.box.x).toBeGreaterThan(288)
-    expect(c.content.split('\n')).toEqual(['▶ Talk', '   Stop Claude', '   Display off', '   End session'])
+    expect(c.items).toEqual(['Talk', 'Stop Claude', 'Display off', 'End session'])
+    expect(c.content.split('\n')).toEqual(['Talk', 'Stop Claude', 'Display off', 'End session'])
+    expect(scene.containers.filter(x => x.capture).map(x => x.id)).toEqual([OVERLAY_ID])
+    expect(c.box.y + c.box.h).toBeLessThanOrEqual(288)
+  })
+
+  test('End session asks in the header, with Cancel first', () => {
+    const s = gs(paired(), 'tap', 'scroll_down', 'scroll_down', 'scroll_down', 'tap')
+    expect(byId(s, OVERLAY_ID)!.items).toEqual(['Cancel', 'Unpair phone'])
+    expect(byId(s, HEADER_ID)!.content).toStartWith('End session: unpair this phone?')
   })
 
   test('permission card: title, description, preview, and side-by-side choices', () => {

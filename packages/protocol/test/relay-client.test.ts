@@ -159,6 +159,47 @@ describe('RelayClient', () => {
     await until(() => relay.received.some(f => f[0] === 7))
   })
 
+  test('probe drops a silent link at once and resends what was buffered', async () => {
+    const relay = fakeRelay()
+    cleanup.push(relay.stop)
+    // Pings are far apart: without probe the dead link would go unnoticed.
+    const { c, statuses } = client(relay.url, { pingIntervalMs: 60_000, probeTimeoutMs: 50 })
+    c.start()
+    await until(() => statuses.includes('open'))
+    relay.state.silent = true
+    c.send(Uint8Array.of(1)) // lost: the link is dead but still reads as open
+    c.probe()
+    await until(() => statuses.includes('closed'))
+    relay.state.silent = false
+    c.send(Uint8Array.of(2)) // buffered while reconnecting
+    await until(() => statuses.filter(s => s === 'open').length === 2)
+    await until(() => relay.received.some(f => f[0] === 2))
+    expect(relay.received.some(f => f[0] === 1)).toBe(false)
+  })
+
+  test('probe leaves a healthy link alone', async () => {
+    const relay = fakeRelay()
+    cleanup.push(relay.stop)
+    const { c, statuses } = client(relay.url, { pingIntervalMs: 60_000, probeTimeoutMs: 50 })
+    c.start()
+    await until(() => statuses.includes('open'))
+    c.probe()
+    await Bun.sleep(200)
+    expect(statuses).toEqual(['connecting', 'open'])
+  })
+
+  test('probe skips the backoff wait while the relay is unreachable', async () => {
+    const relay = fakeRelay()
+    cleanup.push(relay.stop)
+    const { c, statuses } = client(relay.url, { minBackoffMs: 5_000, maxBackoffMs: 5_000 })
+    c.start()
+    await until(() => statuses.includes('open'))
+    relay.dropAll()
+    await until(() => statuses.includes('closed'))
+    c.probe()
+    await until(() => statuses.filter(s => s === 'open').length === 2, 1_000)
+  })
+
   test('a relay that never answers pings is not treated as dead', async () => {
     const relay = fakeRelay()
     relay.state.pongs = false

@@ -53,21 +53,36 @@ export class SecureChannel<S extends Side = Side> {
   }
 
   async seal<K extends OutKind<S>>(kind: K, body: Body<K>, opts: { sid?: string } = {}): Promise<Uint8Array> {
+    return (await this.sealWithId(kind, body, opts)).frame
+  }
+
+  /** Seal, plus the envelope id, for a sender that waits for an ack. */
+  async sealWithId<K extends OutKind<S>>(kind: K, body: Body<K>, opts: { sid?: string } = {}): Promise<{ id: string; frame: Uint8Array }> {
     // Validate our own output too, so a bug never ships a malformed envelope.
     const env = parseEnvelope(makeEnvelope(kind as Kind, body as Body<Kind>, opts), this.outDir)
     const frame = await sealFrame(this.key, this.roomId, this.outDir, enc.encode(JSON.stringify(env)))
     if (frame.length > MAX_FRAME_BYTES) throw new Error('envelope too large')
-    return frame
+    return { id: env.id, frame }
   }
 
   /** Returns the envelope, or null if it fails decryption, validation, or replay checks. */
   async open(frame: Uint8Array): Promise<AnyEnvelope | null> {
+    const r = await this.openTracked(frame)
+    return r && !r.duplicate ? r.env : null
+  }
+
+  /**
+   * Like open, but a resend of an envelope already accepted comes back with
+   * `duplicate: true` (so it can be acked again), never to be acted on twice.
+   */
+  async openTracked(frame: Uint8Array): Promise<{ env: AnyEnvelope; duplicate: boolean } | null> {
     if (frame.length > MAX_FRAME_BYTES) return null
     try {
       const plaintext = await openFrame(this.key, this.roomId, this.inDir, frame)
       const env = parseEnvelope(JSON.parse(dec.decode(plaintext)), this.inDir)
       if (env.ts < this.notBefore) return null
-      return this.guard.check(env) ? env : null
+      const verdict = this.guard.classify(env)
+      return verdict === 'stale' ? null : { env, duplicate: verdict === 'duplicate' }
     } catch {
       return null
     }

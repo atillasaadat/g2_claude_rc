@@ -24,9 +24,14 @@ export class ReplayGuard {
 
   /** Returns true if the envelope is new and fresh, and records it. */
   check(env: { id: string; ts: number }, now: number = Date.now()): boolean {
+    return this.classify(env, now) === 'new'
+  }
+
+  /** Like check, but tells a resend of an envelope already accepted ('duplicate') from one out of the window ('stale'). */
+  classify(env: { id: string; ts: number }, now: number = Date.now()): 'new' | 'duplicate' | 'stale' {
     this.prune(now)
-    if (env.ts < now - this.maxAgeMs || env.ts > now + this.maxSkewMs) return false
-    if (this.seen.has(env.id)) return false
+    if (env.ts < now - this.maxAgeMs || env.ts > now + this.maxSkewMs) return 'stale'
+    if (this.seen.has(env.id)) return 'duplicate'
     this.seen.set(env.id, env.ts)
     // Evict oldest insertions under a flood. An evicted id is at worst replayable
     // within its age window, which a flood of valid encrypted frames requires the key for.
@@ -35,7 +40,7 @@ export class ReplayGuard {
       if (oldest === undefined) break
       this.seen.delete(oldest)
     }
-    return true
+    return 'new'
   }
 
   private prune(now: number): void {

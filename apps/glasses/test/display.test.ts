@@ -4,7 +4,7 @@ import { BridgeQueue } from '../src/bridge-queue'
 import { Display, layoutKey } from '../src/display'
 import { render } from '../src/render'
 import { reduce } from '../src/state'
-import { env, gs, NOW, paired, recv } from './helpers'
+import { env, gs, NOW, paired, question, recv } from './helpers'
 
 function fakeBridge() {
   const calls: Array<{ fn: string; arg: unknown }> = []
@@ -37,12 +37,32 @@ describe('Display', () => {
     })
     const s0 = paired()
     await d.init(render(s0))
+    const q = recv(s0, env('question', question()))
+    d.show(render(q))
+    await Bun.sleep(200)
+    d.show(render(gs(q, 'scroll_down')))
+    await Bun.sleep(200)
+    expect(calls.map(c => c.fn)).toEqual(['create', 'rebuild', 'upgrade'])
+  })
+
+  test('the menu goes out as a native list; nothing is redrawn while it is open', async () => {
+    const { bridge, calls } = fakeBridge()
+    const d = new Display(bridge, new BridgeQueue(), e => {
+      throw e
+    })
+    const s0 = paired()
+    await d.init(render(s0))
     const menu = gs(s0, 'tap')
     d.show(render(menu))
     await Bun.sleep(200)
-    d.show(render(gs(menu, 'scroll_down')))
+    d.show(render(reduce(menu, { type: 'tick', now: NOW + 10_000 }).state))
     await Bun.sleep(200)
-    expect(calls.map(c => c.fn)).toEqual(['create', 'rebuild', 'upgrade'])
+    expect(calls.map(c => c.fn)).toEqual(['create', 'rebuild'])
+    const page = calls[1]!.arg as { containerTotalNum: number; textObject: unknown[]; listObject: Array<{ isEventCapture: number; itemContainer: { itemName: string[] } }> }
+    expect(page.containerTotalNum).toBe(3)
+    expect(page.textObject.length).toBe(2)
+    expect(page.listObject[0]!.itemContainer.itemName).toEqual(['Talk', 'Stop Claude', 'Display off', 'End session'])
+    expect(page.listObject[0]!.isEventCapture).toBe(1)
   })
 
   test('brightness changes alone are upgrades', () => {

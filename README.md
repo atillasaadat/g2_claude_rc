@@ -100,10 +100,11 @@ The relay admits a socket to a room only with the room's auth token (an HMAC of 
 - **End session** unpairs this phone from every computer, after a confirm that starts on Cancel. Every session leaves the glasses, and `/g2:pair` reconnects. To drop just one computer, use Forget next to it under Pairing in the phone view.
 - **Voice:**
   - Choose Talk. The words fill in as you speak; tap to finish. Review the prompt (swipe to scroll a long one), then tap to send or double tap to cancel.
+  - The header shows **→ Sent** once the computer has the prompt. On a weak phone connection it is resent for up to 50 s. If it still cannot get through, it comes back as **Not delivered. Send again?**, and one tap sends it again.
   - Spoken keywords are handled on the glasses and never sent: **stop**, **cancel**, and **approve** / **deny** (the last two only while a card is showing).
 - **Approvals:** permission cards start on Deny, and taps within 0.5 s of a card appearing are ignored.
 - **Claude's questions** show on the glasses and in the terminal at the same time. Answer in either; the other closes, and Claude gets the answer right away.
-- **Gestures** can be remapped in the phone view.
+- **Gestures** can be remapped in the phone view. The tap menu is a native list: the glasses scroll it themselves, so swipes there always move the highlight and a tap selects.
 
 ## Repository
 

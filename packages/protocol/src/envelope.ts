@@ -44,6 +44,12 @@ export const bodySchemas = {
   }),
   /** Answered elsewhere (the terminal), or withdrawn: dismiss the card. */
   question_resolved: z.strictObject({ question_id: id }),
+  /**
+   * The channel got these commands (envelope ids), including resends it had
+   * already acted on. Empty: sent on every resync, to say this channel acks.
+   * Older apps drop the unknown kind.
+   */
+  ack: z.strictObject({ ids: z.array(id).max(20) }),
   // glasses -> computer
   prompt: z.strictObject({ text: z.string().min(1).max(PROMPT_MAX) }),
   verdict: z.strictObject({ request_id: requestId, behavior: z.enum(['allow', 'deny']) }),
@@ -54,7 +60,7 @@ export const bodySchemas = {
 export type Kind = keyof typeof bodySchemas
 export type Body<K extends Kind> = z.infer<(typeof bodySchemas)[K]>
 
-export const C2G_KINDS = ['session', 'event', 'reply', 'glance', 'permission', 'permission_resolved', 'question', 'question_resolved'] as const
+export const C2G_KINDS = ['session', 'event', 'reply', 'glance', 'permission', 'permission_resolved', 'question', 'question_resolved', 'ack'] as const
 export const G2C_KINDS = ['prompt', 'verdict', 'answer', 'stop'] as const
 
 const kindsFor: Record<Direction, readonly Kind[]> = { c2g: C2G_KINDS, g2c: G2C_KINDS }

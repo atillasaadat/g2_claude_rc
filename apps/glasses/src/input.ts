@@ -10,6 +10,8 @@ import type { Gesture } from './gestures'
 export type InputSignal =
   | { type: 'gesture'; gesture: Gesture }
   | { type: 'os_menu'; itemID: number }
+  /** A tap on a native list (the menu): the firmware tracks which row is highlighted. */
+  | { type: 'list_select'; index: number }
   | { type: 'foreground' }
   | { type: 'background' }
   | { type: 'exit' }
@@ -26,7 +28,10 @@ export function toSignal(event: EvenHubEvent): InputSignal | null {
 
   const sys = eventTypeOf(event.sysEvent)
   const text = eventTypeOf(event.textEvent)
-  const is = (t: OsEventTypeList) => sys === t || text === t
+  const list = eventTypeOf(event.listEvent)
+  // The first row's index is 0, which protobuf omits.
+  if (list === OsEventTypeList.CLICK_EVENT) return { type: 'list_select', index: event.listEvent?.currentSelectItemIndex ?? 0 }
+  const is = (t: OsEventTypeList) => sys === t || text === t || list === t
 
   // Double before single: check the more specific gesture first.
   if (is(OsEventTypeList.DOUBLE_CLICK_EVENT)) return { type: 'gesture', gesture: 'double_tap' }

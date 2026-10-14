@@ -25,6 +25,8 @@ export interface RelayClientOptions {
   minBackoffMs?: number
   maxBackoffMs?: number
   pingIntervalMs?: number
+  /** How long probe() waits for any answer before it drops the link. */
+  probeTimeoutMs?: number
 }
 
 /** Ping intervals without hearing anything before an answering relay counts as gone. */
@@ -37,16 +39,20 @@ export class RelayClient {
   private stopped = true
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private pingTimer: ReturnType<typeof setInterval> | null = null
+  private probeTimer: ReturnType<typeof setTimeout> | null = null
+  private lastHeard = 0
   private readonly bufferMax: number
   private readonly minBackoffMs: number
   private readonly maxBackoffMs: number
   private readonly pingIntervalMs: number
+  private readonly probeTimeoutMs: number
 
   constructor(private readonly opts: RelayClientOptions) {
     this.bufferMax = opts.bufferMax ?? 50
     this.minBackoffMs = opts.minBackoffMs ?? 500
     this.maxBackoffMs = opts.maxBackoffMs ?? 30_000
     this.pingIntervalMs = opts.pingIntervalMs ?? 25_000
+    this.probeTimeoutMs = opts.probeTimeoutMs ?? 4_000
   }
 
   get isOpen(): boolean {
@@ -63,6 +69,7 @@ export class RelayClient {
     this.stopped = true
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
     this.clearPing()
+    this.clearProbe()
     this.ws?.close(1000, 'bye')
     this.ws = null
   }
@@ -76,23 +83,55 @@ export class RelayClient {
     if (this.buffer.length > this.bufferMax) this.buffer.splice(0, this.buffer.length - this.bufferMax)
   }
 
+  /**
+   * Checks the link now instead of at the next ping: a ping that gets no
+   * answer within probeTimeoutMs drops the link and reconnects, which flushes the
+   * buffer. For a sender that is waiting on an ack, and when the app returns
+   * to the foreground. While closed, it reconnects at once instead of waiting
+   * out the backoff.
+   */
+  probe(): void {
+    if (this.stopped || this.probeTimer) return
+    const ws = this.ws
+    if (!ws) {
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer)
+        this.reconnectTimer = null
+        this.connect()
+      }
+      return
+    }
+    if (ws.readyState !== WebSocket.OPEN) return
+    const asked = Date.now()
+    try {
+      ws.send('ping')
+    } catch {
+      this.drop(ws)
+      return
+    }
+    this.probeTimer = setTimeout(() => {
+      this.probeTimer = null
+      if (this.ws === ws && this.lastHeard < asked) this.drop(ws)
+    }, this.probeTimeoutMs)
+  }
+
   private connect(): void {
     this.opts.onStatus?.('connecting')
     const ws = new WebSocket(this.opts.url)
     ws.binaryType = 'arraybuffer'
     this.ws = ws
 
-    let lastHeard = Date.now()
+    this.lastHeard = Date.now()
     // Only a relay that answers pings can be judged by silence (older ones did not).
     let answersPings = false
 
     ws.onopen = () => {
       this.attempt = 0
-      lastHeard = Date.now()
+      this.lastHeard = Date.now()
       this.opts.onStatus?.('open')
       for (const frame of this.buffer.splice(0)) ws.send(frame)
       this.pingTimer = setInterval(() => {
-        if (answersPings && Date.now() - lastHeard > this.pingIntervalMs * DEAD_AFTER_PINGS) {
+        if (answersPings && Date.now() - this.lastHeard > this.pingIntervalMs * DEAD_AFTER_PINGS) {
           this.drop(ws)
           return
         }
@@ -101,7 +140,7 @@ export class RelayClient {
     }
 
     ws.onmessage = ev => {
-      lastHeard = Date.now()
+      if (this.ws === ws) this.lastHeard = Date.now()
       if (ev.data === 'pong') answersPings = true
       if (typeof ev.data !== 'string') {
         this.opts.onFrame(new Uint8Array(ev.data as ArrayBuffer))
@@ -120,6 +159,7 @@ export class RelayClient {
     ws.onclose = () => {
       if (this.ws !== ws) return
       this.clearPing()
+      this.clearProbe()
       this.ws = null
       this.opts.onStatus?.('closed')
       if (!this.stopped) this.scheduleReconnect()
@@ -138,6 +178,7 @@ export class RelayClient {
       // Already closing.
     }
     this.clearPing()
+    this.clearProbe()
     this.ws = null
     this.opts.onStatus?.('closed')
     if (!this.stopped) this.scheduleReconnect()
@@ -156,5 +197,10 @@ export class RelayClient {
   private clearPing(): void {
     if (this.pingTimer) clearInterval(this.pingTimer)
     this.pingTimer = null
+  }
+
+  private clearProbe(): void {
+    if (this.probeTimer) clearTimeout(this.probeTimer)
+    this.probeTimer = null
   }
 }

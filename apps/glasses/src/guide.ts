@@ -45,7 +45,7 @@ export const GUIDE_HTML = `
     <tr><th>Phone view</th><td>Sessions from every computer: show one on the glasses, disconnect it, or reconnect it. Pairing: your computers, each with Forget</td></tr>
     <tr><th>Side menu</th><td>Switch sessions or clear old ones. The glasses add Close, Display off and brightness.</td></tr>
   </table>
-  <p class="hint">Reviewing a spoken prompt, swipe to scroll it before you send. To turn the display off on its own while Claude works, see <em>Display</em> below.</p>
+  <p class="hint">Reviewing a spoken prompt, swipe to scroll it before you send. The header shows <strong>→ Sent</strong> once your computer has it; if a weak connection stops it, it comes back as <strong>Not delivered</strong> and one tap sends it again. To turn the display off on its own while Claude works, see <em>Display</em> below.</p>
   <p class="hint">While talking, <strong>stop</strong>, <strong>cancel</strong>, <strong>approve</strong> and <strong>deny</strong> act right away instead of being sent. Approval cards start on Deny, so a stray tap never approves anything.</p>
   <h3 class="g-h">If something is off</h3>
   <ul class="g-trouble">

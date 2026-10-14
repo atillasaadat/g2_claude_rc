@@ -7,6 +7,8 @@
 
 import {
   CreateStartUpPageContainer,
+  ListContainerProperty,
+  ListItemContainerProperty,
   MenuContainerProperty,
   MenuItemProperty,
   RebuildPageContainer,
@@ -22,10 +24,23 @@ const RENDER_DEBOUNCE_MS = 100
 const CREATE_MAX = 1000
 const UPGRADE_MAX = 2000
 const BORDER_COLOR = 12
+// Firmware limits for native lists.
+const LIST_MAX_ITEMS = 20
+const LIST_ITEM_MAX_CHARS = 64
 
-/** Everything except text and brightness: a change here needs a rebuild. */
+/** Everything except text and brightness: a change here needs a rebuild. Lists cannot be upgraded in place, so their items count too. */
 export function layoutKey(scene: Scene): string {
-  return JSON.stringify([scene.containers.map(c => [c.id, c.name, c.box, c.capture, c.z]), scene.menu])
+  return JSON.stringify([scene.containers.map(c => [c.id, c.name, c.box, c.capture, c.z, c.items ?? null]), scene.menu])
+}
+
+/** The page's containers, split by kind as the SDK wants them. */
+function page(scene: Scene): { containerTotalNum: number; textObject: TextContainerProperty[]; listObject?: ListContainerProperty[] } {
+  const lists = scene.containers.filter(c => c.items)
+  return {
+    containerTotalNum: scene.containers.length,
+    textObject: scene.containers.filter(c => !c.items).map(property),
+    ...(lists.length ? { listObject: lists.map(listProperty) } : {}),
+  }
 }
 
 /** The OS side menu travels with the page; a rebuild without it would clear it. */
@@ -54,6 +69,25 @@ function property(c: ContainerSpec): TextContainerProperty {
   })
 }
 
+function listProperty(c: ContainerSpec): ListContainerProperty {
+  const items = (c.items ?? []).slice(0, LIST_MAX_ITEMS).map(i => i.slice(0, LIST_ITEM_MAX_CHARS) || ' ')
+  return new ListContainerProperty({
+    xPosition: c.box.x,
+    yPosition: c.box.y,
+    width: c.box.w,
+    height: c.box.h,
+    borderWidth: c.box.border,
+    borderColor: BORDER_COLOR,
+    borderRadius: c.box.radius,
+    paddingLength: c.box.padding,
+    containerID: c.id,
+    containerName: c.name,
+    isEventCapture: c.capture ? 1 : 0,
+    zOrderIndex: c.z,
+    itemContainer: new ListItemContainerProperty({ itemCount: items.length, itemWidth: 0, isItemSelectBorderEn: 1, itemName: items }),
+  })
+}
+
 export class Display {
   private shown: Scene = { containers: [], menu: [] }
   private pending: Scene | null = null
@@ -68,7 +102,7 @@ export class Display {
   async init(scene: Scene): Promise<void> {
     const result = await this.queue.run('createStartUpPageContainer', () =>
       this.bridge.createStartUpPageContainer(
-        new CreateStartUpPageContainer({ containerTotalNum: scene.containers.length, textObject: scene.containers.map(property), ...menuObject(scene) }),
+        new CreateStartUpPageContainer({ ...page(scene), ...menuObject(scene) }),
       ),
     )
     // Creation is allowed once per app run. After a WebView reload the page
@@ -101,6 +135,7 @@ export class Display {
         await this.rebuild(scene)
       } else {
         for (const c of scene.containers) {
+          if (c.items) continue // same items (layoutKey): the firmware owns the list
           const before = this.shown.containers.find(p => p.id === c.id)
           if (before?.content !== c.content || before.brightness !== c.brightness) await this.upgrade(c)
         }
@@ -114,7 +149,7 @@ export class Display {
   private async rebuild(scene: Scene): Promise<void> {
     const ok = await this.queue.run('rebuildPageContainer', () =>
       this.bridge.rebuildPageContainer(
-        new RebuildPageContainer({ containerTotalNum: scene.containers.length, textObject: scene.containers.map(property), ...menuObject(scene) }),
+        new RebuildPageContainer({ ...page(scene), ...menuObject(scene) }),
       ),
     )
     if (!ok) throw new Error('rebuildPageContainer failed')

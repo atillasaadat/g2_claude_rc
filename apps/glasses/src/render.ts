@@ -16,7 +16,8 @@ import {
   innerWidth,
   OVERLAY_WIDTH,
   overlayBox,
-  sideBox,
+  listBox,
+  LIST_ITEM_INSET,
   spread,
   tailLines,
   TIMELINE,
@@ -36,6 +37,12 @@ export interface ContainerSpec {
   capture: boolean
   /** Stacking order, larger in front. */
   z: number
+  /**
+   * A native list instead of text: the firmware scrolls it and draws the
+   * highlight and scroll bar on the glasses, so swipes cost no Bluetooth round
+   * trip. `content` then holds the items joined, for logs and the phone mirror.
+   */
+  items?: readonly string[]
 }
 
 export interface Scene {
@@ -106,6 +113,7 @@ function voiceHint(s: AppState): string {
 
 function header(s: AppState): string {
   if (s.screen === 'timeline' || !s.paired) return statusHeader(s)
+  if (s.screen === 'menu' && s.confirmEnd) return fitLine('End session: unpair this phone? · 2× tap: back', HEADER_WIDTH)
   return fitLine(s.screen === 'voice' ? voiceHint(s) : HINTS[s.screen], HEADER_WIDTH)
 }
 
@@ -124,12 +132,11 @@ function timelineText(s: AppState): string {
 
 // Overlays ---------------------------------------------------------------
 
-function menuOverlay(s: AppState): { box: Box; content: string } {
-  const items = menuItems(s)
-  const title = s.confirmEnd ? ['End session: unpair?'] : []
-  const box = sideBox(items.length + title.length)
-  const lines = items.map((item, i) => indent(i === s.menuIndex, item.label, innerWidth(box)))
-  return { box, content: [...title.map(t => fitLine(t, innerWidth(box))), ...lines].join('\n') }
+/** The menu is a native list (see ContainerSpec.items); End session's question goes in the header. */
+function menuOverlay(s: AppState): { box: Box; content: string; items: string[] } {
+  const box = listBox(menuItems(s).length)
+  const items = menuItems(s).map(item => fitLine(item.label, innerWidth(box) - LIST_ITEM_INSET))
+  return { box, content: items.join('\n'), items }
 }
 
 /** With several sessions, cards say which one is asking. */
@@ -197,7 +204,7 @@ function voiceOverlay(s: AppState): { box: Box; content: string } {
       const top = Math.min(v.scroll ?? 0, Math.max(0, all.length - VOICE_REVIEW_LINES))
       const shown = all.slice(top, top + VOICE_REVIEW_LINES)
       const where = all.length > VOICE_REVIEW_LINES ? `  ${top > 0 ? '▲' : ' '}${top + shown.length < all.length ? '▼' : ' '} ${top + 1}-${top + shown.length} of ${all.length}` : ''
-      const lines = [fitLine(`Send to Claude?${where}`, w), ...shown]
+      const lines = [fitLine(`${v.failed ? 'Not delivered. Send again?' : 'Send to Claude?'}${where}`, w), ...shown]
       return { box: overlayBox(lines.length), content: lines.join('\n') }
     }
     default:
@@ -205,7 +212,7 @@ function voiceOverlay(s: AppState): { box: Box; content: string } {
   }
 }
 
-function overlay(s: AppState): { name: string; box: Box; content: string } | null {
+function overlay(s: AppState): { name: string; box: Box; content: string; items?: string[] } | null {
   switch (s.screen) {
     case 'menu':
       return { name: 'menu', ...menuOverlay(s) }
@@ -265,9 +272,12 @@ export function render(s: AppState): Scene {
   return {
     containers: [
       { id: HEADER_ID, name: 'header', box: HEADER, content: header(s), brightness: toastShowing(s) ? BRIGHT : 3, capture: false, z: 1 },
-      // The timeline always captures input: taps arrive as sysEvent, swipes as textEvent.
-      { id: TIMELINE_ID, name: 'timeline', box: TIMELINE, content: timeline, brightness: over ? DIM : BRIGHT, capture: true, z: 2 },
-      ...(over ? [{ id: OVERLAY_ID, name: over.name, box: over.box, content: over.content, brightness: fade(s), capture: false, z: 3 }] : []),
+      // The timeline captures input (taps arrive as sysEvent, swipes as textEvent),
+      // except under a native list, which must capture to scroll on its own.
+      { id: TIMELINE_ID, name: 'timeline', box: TIMELINE, content: timeline, brightness: over ? DIM : BRIGHT, capture: !over?.items, z: 2 },
+      ...(over
+        ? [{ id: OVERLAY_ID, name: over.name, box: over.box, content: over.content, brightness: over.items ? BRIGHT : fade(s), capture: Boolean(over.items), z: 3, ...(over.items ? { items: over.items } : {}) }]
+        : []),
     ],
     menu: osMenu(s).map(({ id, label }) => ({ id, label })),
   }

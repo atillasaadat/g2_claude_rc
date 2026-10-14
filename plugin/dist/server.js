@@ -28791,12 +28791,13 @@ var bodySchemas = {
     options: exports_external.array(shortText.min(1)).min(1).max(QUESTION_OPTIONS_MAX)
   }),
   question_resolved: exports_external.strictObject({ question_id: id }),
+  ack: exports_external.strictObject({ ids: exports_external.array(id).max(20) }),
   prompt: exports_external.strictObject({ text: exports_external.string().min(1).max(PROMPT_MAX) }),
   verdict: exports_external.strictObject({ request_id: requestId, behavior: exports_external.enum(["allow", "deny"]) }),
   answer: exports_external.strictObject({ question_id: id, choice: shortText.min(1) }),
   stop: exports_external.strictObject({})
 };
-var C2G_KINDS = ["session", "event", "reply", "glance", "permission", "permission_resolved", "question", "question_resolved"];
+var C2G_KINDS = ["session", "event", "reply", "glance", "permission", "permission_resolved", "question", "question_resolved", "ack"];
 var G2C_KINDS = ["prompt", "verdict", "answer", "stop"];
 var kindsFor = { c2g: C2G_KINDS, g2c: G2C_KINDS };
 var header = exports_external.strictObject({
@@ -28856,11 +28857,14 @@ class ReplayGuard {
     return this.seen.size;
   }
   check(env, now = Date.now()) {
+    return this.classify(env, now) === "new";
+  }
+  classify(env, now = Date.now()) {
     this.prune(now);
     if (env.ts < now - this.maxAgeMs || env.ts > now + this.maxSkewMs)
-      return false;
+      return "stale";
     if (this.seen.has(env.id))
-      return false;
+      return "duplicate";
     this.seen.set(env.id, env.ts);
     while (this.seen.size > this.maxEntries) {
       const oldest = this.seen.keys().next().value;
@@ -28868,7 +28872,7 @@ class ReplayGuard {
         break;
       this.seen.delete(oldest);
     }
-    return true;
+    return "new";
   }
   prune(now) {
     const cutoff = now - this.maxAgeMs;
@@ -28907,13 +28911,20 @@ class SecureChannel {
     return this.side === "computer" ? "g2c" : "c2g";
   }
   async seal(kind, body, opts = {}) {
+    return (await this.sealWithId(kind, body, opts)).frame;
+  }
+  async sealWithId(kind, body, opts = {}) {
     const env = parseEnvelope(makeEnvelope(kind, body, opts), this.outDir);
     const frame = await sealFrame(this.key, this.roomId, this.outDir, enc2.encode(JSON.stringify(env)));
     if (frame.length > MAX_FRAME_BYTES)
       throw new Error("envelope too large");
-    return frame;
+    return { id: env.id, frame };
   }
   async open(frame) {
+    const r = await this.openTracked(frame);
+    return r && !r.duplicate ? r.env : null;
+  }
+  async openTracked(frame) {
     if (frame.length > MAX_FRAME_BYTES)
       return null;
     try {
@@ -28921,7 +28932,8 @@ class SecureChannel {
       const env = parseEnvelope(JSON.parse(dec.decode(plaintext)), this.inDir);
       if (env.ts < this.notBefore)
         return null;
-      return this.guard.check(env) ? env : null;
+      const verdict = this.guard.classify(env);
+      return verdict === "stale" ? null : { env, duplicate: verdict === "duplicate" };
     } catch {
       return null;
     }
@@ -28938,16 +28950,20 @@ class RelayClient {
   stopped = true;
   reconnectTimer = null;
   pingTimer = null;
+  probeTimer = null;
+  lastHeard = 0;
   bufferMax;
   minBackoffMs;
   maxBackoffMs;
   pingIntervalMs;
+  probeTimeoutMs;
   constructor(opts) {
     this.opts = opts;
     this.bufferMax = opts.bufferMax ?? 50;
     this.minBackoffMs = opts.minBackoffMs ?? 500;
     this.maxBackoffMs = opts.maxBackoffMs ?? 30000;
     this.pingIntervalMs = opts.pingIntervalMs ?? 25000;
+    this.probeTimeoutMs = opts.probeTimeoutMs ?? 4000;
   }
   get isOpen() {
     return this.ws?.readyState === WebSocket.OPEN;
@@ -28963,6 +28979,7 @@ class RelayClient {
     if (this.reconnectTimer)
       clearTimeout(this.reconnectTimer);
     this.clearPing();
+    this.clearProbe();
     this.ws?.close(1000, "bye");
     this.ws = null;
   }
@@ -28975,21 +28992,48 @@ class RelayClient {
     if (this.buffer.length > this.bufferMax)
       this.buffer.splice(0, this.buffer.length - this.bufferMax);
   }
+  probe() {
+    if (this.stopped || this.probeTimer)
+      return;
+    const ws = this.ws;
+    if (!ws) {
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = null;
+        this.connect();
+      }
+      return;
+    }
+    if (ws.readyState !== WebSocket.OPEN)
+      return;
+    const asked = Date.now();
+    try {
+      ws.send("ping");
+    } catch {
+      this.drop(ws);
+      return;
+    }
+    this.probeTimer = setTimeout(() => {
+      this.probeTimer = null;
+      if (this.ws === ws && this.lastHeard < asked)
+        this.drop(ws);
+    }, this.probeTimeoutMs);
+  }
   connect() {
     this.opts.onStatus?.("connecting");
     const ws = new WebSocket(this.opts.url);
     ws.binaryType = "arraybuffer";
     this.ws = ws;
-    let lastHeard = Date.now();
+    this.lastHeard = Date.now();
     let answersPings = false;
     ws.onopen = () => {
       this.attempt = 0;
-      lastHeard = Date.now();
+      this.lastHeard = Date.now();
       this.opts.onStatus?.("open");
       for (const frame of this.buffer.splice(0))
         ws.send(frame);
       this.pingTimer = setInterval(() => {
-        if (answersPings && Date.now() - lastHeard > this.pingIntervalMs * DEAD_AFTER_PINGS) {
+        if (answersPings && Date.now() - this.lastHeard > this.pingIntervalMs * DEAD_AFTER_PINGS) {
           this.drop(ws);
           return;
         }
@@ -28998,7 +29042,8 @@ class RelayClient {
       }, this.pingIntervalMs);
     };
     ws.onmessage = (ev) => {
-      lastHeard = Date.now();
+      if (this.ws === ws)
+        this.lastHeard = Date.now();
       if (ev.data === "pong")
         answersPings = true;
       if (typeof ev.data !== "string") {
@@ -29019,6 +29064,7 @@ class RelayClient {
       if (this.ws !== ws)
         return;
       this.clearPing();
+      this.clearProbe();
       this.ws = null;
       this.opts.onStatus?.("closed");
       if (!this.stopped)
@@ -29034,6 +29080,7 @@ class RelayClient {
       ws.close(4000, "no answer");
     } catch {}
     this.clearPing();
+    this.clearProbe();
     this.ws = null;
     this.opts.onStatus?.("closed");
     if (!this.stopped)
@@ -29053,6 +29100,11 @@ class RelayClient {
     if (this.pingTimer)
       clearInterval(this.pingTimer);
     this.pingTimer = null;
+  }
+  clearProbe() {
+    if (this.probeTimer)
+      clearTimeout(this.probeTimer);
+    this.probeTimer = null;
   }
 }
 // node_modules/.bun/@noble+hashes@2.4.0/node_modules/@noble/hashes/_u64.js
@@ -31626,6 +31678,7 @@ class SessionController {
   }
   resync() {
     this.emitSession(this.tracker.snapshot());
+    this.opts.emit({ kind: "ack", body: { ids: [] } });
     for (const p of this.pending.values())
       this.opts.emit({ kind: "permission", body: p });
     for (const q of this.questions.values())
@@ -31922,8 +31975,13 @@ async function runChannel(cfg, transport) {
     },
     onRateLimited: () => log("relay rate limit hit"),
     onFrame: async (frame2) => {
-      const env = await link.open(frame2);
-      if (!env)
+      const opened = await link.openTracked(frame2);
+      if (!opened)
+        return;
+      const { env, duplicate } = opened;
+      if (cfg.sessionId && env.sid === cfg.sessionId)
+        emit("ack", { ids: [env.id] });
+      if (duplicate)
         return;
       log(`inbound ${env.kind}`);
       if (lastPath) {

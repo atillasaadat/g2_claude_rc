@@ -40,10 +40,18 @@ export function overlayBox(lines: number): Box {
   return { x: 12, y: 42, w: SCREEN_W - 24, h: heightFor(lines, OVERLAY_BORDER, OVERLAY_PAD), border: OVERLAY_BORDER, radius: 10, padding: OVERLAY_PAD }
 }
 
-/** Compact overlay on the right (menu). */
-export function sideBox(lines: number): Box {
+/** Height of one row in a native list container (firmware-drawn, not configurable; measured in the simulator). */
+export const LIST_ITEM_H = 40
+/** Room a list row needs beside its label for the firmware's highlight and scroll bar. */
+export const LIST_ITEM_INSET = 24
+
+/** The menu's native list, on the right, tall enough for `items` rows (it scrolls past that). */
+export function listBox(items: number): Box {
   const w = 240
-  return { x: SCREEN_W - w - 12, y: 42, w, h: heightFor(lines, OVERLAY_BORDER, OVERLAY_PAD), border: OVERLAY_BORDER, radius: 10, padding: OVERLAY_PAD }
+  const border = OVERLAY_BORDER
+  const padding = 4
+  const max = SCREEN_H - 42 - 4
+  return { x: SCREEN_W - w - 12, y: 42, w, h: Math.min(max, items * LIST_ITEM_H + 2 * (border + padding)), border, radius: 10, padding }
 }
 
 /** Widest overlay, used to wrap overlay text before the box is sized. */

@@ -116,8 +116,14 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
     },
     onRateLimited: () => log('relay rate limit hit'),
     onFrame: async frame => {
-      const env = await link.open(frame)
-      if (!env) return // failed decryption, schema, or replay checks: drop silently
+      const opened = await link.openTracked(frame)
+      if (!opened) return // failed decryption, schema, or replay checks: drop silently
+      const { env, duplicate } = opened
+      // Ack this session's commands, so the glasses stop resending. A resend
+      // (the first ack was lost, or the phone could not tell) is acked again,
+      // never acted on twice.
+      if (cfg.sessionId && env.sid === cfg.sessionId) emit('ack', { ids: [env.id] })
+      if (duplicate) return
       log(`inbound ${env.kind}`)
       if (lastPath) {
         try {

@@ -116,6 +116,8 @@ export class SessionController {
   /** Session header plus every pending request, freshly stamped (glasses (re)connect). */
   resync(): void {
     this.emitSession(this.tracker.snapshot())
+    // An empty ack says this channel acks commands, so the glasses can tell a lost prompt from an older plugin.
+    this.opts.emit({ kind: 'ack', body: { ids: [] } })
     for (const p of this.pending.values()) this.opts.emit({ kind: 'permission', body: p })
     for (const q of this.questions.values()) this.opts.emit({ kind: 'question', body: q })
   }

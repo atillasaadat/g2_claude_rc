@@ -123,7 +123,13 @@ function dispatch(msg: Msg): void {
     if (effect.type === 'unpair') void unpair().catch(err => log('could not unpair:', (err as Error).message))
     if (effect.type === 'save_muted') void storage.saveMuted(effect.sessions).catch(err => log('could not save sessions:', (err as Error).message))
     if (effect.type === 'resync') void links.reconnect().catch(err => log('could not reconnect:', (err as Error).message))
-    if (effect.type === 'send') {
+    if (effect.type === 'send' && effect.kind === 'prompt') {
+      // Prompts wait for the computer's ack and are resent until it comes (see Links.sendPrompt).
+      links.sendPrompt(effect.body.text, effect.sid, effect.room).catch(err => {
+        log('could not send prompt:', (err as Error).message)
+        dispatch({ type: 'delivery', sid: effect.sid, ok: false, text: effect.body.text, now: Date.now() })
+      })
+    } else if (effect.type === 'send') {
       links.send(effect.kind, effect.body, effect.sid, effect.room).catch(err => log(`could not send ${effect.kind}:`, (err as Error).message))
     }
   }
@@ -273,8 +279,13 @@ const unsubscribe = bridge.onEvenHubEvent(event => {
     case 'os_menu':
       dispatch({ type: 'os_menu', itemID: signal.itemID })
       return
+    case 'list_select':
+      dispatch({ type: 'menu_select', index: signal.index, now: Date.now() })
+      return
     case 'foreground':
       display?.repaint(render(state))
+      // The phone may have slept: check every link now rather than at the next keepalive.
+      links.probe()
       return
     case 'background':
       return

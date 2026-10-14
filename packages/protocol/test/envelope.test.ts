@@ -19,6 +19,7 @@ const samples: Record<Kind, unknown> = {
   permission_resolved: { request_id: 'abcde' },
   question: { question_id: 'q1', question: 'Which branch?', options: ['main', 'dev'] },
   question_resolved: { question_id: 'q1' },
+  ack: { ids: ['a1b2c3'] },
   prompt: { text: 'run the tests' },
   verdict: { request_id: 'abcde', behavior: 'allow' },
   answer: { question_id: 'q1', choice: 'main' },

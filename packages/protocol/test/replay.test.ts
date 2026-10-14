@@ -11,6 +11,14 @@ describe('ReplayGuard', () => {
     expect(g.check(env('a', now), now)).toBe(false)
   })
 
+  test('classify tells a resend from a stale envelope', () => {
+    const g = new ReplayGuard({ maxAgeMs: 60_000 })
+    const now = 1_000_000
+    expect(g.classify(env('a', now), now)).toBe('new')
+    expect(g.classify(env('a', now), now + 1_000)).toBe('duplicate')
+    expect(g.classify(env('b', now - 61_000), now)).toBe('stale')
+  })
+
   test('rejects envelopes older than maxAge', () => {
     const g = new ReplayGuard({ maxAgeMs: 60_000 })
     const now = 1_000_000

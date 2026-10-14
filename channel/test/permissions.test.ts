@@ -107,6 +107,6 @@ describe('permission relay', () => {
     c.onPermissionRequest(req('fghij'))
     out.length = 0
     c.resync()
-    expect(out.map(e => e.kind)).toEqual(['session', 'permission', 'permission'])
+    expect(out.map(e => e.kind)).toEqual(['session', 'ack', 'permission', 'permission'])
   })
 })

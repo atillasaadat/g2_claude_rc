@@ -25,6 +25,8 @@ export const SCROLL_STEP = 3
 export const FADE_MS = 450
 /** Toasts about other sessions stay in the header this long. */
 export const TOAST_MS = 8_000
+/** The "Sent" confirmation is brief: it only says the prompt arrived. */
+export const SENT_TOAST_MS = 3_000
 
 export type Link = 'offline' | 'relay' | 'online'
 export type ScreenId = 'timeline' | 'menu' | 'card' | 'question' | 'voice'
@@ -45,6 +47,8 @@ export interface VoiceState {
   /** First transcript line shown while reviewing (swipes scroll it). */
   scroll?: number
   error?: string
+  /** Reviewing a prompt that could not be delivered: tap sends it again. */
+  failed?: boolean
 }
 
 /** One Claude Code session as the glasses see it. */
@@ -135,6 +139,10 @@ export type Msg =
   | { type: 'envelope'; env: AnyEnvelope; now: number; room?: string }
   | { type: 'relay'; status: 'connecting' | 'open' | 'closed'; room?: string }
   | { type: 'presence'; computers: number; room?: string }
+  /** A row of the menu's native list was tapped (the firmware moved the highlight, not us). */
+  | { type: 'menu_select'; index: number; now?: number }
+  /** A voice prompt reached the computer (ok), or could not be delivered. See Links.sendPrompt. */
+  | { type: 'delivery'; sid: string; ok: boolean; text: string; now?: number }
   /** A paired computer was forgotten: its sessions, cards and questions go. */
   | { type: 'room_removed'; room: string }
   | { type: 'gesture'; gesture: Gesture; map: GestureMap; now?: number }
@@ -647,6 +655,21 @@ function onVoiceGesture(s: AppState, action: 'voice.send' | 'voice.cancel', now:
   }
 }
 
+/**
+ * A prompt arrived at the computer: a brief "Sent" in the header. One that
+ * could not be delivered comes back for review, so one tap sends it again,
+ * unless something more important is on screen (then a toast says so).
+ */
+function onDelivery(s: AppState, sid: string, ok: boolean, text: string, now: number): AppState {
+  const name = sessionName(s, sid)
+  const at = { clock: Math.max(s.clock, now) }
+  if (ok) return { ...s, ...at, toast: { text: `→ Sent to ${name}`, until: now + SENT_TOAST_MS } }
+  if (s.screen === 'timeline' || s.screen === 'menu') {
+    return { ...open({ ...s, active: sessionList(s).some(x => x.sid === sid) ? sid : s.active }, 'voice', now), voice: { phase: 'review', attempt: s.voice.attempt, text, failed: true } }
+  }
+  return { ...s, ...at, toast: { text: `× Not delivered to ${name}. Check the phone's connection`, until: now + TOAST_MS } }
+}
+
 function onTranscript(s: AppState, text: string, now: number): Result {
   const cmd = parseVoice(text)
   switch (cmd.type) {
@@ -752,6 +775,13 @@ export function reduce(s: AppState, msg: Msg): Result {
     }
     case 'room_removed':
       return done(removeRoom(s, msg.room))
+    case 'menu_select': {
+      if (s.screen !== 'menu' || s.dark) return done(s)
+      const now = msg.now ?? s.clock
+      return confirmMenu({ ...s, menuIndex: Math.max(0, Math.min(menuItems(s).length - 1, msg.index)), awakeSince: now }, now)
+    }
+    case 'delivery':
+      return done(onDelivery(s, msg.sid, msg.ok, msg.text, msg.now ?? s.clock))
     case 'gesture': {
       const clock = msg.now ?? s.clock
       // A dark display only wakes: a blind tap must not open the menu or confirm a card.

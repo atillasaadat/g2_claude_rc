@@ -783,3 +783,19 @@ No secrets or Anthropic credentials are involved. **Verified:** the first run pa
   - The phone view lists computers ("Computer 1", ...) with status, paired date and session names, each with Forget, which drops its link, sessions, cards and questions. Forget all and End session unpair everything, as before.
 - **Not chosen:** sharing one key across computers (the phone handing its key to the next computer it pairs). It would need a protocol change in both the channel and the app, and one compromised computer would expose every other computer's sessions.
 - No plugin change: the channel side was already per computer.
+
+## Lost voice prompts, and a smoother menu (2026-10-14, user report)
+- **Report:** sometimes a prompt reviewed and sent from the glasses never reached the session, perhaps on a poor phone connection. Also, the tap menu scrolled less smoothly than the built-in News app, which has a scroll bar.
+- **Cause (prompts):** a prompt was sent once, with no confirmation. A phone link that dies without closing still reads as open, so the frame went into a dead socket, and the keepalive only notices after about 62 s. The relay side was not the problem: it keeps commands for the computer and redelivers them when a channel reconnects.
+- **Fix:** a new computer-to-glasses kind, `ack {ids}`.
+  - The channel acks every command for its own session, including a resend of one it already acted on. The replay guard now tells a duplicate from a stale envelope (`SecureChannel.openTracked`), so a resend is acked again but never acted on twice.
+  - The app keeps each prompt's sealed frame and resends the same frame at 3, 7, 13, 22 and 35 s until the ack arrives. Each resend calls `RelayClient.probe()`, which sends a ping and drops the link if nothing answers within 4 s, so a dead link is replaced in seconds and the buffer is flushed. Foregrounding the app probes too.
+  - On the ack, the header shows "→ Sent to <session>". With no ack after 50 s (inside the channel's 60 s replay window), the prompt comes back for review as "Not delivered. Send again?". If a card or question is on screen, a toast says so instead.
+  - Compatibility: an older app drops the unknown `ack` kind. An older channel never acks, so the app only reports a failure for sessions whose channel has said it acks. The channel sends an empty ack on every resync for this.
+- **Cause (menu):** the menu was a text container. Every swipe changed the `▶` marker, so the app redrew it with a debounced `textContainerUpgrade` over Bluetooth.
+- **Fix:** the menu is now a native list container. The firmware moves the highlight on the glasses with no round trip, and scrolls rows past the box. A tap arrives as `listEvent` with the row index (index 0 is omitted by protobuf). Double tap is still a `sysEvent`. The list takes event capture while the menu is open, then the timeline takes it back.
+  - The firmware draws the rows 40 px tall, measured in the simulator. Lists cannot be updated in place, so a change of items rebuilds the page.
+  - End session's confirmation question moved to the header.
+  - Swipes and taps in the menu are now fixed. The gesture map still covers double tap there.
+  - The simulator shows no scroll bar for the list. The skill notes that list scrolling may differ on hardware.
+  - Question cards still use text.

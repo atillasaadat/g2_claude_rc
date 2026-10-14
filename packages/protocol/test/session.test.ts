@@ -47,6 +47,26 @@ describe('SecureChannel', () => {
     expect(await computer.open(frame)).toBeNull()
   })
 
+  test('openTracked flags a resend so it can be acked, never acted on twice', async () => {
+    const { computer, glasses } = await pair()
+    const { id, frame } = await glasses.sealWithId('prompt', { text: 'run the tests' }, { sid: 's1' })
+    const first = await computer.openTracked(frame)
+    expect(first?.env.id).toBe(id)
+    expect(first?.duplicate).toBe(false)
+    const again = await computer.openTracked(frame)
+    expect(again?.env.id).toBe(id)
+    expect(again?.duplicate).toBe(true)
+    // open() keeps its old meaning: only new envelopes.
+    expect(await computer.open(frame)).toBeNull()
+  })
+
+  test('the glasses accept an ack, the computer may not be sent one', async () => {
+    const { computer, glasses } = await pair()
+    const env = await glasses.open(await computer.seal('ack', { ids: ['x1', 'x2'] }))
+    expect(env?.body).toEqual({ ids: ['x1', 'x2'] })
+    await expect(glasses.seal('ack' as never, { ids: [] } as never)).rejects.toThrow()
+  })
+
   test('drops a stale command (older than 60 s)', async () => {
     const { raw, computer } = await pair()
     const key = await importKey(raw)

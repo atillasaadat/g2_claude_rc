@@ -209,6 +209,24 @@ describe('channel feed end to end', () => {
     expect(mcpOut().find(isChannel)!.params).toEqual({ content: 'run the unit tests', meta: { source_kind: 'voice' } })
   })
 
+  test('a prompt is acked, and a resend is acked again but injected only once', async () => {
+    const isChannel = (m: Record<string, unknown>) => m.method === 'notifications/claude/channel'
+    const injected = () => mcpOut().filter(m => isChannel(m) && (m.params as { content?: string }).content === 'check the build')
+    const acks = (id: string) => received.filter(e => e.kind === 'ack' && e.body.ids.includes(id)).length
+    const { id, frame } = await glasses.sealWithId('prompt', { text: 'check the build' }, { sid: SESSION })
+    glassesRelay!.send(frame)
+    await until(() => acks(id) === 1)
+    glassesRelay!.send(frame)
+    await until(() => acks(id) === 2)
+    await Bun.sleep(300)
+    expect(injected().length).toBe(1)
+    // Commands for another session are not acked by this one.
+    const other = await glasses.sealWithId('prompt', { text: 'not mine' }, { sid: 'another-session' })
+    glassesRelay!.send(other.frame)
+    await Bun.sleep(500)
+    expect(acks(other.id)).toBe(0)
+  })
+
   test('ask shows a question on the glasses and the chosen answer returns as a channel event', async () => {
     received.length = 0
     mcpSend({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'ask', arguments: { question: 'Which branch?', options: ['main', 'dev'] } } })

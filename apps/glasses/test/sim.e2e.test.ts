@@ -97,7 +97,7 @@ function litPixels(png: Uint8Array, y0: number, y1: number): number {
   return n
 }
 
-async function send<K extends 'session' | 'event' | 'reply' | 'glance' | 'permission' | 'permission_resolved' | 'question'>(kind: K, body: Body<K>): Promise<void> {
+async function send<K extends 'session' | 'event' | 'reply' | 'glance' | 'permission' | 'permission_resolved' | 'question' | 'question_resolved' | 'ack'>(kind: K, body: Body<K>): Promise<void> {
   relay.send(await computer.seal(kind, body))
 }
 
@@ -212,17 +212,20 @@ describe.skipIf(!RUN)('glasses app in the simulator', () => {
     await frameWhere(f => f.header.includes('working'), 'working header')
     await input('click')
     const menu = await frameWhere(f => f.overlay?.name === 'menu', 'menu')
-    expect(ov(menu).split('\n')).toEqual(['▶ Talk', '   Stop Claude', '   Display off', '   End session'])
+    expect(ov(menu).split('\n')).toEqual(['Talk', 'Stop Claude', 'Display off', 'End session'])
     await Bun.sleep(600) // let the fade finish before the screenshot
     await screenshot('menu')
+    // The firmware moves the list highlight itself: nothing is redrawn, so wait instead of watching frames.
+    await Bun.sleep(400)
     await input('down')
-    await frameWhere(f => ov(f).includes('▶ Stop Claude'), 'stop highlighted')
+    await Bun.sleep(400)
+    await screenshot('menu-scrolled')
     await input('click')
     await frameWhere(f => f.header.includes('■ stopping…'), 'stopping header')
     await waitFor(async () => inbound.some(e => e.kind === 'stop'), 'stop at the computer', 5_000)
     await send('session', { name: 'g2cc-sandbox', cwd: '/x', state: 'stopped', mode: 'auto' })
     await frameWhere(f => f.header.startsWith('● g2cc-sandbox · stopped'), 'stopped header')
-  })
+  }, 15_000)
 
   test('a permission card overlays the timeline; Allow sends the verdict; resolved cards close', async () => {
     await send('permission', {
@@ -254,7 +257,8 @@ describe.skipIf(!RUN)('glasses app in the simulator', () => {
     await send('session', { name: 'g2cc-sandbox', cwd: '/x', state: 'idle', mode: 'auto' })
     await frameWhere(f => f.header.includes('idle') && !f.overlay, 'idle')
     await input('click')
-    await frameWhere(f => ov(f).startsWith('▶ Talk'), 'menu with Talk')
+    await frameWhere(f => ov(f).startsWith('Talk'), 'menu with Talk')
+    await Bun.sleep(400) // the list must be on the glasses before the tap
     await input('click')
     await frameWhere(f => f.overlay?.name === 'voice' && / Listening/.test(ov(f)), 'listening')
     await Bun.sleep(800) // the rebuild reaches the framebuffer a little after the frame is logged
@@ -268,6 +272,10 @@ describe.skipIf(!RUN)('glasses app in the simulator', () => {
     await waitFor(async () => inbound.some(e => e.kind === 'prompt'), 'prompt at the computer', 5_000)
     expect(inbound.find(e => e.kind === 'prompt')!.body).toEqual({ text: FAKE_TRANSCRIPT })
     await frameWhere(f => !f.overlay, 'back to the timeline')
+    // The channel acks it: a brief Sent in the header.
+    await send('ack', { ids: [inbound.find(e => e.kind === 'prompt')!.id] })
+    await frameWhere(f => f.header.startsWith('→ Sent to g2cc-sandbox'), 'sent confirmation')
+    await screenshot('prompt-sent')
   })
 
   test('Display off blanks the glasses, and a reply (or any gesture) brings them back', async () => {
@@ -275,8 +283,11 @@ describe.skipIf(!RUN)('glasses app in the simulator', () => {
     await frameWhere(f => f.header.includes('working') && !f.overlay, 'working')
     await input('click')
     await frameWhere(f => ov(f).includes('Display off'), 'menu with Display off')
-    for (let i = 0; i < 2; i++) await input('down')
-    await frameWhere(f => ov(f).includes('▶ Display off'), 'Display off highlighted')
+    await Bun.sleep(400)
+    for (let i = 0; i < 2; i++) {
+      await input('down')
+      await Bun.sleep(200)
+    }
     await input('click')
     await frameWhere(f => f.header === '' && f.timeline === '' && !f.overlay, 'display off')
     await Bun.sleep(400)
@@ -288,13 +299,17 @@ describe.skipIf(!RUN)('glasses app in the simulator', () => {
     // Off again, then a reply wakes it.
     await input('click')
     await frameWhere(f => ov(f).includes('Display off'), 'menu again')
-    for (let i = 0; i < 2; i++) await input('down')
+    await Bun.sleep(400)
+    for (let i = 0; i < 2; i++) {
+      await input('down')
+      await Bun.sleep(200)
+    }
     await input('click')
     await frameWhere(f => f.header === '' && f.timeline === '', 'off again')
     await send('session', { name: 'g2cc-sandbox', cwd: '/x', state: 'idle', mode: 'auto' })
     await send('reply', { text: 'All done.' })
     await frameWhere(f => f.timeline.includes('All done.'), 'woken by the reply')
-  })
+  }, 20_000)
 
   test('a question card shows the options, and the chosen answer reaches the computer', async () => {
     await send('question', { question_id: 'q0000abcd', question: 'Which branch should I deploy?', options: ['main', 'dev', 'release'] })
@@ -308,6 +323,33 @@ describe.skipIf(!RUN)('glasses app in the simulator', () => {
     await waitFor(async () => inbound.some(e => e.kind === 'answer'), 'answer at the computer', 5_000)
     expect(inbound.find(e => e.kind === 'answer')!.body).toEqual({ question_id: 'q0000abcd', choice: 'dev' })
   })
+
+  test('a long menu scrolls on the glasses past the bottom of its box', async () => {
+    await send('permission', { request_id: 'rstuv', tool_name: 'Bash', description: 'List files', input_preview: '{ "command": "ls" }' })
+    await frameWhere(f => f.overlay?.name === 'card', 'card')
+    await Bun.sleep(700)
+    await input('double_click')
+    await frameWhere(f => !f.overlay, 'card set aside')
+    await send('question', { question_id: 'q0000beef', question: 'Ship it?', options: ['yes', 'no'] })
+    await frameWhere(f => f.overlay?.name === 'question', 'question')
+    await Bun.sleep(700)
+    await input('double_click')
+    await frameWhere(f => !f.overlay, 'question set aside')
+    await input('click')
+    const menu = await frameWhere(f => f.overlay?.name === 'menu', 'menu')
+    expect(ov(menu).split('\n')).toEqual(['Review: Bash', 'Review question', 'Talk', 'Stop Claude', 'Display off', 'End session'])
+    await Bun.sleep(400)
+    await screenshot('menu-long')
+    for (let i = 0; i < 5; i++) {
+      await input('down')
+      await Bun.sleep(200)
+    }
+    await screenshot('menu-long-bottom')
+    await input('double_click')
+    await frameWhere(f => !f.overlay, 'menu closed')
+    await send('permission_resolved', { request_id: 'rstuv' })
+    await send('question_resolved', { question_id: 'q0000beef' })
+  }, 20_000)
 
   test('a second computer: its sessions show next to the first, and its approvals go back to it', async () => {
     const sid = 'b2b2b2b2-0000-4000-8000-000000000001'

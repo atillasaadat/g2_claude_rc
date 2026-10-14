@@ -37,7 +37,7 @@ describe('permission cards', () => {
 
   test('double tap leaves it pending; the menu offers Review', () => {
     let s = gs(card(), 'double_tap', 'tap')
-    expect(frame(s).overlay!.content.split('\n')[0]).toBe('▶ Review: Bash')
+    expect(frame(s).overlay!.content.split('\n')[0]).toBe('Review: Bash')
     s = gs(s, 'tap')
     expect(s.screen).toBe('card')
   })
@@ -75,7 +75,7 @@ describe('questions', () => {
   })
 
   test('the menu offers Review question', () => {
-    expect(frame(gs(asked(), 'double_tap', 'tap')).overlay!.content.split('\n')[0]).toBe('▶ Review question')
+    expect(frame(gs(asked(), 'double_tap', 'tap')).overlay!.content.split('\n')[0]).toBe('Review question')
   })
 })
 

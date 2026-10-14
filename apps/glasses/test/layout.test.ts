@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { getTextWidth } from '@evenrealities/pretext'
-import { clampLines, fitLine, HEADER, HEADER_WIDTH, innerLines, overlayBox, sideBox, spread, tailLines, TIMELINE, TIMELINE_LINES, TIMELINE_WIDTH, wrapLines } from '../src/layout'
+import { clampLines, fitLine, HEADER, HEADER_WIDTH, innerLines, LIST_ITEM_H, listBox, overlayBox, spread, tailLines, TIMELINE, TIMELINE_LINES, TIMELINE_WIDTH, wrapLines } from '../src/layout'
 
 describe('geometry', () => {
   test('header holds one line, the timeline nine', () => {
@@ -14,8 +14,15 @@ describe('geometry', () => {
       const b = overlayBox(n)
       expect(innerLines(b)).toBe(n)
       expect(b.y + b.h).toBeLessThanOrEqual(288)
-      const side = sideBox(n)
-      expect(side.x + side.w).toBeLessThanOrEqual(576)
+    }
+  })
+
+  test('the menu list fits its rows, and a long one is capped to the screen (it scrolls)', () => {
+    for (let n = 1; n <= 20; n++) {
+      const b = listBox(n)
+      expect(b.x + b.w).toBeLessThanOrEqual(576)
+      expect(b.y + b.h).toBeLessThanOrEqual(288)
+      if (n <= 4) expect(b.h).toBeGreaterThanOrEqual(n * LIST_ITEM_H)
     }
   })
 })

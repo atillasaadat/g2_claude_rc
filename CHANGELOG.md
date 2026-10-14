@@ -4,6 +4,13 @@ Every release has a git tag and a GitHub Release with the full commit list. App 
 
 Add the entry here before running `scripts/release.sh`, which refuses a version without one.
 
+## App 0.4.6
+- Voice prompts no longer get lost on a weak phone connection. The computer now confirms each prompt, and the header shows "→ Sent". Until then the prompt is resent every few seconds, and each resend checks the connection and reopens it if it died silently. If it still cannot get through within 50 s, it comes back as "Not delivered. Send again?", and one tap sends it again. A resend is never run twice. Returning the app to the foreground also checks the connection.
+- The tap menu is a native list, so the glasses scroll it themselves: moving the highlight no longer waits on Bluetooth.
+
+## Plugin 0.4.6
+- Confirms every command from the glasses (an ack), so the app can resend a prompt that got lost and tell you when one could not be delivered. A resend of a prompt the session already has is confirmed again but never sent to Claude twice.
+
 ## App 0.4.5
 - The phone pairs with several computers at once. Pairing another computer adds it instead of replacing the first, and sessions from every paired computer show together on the glasses, in the side menu and in the phone view (up to 8 computers). Pairing lists your computers with their status, each with Forget; Forget all and End session still unpair everything. An existing pairing carries over.
 
