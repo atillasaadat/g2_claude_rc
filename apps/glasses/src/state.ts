@@ -56,8 +56,18 @@ export interface SessionView {
   session?: Body<'session'>
   sessionTs: number
   entries: readonly TimelineEntry[]
-  /** Lines scrolled up from the newest line; 0 means following live. */
+  /**
+   * Lines scrolled up from the newest line; 0 means following live. While
+   * scrolled, this places the top of `chunk`.
+   */
   fromBottom: number
+  /**
+   * Scrolled into history: the lines on the glasses, frozen. The firmware
+   * scrolls inside them on its own (no Bluetooth per swipe, and we hear
+   * nothing until a swipe hits the top or bottom), and any redraw would
+   * reset it to the top, so new activity does not touch them.
+   */
+  chunk?: readonly string[]
   /** A stop was sent and the channel has not yet reported idle or stopped. */
   stopPending: boolean
   lastSeen: number
@@ -321,6 +331,39 @@ export function isAnimating(s: AppState): boolean {
 export const totalLines = (entries: readonly TimelineEntry[]): number => buildTimeline(entries).lines.length
 const maxScroll = (entries: readonly TimelineEntry[]): number => Math.max(0, totalLines(entries) - TIMELINE_LINES)
 
+/** A history chunk fits one textContainerUpgrade (2000 characters), with room to spare. */
+export const CHUNK_CHARS = 1_800
+export const CHUNK_MAX_LINES = 40
+
+/** Following live again: the newest lines, redrawn as they come. */
+const toLive = (v: SessionView): SessionView => {
+  const { chunk: _gone, ...rest } = v
+  return { ...rest, fromBottom: 0 }
+}
+
+/**
+ * Shows history from line `top` down: as many lines as fit one upgrade, so
+ * the glasses can scroll through them without us. At or past the newest
+ * screen it is live again.
+ */
+function historyAt(v: SessionView, top: number): SessionView {
+  const { lines } = buildTimeline(v.entries)
+  const last = lines.length - TIMELINE_LINES
+  if (last <= 0 || top >= last) return toLive(v)
+  const from = Math.max(0, top)
+  const chunk: string[] = []
+  let chars = 0
+  for (const line of lines.slice(from, from + CHUNK_MAX_LINES)) {
+    if (chunk.length >= TIMELINE_LINES && chars + line.length + 1 > CHUNK_CHARS) break
+    chunk.push(line)
+    chars += line.length + 1
+  }
+  return { ...v, fromBottom: last - from, chunk }
+}
+
+/** First line of the chunk (or of the live view) on the glasses. */
+const viewTop = (v: SessionView): number => Math.max(0, totalLines(v.entries) - TIMELINE_LINES - v.fromBottom)
+
 /** Online if any paired computer is there, relay if only the relay answers, else offline. */
 function linkOf(rooms: AppState['rooms']): Link {
   const all = Object.values(rooms)
@@ -373,17 +416,16 @@ function onEvent(v: SessionView, env: Extract<AnyEnvelope, { kind: 'event' }>, n
   const next = withEntries(v, [...v.entries, entry])
   if (b.type !== 'prompt' || now - env.ts > FRESH_MS) return next
   // A new turn: back to live (only from the timeline; overlays are never buried).
-  return { ...next, stopPending: false, fromBottom: onTimeline ? 0 : next.fromBottom }
+  return { ...(onTimeline ? toLive(next) : next), stopPending: false }
 }
 
 function onReply(v: SessionView, env: Extract<AnyEnvelope, { kind: 'reply' }>, now: number): SessionView {
   const entry: TimelineEntry = { id: env.id, ts: env.ts, kind: 'reply', text: toPlainText(env.body.text) }
   const next = withEntries(v, [...v.entries, entry])
   if (v.fromBottom !== 0 || now - env.ts > FRESH_MS) return next
-  // Land on the start of a reply that is taller than the view.
-  const { lines, starts } = buildTimeline(next.entries)
-  const start = starts.get(entry.id) ?? 0
-  return { ...next, fromBottom: Math.max(0, lines.length - (start + TIMELINE_LINES)) }
+  // Land on the start of a reply that is taller than the view; the glasses scroll through the rest.
+  const start = buildTimeline(next.entries).starts.get(entry.id) ?? 0
+  return historyAt(next, start)
 }
 
 /** Removes an ended session; if it was on screen, switches to the most recent other one. */
@@ -704,13 +746,17 @@ function onGesture(s: AppState, gesture: Gesture, map: GestureMap, now: number):
     case 'app.exit':
       return done(s, [{ type: 'exit' }])
     case 'live.or.exit':
-      return v.fromBottom > 0 ? done(mapActive(s, x => ({ ...x, fromBottom: 0 }))) : done(s, [{ type: 'exit' }])
+      return v.fromBottom > 0 ? done(mapActive(s, toLive)) : done(s, [{ type: 'exit' }])
+    // Swipes inside a history chunk scroll on the glasses and never reach us.
+    // These arrive when a swipe hits the chunk's top or bottom (or any swipe
+    // while live, when the newest lines just fit).
     case 'timeline.up':
-      return done(mapActive(s, x => ({ ...x, fromBottom: Math.min(maxScroll(x.entries), x.fromBottom + SCROLL_STEP) })))
+      return done(mapActive(s, x => (x.fromBottom >= maxScroll(x.entries) ? x : historyAt(x, viewTop(x) - SCROLL_STEP))))
     case 'timeline.down':
-      return done(mapActive(s, x => ({ ...x, fromBottom: Math.max(0, x.fromBottom - SCROLL_STEP) })))
+      // At the chunk's last screen: continue one line on, as a swipe inside it would.
+      return done(mapActive(s, x => (x.fromBottom === 0 ? x : historyAt(x, viewTop(x) + Math.max(0, (x.chunk?.length ?? 0) - TIMELINE_LINES) + 1))))
     case 'timeline.live':
-      return done(mapActive(s, x => ({ ...x, fromBottom: 0 })))
+      return done(mapActive(s, toLive))
     case 'menu.open':
       return done({ ...open(s, 'menu', now), menuIndex: 0, confirmEnd: false })
     case 'voice.start':

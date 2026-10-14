@@ -108,6 +108,7 @@ export class Display {
     // Creation is allowed once per app run. After a WebView reload the page
     // already exists and creation fails, so rebuild it instead.
     if (result !== 0) await this.rebuild(scene)
+    else for (const c of scene.containers) if (!c.items && c.content.length > CREATE_MAX) await this.upgrade(c)
     this.shown = scene
   }
 
@@ -153,6 +154,8 @@ export class Display {
       ),
     )
     if (!ok) throw new Error('rebuildPageContainer failed')
+    // A rebuild takes 1000 characters per container; a longer one (a history chunk) gets the rest by upgrade.
+    for (const c of scene.containers) if (!c.items && c.content.length > CREATE_MAX) await this.upgrade(c)
   }
 
   private async upgrade(c: ContainerSpec): Promise<void> {

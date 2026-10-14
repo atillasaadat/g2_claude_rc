@@ -87,7 +87,7 @@ function statusHeader(s: AppState): string {
   const { name, state, mode } = v.session
   const status = v.stopPending ? '■ stopping…' : state === 'working' ? `working ${dots(s.clock)}` : state
   const unread = sessionList(s).some(x => x.sid !== s.active && x.view.unread) ? '◆ ' : ''
-  const right = `${unread}${v.fromBottom > 0 ? `▼ ${v.fromBottom} newer` : (mode ?? '')}`
+  const right = `${unread}${v.fromBottom > 0 ? '▼ newer' : (mode ?? '')}`
   return spread(`${DOT[s.link]} ${name} · ${status}`, right, HEADER_WIDTH)
 }
 
@@ -117,7 +117,8 @@ function header(s: AppState): string {
   return fitLine(s.screen === 'voice' ? voiceHint(s) : HINTS[s.screen], HEADER_WIDTH)
 }
 
-function timelineText(s: AppState): string {
+/** `native`: no overlay, so a history chunk can go to the glasses whole and scroll there. */
+function timelineText(s: AppState, native: boolean): string {
   const w = innerWidth(TIMELINE)
   if (!s.paired) {
     return ['Not paired.', '', 'Open this app on your phone and follow', 'the Setup guide there.']
@@ -127,6 +128,8 @@ function timelineText(s: AppState): string {
   const v = view(s)
   const { lines } = buildTimeline(v.entries)
   if (!lines.length) return fitLine('No activity yet. Tap for the menu.', w)
+  // Under an overlay the timeline must fit, so swipes reach the overlay instead of scrolling it.
+  if (native && v.chunk) return v.chunk.join('\n')
   return visibleWindow(lines, TIMELINE_LINES, v.fromBottom).join('\n')
 }
 
@@ -268,7 +271,7 @@ function darkScene(s: AppState): Scene {
 export function render(s: AppState): Scene {
   if (s.dark) return darkScene(s)
   const over = s.paired ? overlay(s) : null
-  const timeline = over ? occlude(timelineText(s), over.box) : timelineText(s)
+  const timeline = over ? occlude(timelineText(s, false), over.box) : timelineText(s, true)
   return {
     containers: [
       { id: HEADER_ID, name: 'header', box: HEADER, content: header(s), brightness: toastShowing(s) ? BRIGHT : 3, capture: false, z: 1 },

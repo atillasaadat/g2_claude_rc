@@ -187,25 +187,42 @@ describe.skipIf(!RUN)('glasses app in the simulator', () => {
     expect(litPixels(png, 38, 288)).toBeGreaterThan(200)
   })
 
-  test('a long reply lands on its first line, and swipes scroll through it', async () => {
+  test('a long reply lands on its first line, and the glasses scroll through it on their own', async () => {
     await send('session', { name: 'g2cc-sandbox', cwd: '/x', state: 'idle', mode: 'auto' })
     const text = Array.from({ length: 14 }, (_, i) => `Line ${i + 1}: the timeline scrolls continuously.`).join('\n')
     await send('reply', { text })
+    // The whole reply goes to the glasses at once, starting at its first line.
     const first = await frameWhere(f => f.timeline.split('\n')[0] === 'Line 1: the timeline scrolls continuously.', 'reply start at the top')
-    expect(first.header).toMatch(/▼ \d+ newer$/)
-    await screenshot('reply')
-    await input('down')
-    await frameWhere(f => f.timeline.split('\n')[0] === 'Line 4: the timeline scrolls continuously.', 'scrolled down 3 lines')
+    expect(first.timeline.split('\n').at(-1)).toBe('Line 14: the timeline scrolls continuously.')
+    expect(first.header).toMatch(/▼ newer$/)
+    await Bun.sleep(600)
+    const top = await screenshot('reply')
+    await consoleSince()
+    for (let i = 0; i < 3; i++) {
+      await input('down')
+      await Bun.sleep(300)
+    }
+    // Scrolled on the glasses: the picture moved, and the app drew nothing.
+    const scrolled = await screenshot('reply-scrolled')
+    expect(Buffer.from(scrolled).equals(Buffer.from(top))).toBe(false)
+    expect((await consoleSince()).filter(e => e.message.includes('[g2cc] frame'))).toEqual([])
+    // Header animation (working dots) redraws only the header: the scroll position stays.
+    await send('session', { name: 'g2cc-sandbox', cwd: '/x', state: 'working', mode: 'auto' })
+    await frameWhere(f => f.header.includes('working'), 'working header')
+    await Bun.sleep(1500)
+    const later = await screenshot('reply-scrolled-working')
+    expect(litPixels(later, 40, 288)).toBe(litPixels(scrolled, 40, 288))
+    await send('session', { name: 'g2cc-sandbox', cwd: '/x', state: 'idle', mode: 'auto' })
     await input('double_click') // jumps to live; never opens the exit dialog
-    await frameWhere(f => f.timeline.split('\n').at(-1) === 'Line 14: the timeline scrolls continuously.' && f.header.endsWith('auto'), 'back to live')
+    await frameWhere(f => f.timeline.split('\n').at(-1) === 'Line 14: the timeline scrolls continuously.' && f.timeline.split('\n').length === 9 && f.header.endsWith('auto'), 'back to live')
     // A second double tap at live does nothing (no exit dialog): the app still responds.
     await input('double_click')
     await Bun.sleep(500)
     await input('up')
-    await frameWhere(f => /▼ \d+ newer$/.test(f.header), 'still responsive after a second double tap')
+    await frameWhere(f => /▼ newer$/.test(f.header), 'still responsive after a second double tap')
     await input('double_click')
     await frameWhere(f => f.header.endsWith('auto'), 'live again')
-  })
+  }, 20_000)
 
   test('tap opens the menu box, and Stop sends a stop to the computer', async () => {
     await send('session', { name: 'g2cc-sandbox', cwd: '/x', state: 'working', mode: 'auto' })

@@ -5,7 +5,7 @@ import { makeEnvelope, type AnyEnvelope, type Body, type Kind } from '@g2cc/prot
 import { DEFAULT_GESTURES, type Gesture } from '../src/gestures'
 import { innerLines, innerWidth } from '../src/layout'
 import { frameOf, render, type Scene } from '../src/render'
-import { CARD_GUARD_MS, initialState, reduce, type AppState, type Result } from '../src/state'
+import { CARD_GUARD_MS, CHUNK_MAX_LINES, initialState, reduce, type AppState, type Result } from '../src/state'
 
 export const NOW = 1_800_000_000_000
 export const LATER = NOW + CARD_GUARD_MS + 1
@@ -37,7 +37,8 @@ export const frame = (s: AppState) => frameOf(render(s))
 export function assertFits(scene: Scene): void {
   for (const c of scene.containers) {
     const lines = c.content.split('\n')
-    expect(lines.length).toBeLessThanOrEqual(innerLines(c.box))
+    // A history chunk is taller than its box on purpose: the glasses scroll it.
+    expect(lines.length).toBeLessThanOrEqual(c.name === 'timeline' ? CHUNK_MAX_LINES : innerLines(c.box))
     for (const l of lines) expect(getTextWidth(l)).toBeLessThanOrEqual(innerWidth(c.box))
     expect(c.box.x + c.box.w).toBeLessThanOrEqual(576)
     expect(c.box.y + c.box.h).toBeLessThanOrEqual(288)

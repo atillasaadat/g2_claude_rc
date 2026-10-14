@@ -89,7 +89,7 @@ The relay admits a socket to a room only with the room's auth token (an HMAC of 
 
 | Gesture | Action |
 |---|---|
-| Swipe up / down | Scroll the timeline 3 lines (the R1 ring works the same) |
+| Swipe up / down | Scroll the timeline (the R1 ring works the same). Older lines scroll on the glasses themselves, a line per swipe, with a scroll bar |
 | Tap | Menu: Talk, Stop Claude, Display off, End session. On a card: confirm |
 | Double tap | Jump to the newest line. On a card: leave it for later. In the menu: back |
 | OS side menu | Switch sessions or clear other sessions (with two or more). The glasses OS adds its own Close, Display off and brightness items. |

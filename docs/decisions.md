@@ -799,3 +799,19 @@ No secrets or Anthropic credentials are involved. **Verified:** the first run pa
   - Swipes and taps in the menu are now fixed. The gesture map still covers double tap there.
   - The simulator shows no scroll bar for the list. The skill notes that list scrolling may differ on hardware.
   - Question cards still use text.
+
+## Native timeline scrolling (2026-10-14, user report)
+- **Report:** scrolling the session text with the R1 ring was choppy, as if each swipe loaded a new view.
+- **Cause:** it did. Each swipe moved the view 3 lines in app state, and the app redrew all 9 lines with a debounced `textContainerUpgrade` over Bluetooth.
+- **Probed in the simulator:**
+  - A text container holding more lines than fit scrolls on the glasses: one line per swipe, with a scroll bar on the right.
+  - Swipes inside the content send no event. Only a swipe at the top sends `textEvent` SCROLL_TOP, and only one past the bottom sends SCROLL_BOTTOM.
+  - A `textContainerUpgrade` of that container resets it to the top. Upgrading another container (the header) leaves it alone.
+  - `createStartUpPageContainer` refuses content over 1000 characters (result 1).
+- **Design:**
+  - Live view: exactly the newest 9 lines, as before. Every swipe there is a boundary event, so the app hears it.
+  - Scrolling back (or a reply taller than the view): the app sends a chunk (`SessionView.chunk`), the lines from the view's top down, up to 1800 characters or 40 lines. It is frozen while shown, since any redraw would jump it to its top; new activity only changes the header (`▼ newer`, no count, since the app no longer knows the exact position).
+  - SCROLL_TOP at the chunk's top loads a chunk 3 lines higher. SCROLL_BOTTOM at its end loads the next one, starting one line below the last screen, or goes back to live at the newest lines.
+  - Under an overlay the timeline goes back to a 9-line window, so swipes reach the card or question instead of scrolling the timeline.
+  - A rebuild (1000-character limit) is followed by an upgrade for a longer chunk.
+- **Trade-off:** scrolling up past a chunk's top still costs one Bluetooth redraw per swipe. Only downward reading is fully on the glasses. A chunk cannot open part-way down, so there is no way to make upward scrolling native as well.

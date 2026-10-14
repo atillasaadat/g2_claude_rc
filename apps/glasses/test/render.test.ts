@@ -48,8 +48,8 @@ describe('header', () => {
     expect(at(800)).toContain('working ···')
   })
 
-  test('scrolled up shows how many newer lines', () => {
-    expect(frame(gs(withLines(paired(), 30), 'scroll_up')).header.endsWith('▼ 3 newer')).toBe(true)
+  test('scrolled up says newer lines are below', () => {
+    expect(frame(gs(withLines(paired(), 30), 'scroll_up')).header.endsWith('▼ newer')).toBe(true)
   })
 
   test('overlays swap the status for their gesture hints', () => {
@@ -137,6 +137,7 @@ describe('everything fits', () => {
     ['voice review of a long transcript', reduce(gs(paired(), 'tap', 'tap', 'tap'), { type: 'transcript', attempt: 1, text: 'please '.repeat(120), now: NOW }).state],
   ])('%s', (_name, s) => {
     assertFits(render(s))
-    expect(frameOf(render(s)).timeline.length).toBeLessThanOrEqual(1000)
+    // One upgrade carries 2000 characters (a rebuild 1000, and Display upgrades the rest).
+    expect(frameOf(render(s)).timeline.length).toBeLessThanOrEqual(2000)
   })
 })
