@@ -27244,8 +27244,8 @@ class StdioServerTransport {
 }
 
 // channel/src/channel.ts
-import { existsSync as existsSync2, readFileSync as readFileSync2, unwatchFile, watchFile, writeFileSync as writeFileSync2 } from "fs";
-import { join as join4 } from "path";
+import { existsSync as existsSync2, readFileSync as readFileSync3, unwatchFile, watchFile, writeFileSync as writeFileSync3 } from "fs";
+import { dirname, join as join5 } from "path";
 // node_modules/.bun/@modelcontextprotocol+sdk@1.32.0+2b91fc17bf64bdfd/node_modules/@modelcontextprotocol/sdk/dist/esm/server/zod-compat.js
 function isZ4Schema(s) {
   const schema = s;
@@ -28719,6 +28719,9 @@ var TEXT_MAX = 16000;
 var SHORT_MAX = 500;
 var PROMPT_MAX = 4000;
 var QUESTION_OPTIONS_MAX = 4;
+var HISTORY_ITEMS_MAX = 160;
+var HISTORY_BYTES_MAX = 32000;
+var HISTORY_REPLY_MAX = 4000;
 
 // packages/protocol/src/crypto.ts
 var enc = new TextEncoder;
@@ -28762,6 +28765,21 @@ var REQUEST_ID_RE = /^[a-km-z]{5}$/;
 var requestId = exports_external.string().regex(REQUEST_ID_RE);
 var shortText = exports_external.string().max(SHORT_MAX);
 var id = exports_external.string().min(1).max(64);
+var eventBody = exports_external.strictObject({
+  type: exports_external.enum(["prompt", "tool_start", "tool_end", "notify"]),
+  tool: shortText.optional(),
+  summary: shortText,
+  detail: exports_external.string().max(TEXT_MAX).optional(),
+  origin: exports_external.enum(["glasses", "local"]).optional()
+});
+var replyBody = exports_external.strictObject({ text: exports_external.string().max(TEXT_MAX) });
+var glanceBody = exports_external.strictObject({ text: exports_external.string().max(GLANCE_MAX) });
+var itemHead = { id, ts: exports_external.number().int().nonnegative() };
+var historyItemSchema = exports_external.discriminatedUnion("kind", [
+  exports_external.strictObject({ ...itemHead, kind: exports_external.literal("event"), body: eventBody }),
+  exports_external.strictObject({ ...itemHead, kind: exports_external.literal("reply"), body: replyBody }),
+  exports_external.strictObject({ ...itemHead, kind: exports_external.literal("glance"), body: glanceBody })
+]);
 var bodySchemas = {
   session: exports_external.strictObject({
     name: shortText,
@@ -28769,15 +28787,9 @@ var bodySchemas = {
     state: exports_external.enum(["idle", "working", "waiting", "stopped", "ended"]),
     mode: shortText.optional()
   }),
-  event: exports_external.strictObject({
-    type: exports_external.enum(["prompt", "tool_start", "tool_end", "notify"]),
-    tool: shortText.optional(),
-    summary: shortText,
-    detail: exports_external.string().max(TEXT_MAX).optional(),
-    origin: exports_external.enum(["glasses", "local"]).optional()
-  }),
-  reply: exports_external.strictObject({ text: exports_external.string().max(TEXT_MAX) }),
-  glance: exports_external.strictObject({ text: exports_external.string().max(GLANCE_MAX) }),
+  event: eventBody,
+  reply: replyBody,
+  glance: glanceBody,
   permission: exports_external.strictObject({
     request_id: requestId,
     tool_name: shortText,
@@ -28792,12 +28804,13 @@ var bodySchemas = {
   }),
   question_resolved: exports_external.strictObject({ question_id: id }),
   ack: exports_external.strictObject({ ids: exports_external.array(id).max(20) }),
+  history: exports_external.strictObject({ items: exports_external.array(historyItemSchema).max(HISTORY_ITEMS_MAX) }),
   prompt: exports_external.strictObject({ text: exports_external.string().min(1).max(PROMPT_MAX) }),
   verdict: exports_external.strictObject({ request_id: requestId, behavior: exports_external.enum(["allow", "deny"]) }),
   answer: exports_external.strictObject({ question_id: id, choice: shortText.min(1) }),
   stop: exports_external.strictObject({})
 };
-var C2G_KINDS = ["session", "event", "reply", "glance", "permission", "permission_resolved", "question", "question_resolved", "ack"];
+var C2G_KINDS = ["session", "event", "reply", "glance", "permission", "permission_resolved", "question", "question_resolved", "ack", "history"];
 var G2C_KINDS = ["prompt", "verdict", "answer", "stop"];
 var kindsFor = { c2g: C2G_KINDS, g2c: G2C_KINDS };
 var header = exports_external.strictObject({
@@ -28918,7 +28931,7 @@ class SecureChannel {
     const frame = await sealFrame(this.key, this.roomId, this.outDir, enc2.encode(JSON.stringify(env)));
     if (frame.length > MAX_FRAME_BYTES)
       throw new Error("envelope too large");
-    return { id: env.id, frame };
+    return { id: env.id, ts: env.ts, frame };
   }
   async open(frame) {
     const r = await this.openTracked(frame);
@@ -31336,14 +31349,74 @@ function relayRoomUrl(relayUrl, roomId, role, auth) {
 function relayPairUrl(relayUrl, roomId, role) {
   return `${trim(relayUrl)}/v1/pair/${roomId}?role=${role}`;
 }
+// channel/src/history.ts
+import { readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "fs";
+import { join } from "path";
+var HISTORY_FILE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+var SUFFIX = ".history.json";
+var historyPath = (sessionsDir, sid) => join(sessionsDir, `${sid}${SUFFIX}`);
+function pruneHistoryFiles(sessionsDir, now = Date.now()) {
+  try {
+    for (const name of readdirSync(sessionsDir)) {
+      if (!name.endsWith(SUFFIX))
+        continue;
+      const path = join(sessionsDir, name);
+      if (now - statSync(path).mtimeMs > HISTORY_FILE_TTL_MS)
+        rmSync(path, { force: true });
+    }
+  } catch {}
+}
+
+class SessionHistory {
+  path;
+  items = [];
+  constructor(path) {
+    this.path = path;
+    if (!path)
+      return;
+    try {
+      const raw = JSON.parse(readFileSync(path, "utf8"));
+      if (!Array.isArray(raw))
+        return;
+      this.items = raw.flatMap((x) => {
+        const r = historyItemSchema.safeParse(x);
+        return r.success ? [r.data] : [];
+      });
+      this.trim();
+    } catch {}
+  }
+  record(item) {
+    const clipped = item.kind === "reply" && item.body.text.length > HISTORY_REPLY_MAX ? { ...item, body: { text: `${item.body.text.slice(0, HISTORY_REPLY_MAX - 1)}\u2026` } } : item;
+    this.items = [...this.items, clipped];
+    this.trim();
+    if (!this.path)
+      return;
+    try {
+      writeFileSync(this.path, JSON.stringify(this.items), { mode: 384 });
+    } catch {}
+  }
+  snapshot() {
+    return this.items;
+  }
+  trim() {
+    let kept = this.items.slice(-HISTORY_ITEMS_MAX);
+    let bytes2 = kept.reduce((n, x) => n + Buffer.byteLength(JSON.stringify(x)) + 1, 0);
+    while (bytes2 > HISTORY_BYTES_MAX && kept.length) {
+      bytes2 -= Buffer.byteLength(JSON.stringify(kept[0])) + 1;
+      kept = kept.slice(1);
+    }
+    this.items = kept;
+  }
+}
+
 // channel/src/config.ts
 import { homedir } from "os";
-import { basename, join } from "path";
+import { basename, join as join2 } from "path";
 var DEFAULT_RELAY_URL = "wss://atillasaadat.com/g2-claude";
 function loadConfig(env = process.env) {
   const projectDir = env.CLAUDE_PROJECT_DIR ?? process.cwd();
   return {
-    home: env.G2CC_HOME ?? join(homedir(), ".g2cc"),
+    home: env.G2CC_HOME ?? join2(homedir(), ".g2cc"),
     sessionId: env.CLAUDE_CODE_SESSION_ID || undefined,
     projectDir,
     sessionName: basename(projectDir),
@@ -31352,13 +31425,13 @@ function loadConfig(env = process.env) {
 }
 
 // channel/src/hook-socket.ts
-import { chmodSync, lstatSync, mkdirSync, rmSync } from "fs";
-import { join as join2 } from "path";
+import { chmodSync, lstatSync, mkdirSync, rmSync as rmSync2 } from "fs";
+import { join as join3 } from "path";
 var SAFE_SID = /^[A-Za-z0-9-]{1,64}$/;
 var MAX_BODY_BYTES = 5 * 1024 * 1024;
 var uid = () => process.getuid?.();
 function ensurePrivateDirs(home) {
-  const dir = join2(home, "sessions");
+  const dir = join3(home, "sessions");
   for (const d of [home, dir]) {
     mkdirSync(d, { recursive: true, mode: 448 });
     const st = lstatSync(d);
@@ -31373,12 +31446,12 @@ function ensurePrivateDirs(home) {
 function socketPath(home, sid) {
   if (!SAFE_SID.test(sid))
     throw new Error("unsafe session id");
-  return join2(home, "sessions", `${sid}.sock`);
+  return join3(home, "sessions", `${sid}.sock`);
 }
 function startHookSocket(opts) {
   ensurePrivateDirs(opts.home);
   const path = socketPath(opts.home, opts.sid);
-  rmSync(path, { force: true });
+  rmSync2(path, { force: true });
   const server = Bun.serve({
     unix: path,
     maxRequestBodySize: MAX_BODY_BYTES,
@@ -31413,7 +31486,7 @@ function startHookSocket(opts) {
       if (!ours)
         return;
       server.stop(true);
-      rmSync(path, { force: true });
+      rmSync2(path, { force: true });
     }
   };
 }
@@ -31679,6 +31752,9 @@ class SessionController {
   resync() {
     this.emitSession(this.tracker.snapshot());
     this.opts.emit({ kind: "ack", body: { ids: [] } });
+    const items = this.opts.history?.() ?? [];
+    if (items.length)
+      this.opts.emit({ kind: "history", body: { items: [...items] } });
     for (const p of this.pending.values())
       this.opts.emit({ kind: "permission", body: p });
     for (const q of this.questions.values())
@@ -31833,17 +31909,17 @@ class SessionController {
 }
 
 // channel/src/pairing-store.ts
-import { chmodSync as chmodSync2, existsSync, mkdirSync as mkdirSync2, readFileSync, renameSync, writeFileSync } from "fs";
-import { join as join3 } from "path";
+import { chmodSync as chmodSync2, existsSync, mkdirSync as mkdirSync2, readFileSync as readFileSync2, renameSync, writeFileSync as writeFileSync2 } from "fs";
+import { join as join4 } from "path";
 var fileSchema = exports_external.strictObject({ v: exports_external.literal(1), relayUrl: exports_external.string(), key: exports_external.string(), sttKey: exports_external.string().optional() });
 function pairingPath(home) {
-  return join3(home, "pairing.json");
+  return join4(home, "pairing.json");
 }
 function read(home) {
   const path = pairingPath(home);
   if (!existsSync(path))
     return null;
-  const f = fileSchema.parse(JSON.parse(readFileSync(path, "utf8")));
+  const f = fileSchema.parse(JSON.parse(readFileSync2(path, "utf8")));
   const key = fromBase64Url(f.key);
   if (key.length !== KEY_BYTES)
     throw new Error(`${path}: bad key length`);
@@ -31855,7 +31931,7 @@ function write(home, p) {
   const path = pairingPath(home);
   const tmp = `${path}.tmp`;
   const body = { v: 1, relayUrl: p.relayUrl, key: toBase64Url(p.key), ...p.sttKey ? { sttKey: p.sttKey } : {} };
-  writeFileSync(tmp, JSON.stringify(body, null, 2), { mode: 384 });
+  writeFileSync2(tmp, JSON.stringify(body, null, 2), { mode: 384 });
   renameSync(tmp, path);
   chmodSync2(path, 384);
 }
@@ -31939,18 +32015,27 @@ async function runChannel(cfg, transport) {
   let pairing2 = await loadOrCreatePairing(cfg.home, {
     relayUrl: cfg.relayUrlOverride ?? (existsSync2(pairingPath(cfg.home)) ? undefined : DEFAULT_RELAY_URL)
   });
-  const lastPath = cfg.sessionId && SAFE_SID.test(cfg.sessionId) ? join4(ensurePrivateDirs(cfg.home), `${cfg.sessionId}.last`) : null;
+  const lastPath = cfg.sessionId && SAFE_SID.test(cfg.sessionId) ? join5(ensurePrivateDirs(cfg.home), `${cfg.sessionId}.last`) : null;
   const lastAccepted = (() => {
     try {
-      return lastPath ? Number(readFileSync2(lastPath, "utf8")) || 0 : 0;
+      return lastPath ? Number(readFileSync3(lastPath, "utf8")) || 0 : 0;
     } catch {
       return 0;
     }
   })();
   let secure = await SecureChannel.create(pairing2.key, "computer", { notBefore: lastAccepted + 1 });
+  const sessionsDir = lastPath ? dirname(lastPath) : null;
+  if (sessionsDir)
+    pruneHistoryFiles(sessionsDir);
+  const history = new SessionHistory(sessionsDir && cfg.sessionId ? historyPath(sessionsDir, cfg.sessionId) : null);
   let outbound = Promise.resolve();
   const emit = (kind, body) => {
-    outbound = outbound.then(async () => relay.send(await secure.seal(kind, body, cfg.sessionId ? { sid: cfg.sessionId } : {}))).catch((err) => log(`dropped ${kind}: ${err.message}`));
+    outbound = outbound.then(async () => {
+      const { id: id2, ts, frame: frame2 } = await secure.sealWithId(kind, body, cfg.sessionId ? { sid: cfg.sessionId } : {});
+      if (kind === "event" || kind === "reply" || kind === "glance")
+        history.record({ id: id2, ts, kind, body });
+      relay.send(frame2);
+    }).catch((err) => log(`dropped ${kind}: ${err.message}`));
   };
   let glassesPresent = 0;
   let computersPresent = 0;
@@ -31986,7 +32071,7 @@ async function runChannel(cfg, transport) {
       log(`inbound ${env.kind}`);
       if (lastPath) {
         try {
-          writeFileSync2(lastPath, String(env.ts), { mode: 384 });
+          writeFileSync3(lastPath, String(env.ts), { mode: 384 });
         } catch {}
       }
       controller.onInbound(env);
@@ -32024,6 +32109,7 @@ async function runChannel(cfg, transport) {
     ownToolPrefix: ownToolPrefix(),
     autoAllowOwnTools: Boolean(process.env.CLAUDE_PLUGIN_ROOT),
     emit: (e) => emit(e.kind, e.body),
+    history: () => history.snapshot(),
     sendPrompt: (text) => {
       mcp.notification({ method: "notifications/claude/channel", params: { content: text.replace(/</g, "\u2039").replace(/>/g, "\u203A"), meta: { source_kind: "voice" } } }).catch((err) => log(`prompt not delivered: ${err.message}`));
     },

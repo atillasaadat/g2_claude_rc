@@ -18,7 +18,7 @@
 // the answer comes back as a channel message carrying question_id.
 
 import { z } from 'zod'
-import { REQUEST_ID_RE, type AnyEnvelope, type Body, type C2G_KINDS } from '@g2cc/protocol'
+import { REQUEST_ID_RE, type AnyEnvelope, type Body, type C2G_KINDS, type HistoryItem } from '@g2cc/protocol'
 import type { HookResponse } from './hook-socket'
 import { isDisplayTool, SessionTracker, translateHook, type HookPayload } from './hooks'
 import { clip, oneLine, redact } from './redact'
@@ -76,6 +76,8 @@ export interface ControllerOptions {
   sendAnswer?: (content: string, questionId: string) => void
   /** Prefix of this channel's own tool names (hooks.ts ownToolPrefix). Defaults to mcp__g2__. */
   ownToolPrefix?: string
+  /** The session's recent feed, resent on every resync. */
+  history?: () => readonly HistoryItem[]
   /**
    * Allow our own ask and glance from the PreToolUse hook. Only for the
    * plugin, which cannot ship permission rules; a from-source setup lists them
@@ -118,6 +120,8 @@ export class SessionController {
     this.emitSession(this.tracker.snapshot())
     // An empty ack says this channel acks commands, so the glasses can tell a lost prompt from an older plugin.
     this.opts.emit({ kind: 'ack', body: { ids: [] } })
+    const items = this.opts.history?.() ?? []
+    if (items.length) this.opts.emit({ kind: 'history', body: { items: [...items] } })
     for (const p of this.pending.values()) this.opts.emit({ kind: 'permission', body: p })
     for (const q of this.questions.values()) this.opts.emit({ kind: 'question', body: q })
   }

@@ -3,7 +3,7 @@
 
 import { z } from 'zod'
 import type { Direction } from './crypto'
-import { GLANCE_MAX, PROMPT_MAX, QUESTION_OPTIONS_MAX, SHORT_MAX, TEXT_MAX } from './limits'
+import { GLANCE_MAX, HISTORY_ITEMS_MAX, PROMPT_MAX, QUESTION_OPTIONS_MAX, SHORT_MAX, TEXT_MAX } from './limits'
 
 /** Claude Code permission request IDs: five letters from a-z, excluding l. */
 export const REQUEST_ID_RE = /^[a-km-z]{5}$/
@@ -11,6 +11,25 @@ export const REQUEST_ID_RE = /^[a-km-z]{5}$/
 const requestId = z.string().regex(REQUEST_ID_RE)
 const shortText = z.string().max(SHORT_MAX)
 const id = z.string().min(1).max(64)
+
+const eventBody = z.strictObject({
+  type: z.enum(['prompt', 'tool_start', 'tool_end', 'notify']),
+  tool: shortText.optional(),
+  summary: shortText,
+  detail: z.string().max(TEXT_MAX).optional(),
+  origin: z.enum(['glasses', 'local']).optional(),
+})
+const replyBody = z.strictObject({ text: z.string().max(TEXT_MAX) })
+const glanceBody = z.strictObject({ text: z.string().max(GLANCE_MAX) })
+const itemHead = { id, ts: z.number().int().nonnegative() }
+
+/** One earlier feed envelope, as it was sent (same id and ts). */
+export const historyItemSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ ...itemHead, kind: z.literal('event'), body: eventBody }),
+  z.strictObject({ ...itemHead, kind: z.literal('reply'), body: replyBody }),
+  z.strictObject({ ...itemHead, kind: z.literal('glance'), body: glanceBody }),
+])
+export type HistoryItem = z.infer<typeof historyItemSchema>
 
 export const bodySchemas = {
   // computer -> glasses
@@ -21,15 +40,9 @@ export const bodySchemas = {
     state: z.enum(['idle', 'working', 'waiting', 'stopped', 'ended']),
     mode: shortText.optional(),
   }),
-  event: z.strictObject({
-    type: z.enum(['prompt', 'tool_start', 'tool_end', 'notify']),
-    tool: shortText.optional(),
-    summary: shortText,
-    detail: z.string().max(TEXT_MAX).optional(),
-    origin: z.enum(['glasses', 'local']).optional(),
-  }),
-  reply: z.strictObject({ text: z.string().max(TEXT_MAX) }),
-  glance: z.strictObject({ text: z.string().max(GLANCE_MAX) }),
+  event: eventBody,
+  reply: replyBody,
+  glance: glanceBody,
   permission: z.strictObject({
     request_id: requestId,
     tool_name: shortText,
@@ -50,6 +63,13 @@ export const bodySchemas = {
    * Older apps drop the unknown kind.
    */
   ack: z.strictObject({ ids: z.array(id).max(20) }),
+  /**
+   * The session's recent feed, oldest first, sent on every resync. The relay's
+   * history is shared by every session on the computer and fills up with
+   * resyncs, so this is how a phone that opens later still sees what happened.
+   * Older apps drop the unknown kind.
+   */
+  history: z.strictObject({ items: z.array(historyItemSchema).max(HISTORY_ITEMS_MAX) }),
   // glasses -> computer
   prompt: z.strictObject({ text: z.string().min(1).max(PROMPT_MAX) }),
   verdict: z.strictObject({ request_id: requestId, behavior: z.enum(['allow', 'deny']) }),
@@ -60,7 +80,7 @@ export const bodySchemas = {
 export type Kind = keyof typeof bodySchemas
 export type Body<K extends Kind> = z.infer<(typeof bodySchemas)[K]>
 
-export const C2G_KINDS = ['session', 'event', 'reply', 'glance', 'permission', 'permission_resolved', 'question', 'question_resolved', 'ack'] as const
+export const C2G_KINDS = ['session', 'event', 'reply', 'glance', 'permission', 'permission_resolved', 'question', 'question_resolved', 'ack', 'history'] as const
 export const G2C_KINDS = ['prompt', 'verdict', 'answer', 'stop'] as const
 
 const kindsFor: Record<Direction, readonly Kind[]> = { c2g: C2G_KINDS, g2c: G2C_KINDS }

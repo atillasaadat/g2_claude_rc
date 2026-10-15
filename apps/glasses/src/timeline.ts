@@ -15,6 +15,8 @@ export interface TimelineEntry {
   tool?: string
   result?: string
   origin?: 'glasses' | 'local'
+  /** The tool_end envelope merged into this tool line, so a replay of it is recognised. */
+  endId?: string
 }
 
 export interface TimelineLines {

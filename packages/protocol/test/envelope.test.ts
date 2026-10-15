@@ -20,6 +20,13 @@ const samples: Record<Kind, unknown> = {
   question: { question_id: 'q1', question: 'Which branch?', options: ['main', 'dev'] },
   question_resolved: { question_id: 'q1' },
   ack: { ids: ['a1b2c3'] },
+  history: {
+    items: [
+      { id: 'e1', ts: 1, kind: 'event', body: { type: 'prompt', summary: 'run the tests' } },
+      { id: 'r1', ts: 2, kind: 'reply', body: { text: 'Done.' } },
+      { id: 'g1', ts: 3, kind: 'glance', body: { text: 'Tests pass' } },
+    ],
+  },
   prompt: { text: 'run the tests' },
   verdict: { request_id: 'abcde', behavior: 'allow' },
   answer: { question_id: 'q1', choice: 'main' },
@@ -103,5 +110,16 @@ describe('makeEnvelope', () => {
   test('carries an optional session id', () => {
     const env = makeEnvelope('reply', { text: 'hi' }, { sid: 'b6cb35c4-a08d-4b7c-815b-991d9bd2ade9' })
     expect(parseEnvelope(env, 'c2g').sid).toBe('b6cb35c4-a08d-4b7c-815b-991d9bd2ade9')
+  })
+})
+
+describe('history', () => {
+  const wrap = (items: unknown[]) => ({ ...makeEnvelope('glance', { text: 'x' }), kind: 'history', body: { items } })
+  test('rejects items that are not feed envelopes', () => {
+    expect(() => parseEnvelope(wrap([{ id: 'p', ts: 1, kind: 'permission', body: {} }]), 'c2g')).toThrow()
+    expect(() => parseEnvelope(wrap([{ id: 'e', ts: 1, kind: 'event', body: { type: 'tool_start', summary: 'x', extra: 1 } }]), 'c2g')).toThrow()
+  })
+  test('is computer to glasses only', () => {
+    expect(() => parseEnvelope(wrap([]), 'g2c')).toThrow()
   })
 })

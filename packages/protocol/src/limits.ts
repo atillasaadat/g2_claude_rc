@@ -19,3 +19,10 @@ export const TEXT_MAX = 16_000
 export const SHORT_MAX = 500
 export const PROMPT_MAX = 4_000
 export const QUESTION_OPTIONS_MAX = 4
+
+/** Feed items in a session's history envelope (tool starts and ends count separately). */
+export const HISTORY_ITEMS_MAX = 160
+/** A history envelope's JSON stays under this, well inside MAX_FRAME_BYTES; the oldest items go first. */
+export const HISTORY_BYTES_MAX = 32_000
+/** Replies are clipped to this in history, so one long reply cannot crowd out the rest. */
+export const HISTORY_REPLY_MAX = 4_000

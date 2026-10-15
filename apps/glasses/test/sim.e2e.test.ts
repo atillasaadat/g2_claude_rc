@@ -97,7 +97,7 @@ function litPixels(png: Uint8Array, y0: number, y1: number): number {
   return n
 }
 
-async function send<K extends 'session' | 'event' | 'reply' | 'glance' | 'permission' | 'permission_resolved' | 'question' | 'question_resolved' | 'ack'>(kind: K, body: Body<K>): Promise<void> {
+async function send<K extends 'session' | 'event' | 'reply' | 'glance' | 'permission' | 'permission_resolved' | 'question' | 'question_resolved' | 'ack' | 'history'>(kind: K, body: Body<K>): Promise<void> {
   relay.send(await computer.seal(kind, body))
 }
 
@@ -171,6 +171,19 @@ describe.skipIf(!RUN)('glasses app in the simulator', () => {
     expect(f.timeline).toContain('No activity yet')
   })
 
+  test('the session\'s earlier activity fills the timeline as soon as it arrives', async () => {
+    const old = Date.now() - 3_600_000
+    await send('history', {
+      items: [
+        { id: 'h1', ts: old, kind: 'event', body: { type: 'prompt', summary: 'earlier question' } },
+        { id: 'h2', ts: old + 1, kind: 'reply', body: { text: 'Earlier answer.' } },
+      ],
+    })
+    const f = await frameWhere(f => f.timeline.includes('Earlier answer.'), 'history on the timeline')
+    expect(f.timeline.split('\n')).toEqual(['> earlier question', '', 'Earlier answer.'])
+    await screenshot('history')
+  })
+
   test('the timeline shows merged tool lines, glance, and animated working dots', async () => {
     await send('session', { name: 'g2cc-sandbox', cwd: '/x', state: 'working', mode: 'auto' })
     await send('event', { type: 'prompt', summary: 'run the tests', origin: 'local' })
@@ -179,7 +192,7 @@ describe.skipIf(!RUN)('glasses app in the simulator', () => {
     await send('event', { type: 'tool_start', tool: 'Edit', summary: 'src/state.ts' })
     await send('glance', { text: 'Fixing the reducer' })
     const f = await frameWhere(f => f.timeline.includes('» Fixing the reducer'), 'timeline frame')
-    expect(f.timeline.split('\n')).toEqual(['> run the tests', '• Bash: bun test → ok', '▶ Edit: src/state.ts', '» Fixing the reducer'])
+    expect(f.timeline.split('\n').slice(-4)).toEqual(['> run the tests', '• Bash: bun test → ok', '▶ Edit: src/state.ts', '» Fixing the reducer'])
     await frameWhere(f => f.header.includes('working ··'), 'dots advanced')
     await Bun.sleep(300)
     const png = await screenshot('timeline')

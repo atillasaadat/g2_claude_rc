@@ -4,6 +4,13 @@ Every release has a git tag and a GitHub Release with the full commit list. App 
 
 Add the entry here before running `scripts/release.sh`, which refuses a version without one.
 
+## App 0.4.8
+- Opening the app shows each session's earlier activity, so you can scroll back through it without sending a new prompt. Needs plugin 0.4.7.
+- A reconnect no longer repeats lines on the timeline.
+
+## Plugin 0.4.7
+- Each session sends its recent activity (up to 160 items) whenever the phone connects, so a phone that opens later sees what happened before. It is kept in `~/.g2cc/sessions/<session>.history.json` (owner-only) so it survives `/reload-plugins`; files of sessions unused for a week are deleted.
+
 ## App 0.4.7
 - Scrolling the timeline is smooth. Once you scroll back, the glasses get a block of older lines and scroll through it themselves, one line per swipe with a scroll bar, without waiting on the phone. A long reply arrives whole and scrolls the same way. Swiping up past the top of the block loads the lines above it, and swiping down past its end goes on toward the newest lines. While you read, new activity does not move the text; double tap jumps back to live.
 

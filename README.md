@@ -20,6 +20,7 @@ Claude Code session ── hooks + MCP ──▶ g2 channel (Bun, spawned by Cla
 - **No listening ports, no VPN, no daemon.**
   - The only local process is the channel, which Claude Code starts over stdio.
   - Hooks reach it over a private Unix socket for each session (`~/.g2cc/sessions/<session>.sock`, owner-only).
+  - Each session keeps its recent feed (redacted, as the glasses saw it) in `~/.g2cc/sessions/<session>.history.json`, owner-only, so the app can show what happened before you opened it, even after `/reload-plugins`. Files of sessions unused for a week are deleted.
   - Before connecting, the hook checks who owns the directory and the socket, so another program cannot stand in for the channel. Any number of sessions run side by side.
 - **No claude.ai credentials outside Claude Code.** Everything uses official extension points: a channel (`notifications/claude/channel`, permission relay), command hooks, and MCP tools (`ask`, `glance`, `pair`). Remote Control keeps working alongside.
 - **End-to-end encryption.**
@@ -89,7 +90,7 @@ The relay admits a socket to a room only with the room's auth token (an HMAC of 
 
 | Gesture | Action |
 |---|---|
-| Swipe up / down | Scroll the timeline (the R1 ring works the same). Older lines scroll on the glasses themselves, a line per swipe, with a scroll bar |
+| Swipe up / down | Scroll the timeline (the R1 ring works the same). Older lines scroll on the glasses themselves, a line per swipe, with a scroll bar. Opening the app shows each session's earlier activity, so you can scroll back right away |
 | Tap | Menu: Talk, Stop Claude, Display off, End session. On a card: confirm |
 | Double tap | Jump to the newest line. On a card: leave it for later. In the menu: back |
 | OS side menu | Switch sessions or clear other sessions (with two or more). The glasses OS adds its own Close, Display off and brightness items. |

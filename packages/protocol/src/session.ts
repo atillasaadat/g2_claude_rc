@@ -56,13 +56,13 @@ export class SecureChannel<S extends Side = Side> {
     return (await this.sealWithId(kind, body, opts)).frame
   }
 
-  /** Seal, plus the envelope id, for a sender that waits for an ack. */
-  async sealWithId<K extends OutKind<S>>(kind: K, body: Body<K>, opts: { sid?: string } = {}): Promise<{ id: string; frame: Uint8Array }> {
+  /** Seal, plus the envelope id and timestamp, for a sender that waits for an ack or keeps a history. */
+  async sealWithId<K extends OutKind<S>>(kind: K, body: Body<K>, opts: { sid?: string } = {}): Promise<{ id: string; ts: number; frame: Uint8Array }> {
     // Validate our own output too, so a bug never ships a malformed envelope.
     const env = parseEnvelope(makeEnvelope(kind as Kind, body as Body<Kind>, opts), this.outDir)
     const frame = await sealFrame(this.key, this.roomId, this.outDir, enc.encode(JSON.stringify(env)))
     if (frame.length > MAX_FRAME_BYTES) throw new Error('envelope too large')
-    return { id: env.id, frame }
+    return { id: env.id, ts: env.ts, frame }
   }
 
   /** Returns the envelope, or null if it fails decryption, validation, or replay checks. */

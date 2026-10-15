@@ -815,3 +815,15 @@ No secrets or Anthropic credentials are involved. **Verified:** the first run pa
   - Under an overlay the timeline goes back to a 9-line window, so swipes reach the card or question instead of scrolling the timeline.
   - A rebuild (1000-character limit) is followed by an upgrade for a longer chunk.
 - **Trade-off:** scrolling up past a chunk's top still costs one Bluetooth redraw per swipe. Only downward reading is fully on the glasses. A chunk cannot open part-way down, so there is no way to make upward scrolling native as well.
+
+## Session history on open (2026-10-14, user report)
+
+- **Report:** opening the app showed no activity for a session that had plenty, so there was nothing to scroll back through until a new prompt.
+- **Cause:** the relay's history ring (100 frames) is shared by every session on the computer, and every glasses connect makes each channel resync (a `session` and an empty `ack`). With 6 sessions open, a check of the live room found the ring was almost all resync frames; the real feed of most sessions had been pushed out.
+- **Fix:** a new computer-to-glasses kind, `history {items}`: the session's recent feed (events, replies, glances), oldest first, each with the id and ts of the envelope that carried it live. The channel sends it on every resync, after the header.
+  - Capped at 160 items and 32 KB of JSON (replies clipped to 4,000 characters in history), well inside the 64 KB frame limit.
+  - Kept in `~/.g2cc/sessions/<sid>.history.json` (0600), so a restarted channel (`/reload-plugins`, a plugin update, `claude --resume`) still has it. Damaged entries are skipped on load; files untouched for 7 days are deleted when a channel starts.
+  - The app merges it: entries it already has (same id, including a merged tool end) appear once, live entries newer than the history stay after it, and an older history replayed by the relay after a newer one is ignored. History never moves the view or raises toasts, and a scrolled view keeps its distance from the bottom.
+  - The app also skips any feed envelope whose id is already on the timeline, which fixes duplicates when a fresh link replays the relay ring.
+  - Older apps drop the unknown kind; older plugins send none, and the app works as before.
+- **Not done:** trimming the relay ring or resync traffic. The history frames go through the ring too, so a phone connect downloads somewhat more (at most 100 frames, 1 MB, as before).

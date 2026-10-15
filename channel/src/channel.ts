@@ -5,12 +5,13 @@
 // controller sees them: `stop` (Phase 4) and `verdict` (Phase 5) so far.
 
 import { existsSync, readFileSync, unwatchFile, watchFile, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { z } from 'zod'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
-import { GLANCE_MAX, relayAuthToken, relayRoomUrl, SecureChannel, type Body, type C2G_KINDS } from '@g2cc/protocol'
+import { GLANCE_MAX, relayAuthToken, relayRoomUrl, SecureChannel, type Body, type C2G_KINDS, type HistoryItem } from '@g2cc/protocol'
+import { historyPath, pruneHistoryFiles, SessionHistory } from './history'
 import { DEFAULT_RELAY_URL, type ChannelConfig } from './config'
 import { ensurePrivateDirs, SAFE_SID, startHookSocket, type HookResponse, type HookSocket } from './hook-socket'
 import { SessionController } from './controller'
@@ -81,11 +82,20 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
   })()
   let secure = await SecureChannel.create(pairing.key, 'computer', { notBefore: lastAccepted + 1 })
 
+  const sessionsDir = lastPath ? dirname(lastPath) : null
+  if (sessionsDir) pruneHistoryFiles(sessionsDir)
+  const history = new SessionHistory(sessionsDir && cfg.sessionId ? historyPath(sessionsDir, cfg.sessionId) : null)
+
   // Sealing is async; a promise chain keeps envelopes in hook order.
   let outbound: Promise<void> = Promise.resolve()
   const emit = <K extends C2GKind>(kind: K, body: Body<K>): void => {
     outbound = outbound
-      .then(async () => relay.send(await secure.seal(kind, body, cfg.sessionId ? { sid: cfg.sessionId } : {})))
+      .then(async () => {
+        const { id, ts, frame } = await secure.sealWithId(kind, body, cfg.sessionId ? { sid: cfg.sessionId } : {})
+        // The same id and ts as the live envelope, so the glasses can tell what they already have.
+        if (kind === 'event' || kind === 'reply' || kind === 'glance') history.record({ id, ts, kind, body } as HistoryItem)
+        relay.send(frame)
+      })
       .catch(err => log(`dropped ${kind}: ${(err as Error).message}`))
   }
 
@@ -173,6 +183,7 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
     ownToolPrefix: ownToolPrefix(),
     autoAllowOwnTools: Boolean(process.env.CLAUDE_PLUGIN_ROOT),
     emit: e => emit(e.kind, e.body as never),
+    history: () => history.snapshot(),
     sendPrompt: text => {
       // meta keys must be identifiers or Claude Code drops them silently.
       void mcp

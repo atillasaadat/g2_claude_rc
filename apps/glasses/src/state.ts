@@ -7,7 +7,7 @@
 // active timeline. Priority (CLAUDE.md): permission card > question > voice >
 // timeline; the menu and session list are the user's own actions.
 
-import type { AnyEnvelope, Body } from '@g2cc/protocol'
+import type { AnyEnvelope, Body, HistoryItem } from '@g2cc/protocol'
 import { resolveGesture, type Gesture, type GestureMap } from './gestures'
 import { OVERLAY_WIDTH, TIMELINE_LINES, wrapLines } from './layout'
 import { toPlainText } from './plain'
@@ -77,6 +77,8 @@ export interface SessionView {
   liveEpoch: number
   /** The paired computer (relay room) the session talks through. */
   room: string
+  /** Timestamp of the newest history envelope applied; older ones (relay replay) are skipped. */
+  historyTs?: number
 }
 
 /** A session this phone was told to stop showing (phone view: Disconnect). */
@@ -399,12 +401,16 @@ function notifyOther(s: AppState, sid: string, what: string, now: number): AppSt
   return { ...withView(s, sid, { ...v, unread: true }), toast: { text: `◆ ${v.session?.name ?? 'session'}: ${what}`, until: now + TOAST_MS }, clock: Math.max(s.clock, now) }
 }
 
-function onEvent(v: SessionView, env: Extract<AnyEnvelope, { kind: 'event' }>, now: number, onTimeline: boolean): SessionView {
+/** Already on the timeline (a reconnect replays the relay's history to a fresh link). */
+const hasEntry = (v: SessionView, id: string): boolean => v.entries.some(e => e.id === id || e.endId === id)
+
+function onEvent(v: SessionView, env: Pick<Extract<AnyEnvelope, { kind: 'event' }>, 'id' | 'ts' | 'body'>, now: number, onTimeline: boolean): SessionView {
+  if (hasEntry(v, env.id)) return v
   const b = env.body
   if (b.type === 'tool_end') {
     // Merge into the most recent unfinished start of the same tool: one line per tool call.
     const idx = v.entries.findLastIndex(e => e.kind === 'tool' && e.tool === b.tool && e.result === undefined)
-    if (idx >= 0) return { ...v, entries: v.entries.map((e, i) => (i === idx ? { ...e, result: b.summary } : e)) }
+    if (idx >= 0) return { ...v, entries: v.entries.map((e, i) => (i === idx ? { ...e, result: b.summary, endId: env.id } : e)) }
     return withEntries(v, [...v.entries, { id: env.id, ts: env.ts, kind: 'tool', tool: b.tool, text: b.tool ?? '', result: b.summary }])
   }
   const entry: TimelineEntry =
@@ -420,12 +426,47 @@ function onEvent(v: SessionView, env: Extract<AnyEnvelope, { kind: 'event' }>, n
 }
 
 function onReply(v: SessionView, env: Extract<AnyEnvelope, { kind: 'reply' }>, now: number): SessionView {
+  if (hasEntry(v, env.id)) return v
   const entry: TimelineEntry = { id: env.id, ts: env.ts, kind: 'reply', text: toPlainText(env.body.text) }
   const next = withEntries(v, [...v.entries, entry])
   if (v.fromBottom !== 0 || now - env.ts > FRESH_MS) return next
   // Land on the start of a reply that is taller than the view; the glasses scroll through the rest.
   const start = buildTimeline(next.entries).starts.get(entry.id) ?? 0
   return historyAt(next, start)
+}
+
+/** Feed items as timeline entries, built the way live envelopes are (as old ones: no jumps). */
+function historyEntries(items: readonly HistoryItem[]): readonly TimelineEntry[] {
+  let v = EMPTY_VIEW
+  for (const it of items) {
+    if (hasEntry(v, it.id)) continue
+    if (it.kind === 'event') v = onEvent(v, it, Infinity, false)
+    else if (it.kind === 'reply') v = withEntries(v, [...v.entries, { id: it.id, ts: it.ts, kind: 'reply', text: toPlainText(it.body.text) }])
+    else v = withEntries(v, [...v.entries, { id: it.id, ts: it.ts, kind: 'glance', text: it.body.text }])
+  }
+  return v.entries
+}
+
+/**
+ * The session's recent feed, sent on every resync. It fills in what the
+ * relay's shared history no longer holds; entries the view already has are
+ * kept once, and anything newer than the history stays after it.
+ */
+function onHistory(v: SessionView, env: Extract<AnyEnvelope, { kind: 'history' }>): SessionView {
+  if (env.ts <= (v.historyTs ?? 0)) return v
+  const items = env.body.items
+  const restored = historyEntries(items)
+  const known = new Set(restored.flatMap(e => (e.endId ? [e.id, e.endId] : [e.id])))
+  const firstTs = items[0]?.ts ?? Infinity
+  const lastTs = items.at(-1)?.ts ?? -Infinity
+  const older = v.entries.filter(e => e.ts < firstTs && !known.has(e.id))
+  const newer = v.entries.filter(e => e.ts > lastTs && !known.has(e.id))
+  const merged = [...older, ...restored, ...newer]
+  const kept = merged.length > MAX_ENTRIES ? merged.slice(merged.length - MAX_ENTRIES) : merged
+  const same = kept.length === v.entries.length && kept.every((e, i) => e.id === v.entries[i]!.id && e.result === v.entries[i]!.result)
+  if (same) return { ...v, historyTs: env.ts }
+  // History only adds above what is on screen, so a scrolled view keeps its distance from the bottom.
+  return { ...v, entries: kept, historyTs: env.ts, fromBottom: Math.min(maxScroll(kept), v.fromBottom) }
 }
 
 /** Removes an ended session; if it was on screen, switches to the most recent other one. */
@@ -460,7 +501,10 @@ function onSessionEnvelope(s: AppState, sid: string, env: AnyEnvelope, now: numb
       return fresh && needsInput ? notifyOther(next, sid, 'needs your input', now) : next
     }
     case 'glance':
+      if (hasEntry(seen, env.id)) return withView(base, sid, seen)
       return withView(base, sid, withEntries(seen, [...seen.entries, { id: env.id, ts: env.ts, kind: 'glance', text: env.body.text }]))
+    case 'history':
+      return withView(base, sid, onHistory(seen, env))
     case 'reply': {
       const next = withView(base, sid, onReply(seen, env, now))
       return fresh ? notifyOther(next, sid, 'reply ready', now) : next

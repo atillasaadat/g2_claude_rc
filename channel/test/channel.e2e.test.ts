@@ -3,7 +3,7 @@
 // minus the live Claude Code session.
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { SecureChannel, type AnyEnvelope } from '@g2cc/protocol'
@@ -297,6 +297,38 @@ describe('session liveness', () => {
     received.length = 0
     other.stop()
     await until(() => received.some(e => e.kind === 'session' && e.sid === SESSION))
+  })
+})
+
+describe('session history', () => {
+  test('a phone that opens later gets the session\'s earlier feed, with the live ids, from the channel', async () => {
+    const pairing = await loadOrCreatePairing(home)
+    const late = await SecureChannel.create(pairing.key, 'glasses')
+    const got: AnyEnvelope[] = []
+    const phone = new RelayClient({
+      url: relayRoomUrl(relayUrl, late.roomId, 'glasses', await relayAuthToken(pairing.key, late.roomId)),
+      onFrame: async f => {
+        const env = await late.open(f)
+        if (env) got.push(env)
+      },
+    })
+    phone.start()
+    try {
+      // The resync for this join carries the history (the relay may replay older ones first).
+      await until(() => got.some(e => e.kind === 'history' && Date.now() - e.ts < 5_000))
+      const h = got.filter(e => e.kind === 'history').at(-1)!
+      if (h.kind !== 'history') throw new Error('unreachable')
+      expect(h.sid).toBe(SESSION)
+      const prompt = h.body.items.find(i => i.kind === 'event' && i.body.type === 'prompt' && i.body.summary === 'deploy it')
+      expect(prompt).toBeDefined()
+      expect(h.body.items.some(i => i.kind === 'glance' && i.body.text === 'Deployed v2, all green')).toBe(true)
+      expect(JSON.stringify(h.body)).not.toContain('supersecret123')
+      // Same id as the live envelope, so the app can tell what it already has.
+      expect(got.some(e => e.kind === 'event' && e.id === prompt!.id)).toBe(true)
+      expect(statSync(join(home, 'sessions', `${SESSION}.history.json`)).mode & 0o777).toBe(0o600)
+    } finally {
+      phone.stop()
+    }
   })
 })
 
