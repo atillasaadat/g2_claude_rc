@@ -120,7 +120,6 @@ function dispatch(msg: Msg): void {
   }
   for (const effect of result.effects) {
     if (effect.type === 'exit') void bridge.shutDownPageContainer(1)
-    if (effect.type === 'unpair') void unpair().catch(err => log('could not unpair:', (err as Error).message))
     if (effect.type === 'save_muted') void storage.saveMuted(effect.sessions).catch(err => log('could not save sessions:', (err as Error).message))
     if (effect.type === 'resync') void links.reconnect().catch(err => log('could not reconnect:', (err as Error).message))
     if (effect.type === 'send' && effect.kind === 'prompt') {
@@ -137,7 +136,7 @@ function dispatch(msg: Msg): void {
 
 const links = new Links(dispatch)
 
-/** End session on the glasses, or Forget all in the phone view: every computer goes. */
+/** Forget all in the phone view: every computer goes. */
 async function unpair(): Promise<void> {
   await storage.forgetPairings()
   links.closeAll()

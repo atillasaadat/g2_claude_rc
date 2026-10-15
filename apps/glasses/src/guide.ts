@@ -40,7 +40,7 @@ export const GUIDE_HTML = `
   <h3 class="g-h">On the glasses</h3>
   <table class="g-table">
     <tr><th>Swipe</th><td>Scroll the timeline; the glasses scroll older lines themselves (the R1 ring works too). Earlier activity is there as soon as the app opens. A long reply opens at its first line; swipe down to read on</td></tr>
-    <tr><th>Tap</th><td>Menu: Talk, Stop Claude, Display off, End session (unpairs this phone from every computer; asks first). On a card, confirm</td></tr>
+    <tr><th>Tap</th><td>Menu: Talk, Stop Claude, Display off, Close session (takes the session on screen off the glasses; Reconnect below brings it back). On a card, confirm</td></tr>
     <tr><th>Double tap</th><td>Back to the newest line. On a card, leave it for later</td></tr>
     <tr><th>Phone view</th><td>Sessions from every computer: show one on the glasses, disconnect it, or reconnect it. Pairing: your computers, each with Forget</td></tr>
     <tr><th>Side menu</th><td>Switch sessions or clear old ones. The glasses add Close, Display off and brightness.</td></tr>

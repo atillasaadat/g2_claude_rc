@@ -113,7 +113,6 @@ function voiceHint(s: AppState): string {
 
 function header(s: AppState): string {
   if (s.screen === 'timeline' || !s.paired) return statusHeader(s)
-  if (s.screen === 'menu' && s.confirmEnd) return fitLine('End session: unpair this phone? · 2× tap: back', HEADER_WIDTH)
   return fitLine(s.screen === 'voice' ? voiceHint(s) : HINTS[s.screen], HEADER_WIDTH)
 }
 
@@ -135,7 +134,7 @@ function timelineText(s: AppState, native: boolean): string {
 
 // Overlays ---------------------------------------------------------------
 
-/** The menu is a native list (see ContainerSpec.items); End session's question goes in the header. */
+/** The menu is a native list (see ContainerSpec.items). */
 function menuOverlay(s: AppState): { box: Box; content: string; items: string[] } {
   const box = listBox(menuItems(s).length)
   const items = menuItems(s).map(item => fitLine(item.label, innerWidth(box) - LIST_ITEM_INSET))

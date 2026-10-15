@@ -90,14 +90,14 @@ The relay admits a socket to a room only with the room's auth token (an HMAC of 
 | Gesture | Action |
 |---|---|
 | Swipe up / down | Scroll the timeline (the R1 ring works the same). Older lines scroll on the glasses themselves, a line per swipe, with a scroll bar. Opening the app shows each session's earlier activity, so you can scroll back right away. A long reply opens at its first line; swipe down to read on to the end |
-| Tap | Menu: Talk, Stop Claude, Display off, End session. On a card: confirm |
+| Tap | Menu: Talk, Stop Claude, Display off, Close session. On a card: confirm |
 | Double tap | Jump to the newest line. On a card: leave it for later. In the menu: back |
 | OS side menu | Switch sessions or clear other sessions (with two or more). The glasses OS adds its own Close, Display off and brightness items. |
 
 - **Sessions** (phone view): every connected session, from every paired computer, with its state and folder. Show on glasses switches to it, and Disconnect stops this phone showing it (Claude Code keeps running, and the terminal still asks for approvals). Disconnected sessions are listed with Reconnect.
 - **Display off** blanks the glasses until something needs you. Any gesture wakes them, and that first gesture does nothing else.
 - **Display sleep** (phone view, Display): keep the display always on (the default), or let it turn off after 5 s to 5 min while Claude works. It wakes for a reply, the end of a turn, an approval card, a question, or an alert from another session. It then stays on until you turn it off or start a new prompt.
-- **End session** unpairs this phone from every computer, after a confirm that starts on Cancel. Every session leaves the glasses, and `/g2:pair` reconnects. To drop just one computer, use Forget next to it under Pairing in the phone view.
+- **Close session** takes the session on screen off the glasses, with its approval cards and questions; the others and every pairing stay. Claude Code keeps running there. It is the glasses' version of Disconnect in the phone view, where Reconnect brings it back. To drop a computer, use Forget next to it under Pairing in the phone view; Forget all unpairs this phone.
 - **Voice:**
   - Choose Talk. The words fill in as you speak; tap to finish. Review the prompt (swipe to scroll a long one), then tap to send or double tap to cancel.
   - The header shows **→ Sent** once the computer has the prompt. On a weak phone connection it is resent for up to 50 s. If it still cannot get through, it comes back as **Not delivered. Send again?**, and one tap sends it again.

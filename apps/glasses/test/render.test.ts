@@ -71,16 +71,10 @@ describe('overlays', () => {
     const c = scene.containers.find(x => x.id === OVERLAY_ID)!
     expect(c.name).toBe('menu')
     expect(c.box.x).toBeGreaterThan(288)
-    expect(c.items).toEqual(['Talk', 'Stop Claude', 'Display off', 'End session'])
-    expect(c.content.split('\n')).toEqual(['Talk', 'Stop Claude', 'Display off', 'End session'])
+    expect(c.items).toEqual(['Talk', 'Stop Claude', 'Display off', 'Close session'])
+    expect(c.content.split('\n')).toEqual(['Talk', 'Stop Claude', 'Display off', 'Close session'])
     expect(scene.containers.filter(x => x.capture).map(x => x.id)).toEqual([OVERLAY_ID])
     expect(c.box.y + c.box.h).toBeLessThanOrEqual(288)
-  })
-
-  test('End session asks in the header, with Cancel first', () => {
-    const s = gs(paired(), 'tap', 'scroll_down', 'scroll_down', 'scroll_down', 'tap')
-    expect(byId(s, OVERLAY_ID)!.items).toEqual(['Cancel', 'Unpair phone'])
-    expect(byId(s, HEADER_ID)!.content).toStartWith('End session: unpair this phone?')
   })
 
   test('permission card: title, description, preview, and side-by-side choices', () => {

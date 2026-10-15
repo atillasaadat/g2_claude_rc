@@ -849,3 +849,8 @@ No secrets or Anthropic credentials are involved. **Verified:** the first run pa
 - **Request:** make `/g2:pair show` the only behavior, since the private dialog does not work in Claude Code web sessions; drop the Accept/Decline dialog and the `show` argument.
 - **Change:** the `pair` tool takes no arguments and always returns the code and the QR link for the conversation (3 minutes, once, the session is told when a phone pairs). The elicitation dialog path is removed. `bun channel/pair.ts` in a terminal is unchanged.
 - **Trade-off:** the code is now always in Claude's context, which the dialog avoided. The short life, single use, CPace's 3-attempt limit, the pairing notice and `/g2:unpair` are what bound that risk.
+
+## Close session replaces End session (2026-10-15, user decision)
+- **Report:** End session unpaired every Claude Code session. That was the 2026-10-03 design (End session = unpair this phone), chosen when there was one computer; with multi-computer pairing it forgot every computer.
+- **Choice:** close just the session on screen (the user picked this over unpairing only that computer, or keeping it).
+- **Change:** the menu item is Close session. It uses the phone view's Disconnect (`muteSession`): the session, its cards and its questions leave the glasses, the mute is saved on the phone so resyncs do not bring it back, and Reconnect in the phone view undoes it. Since it is undoable and touches no pairing, it has no confirm step. Forget all in the phone view is now the only way to unpair everything.

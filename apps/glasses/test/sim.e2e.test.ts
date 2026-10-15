@@ -242,7 +242,7 @@ describe.skipIf(!RUN)('glasses app in the simulator', () => {
     await frameWhere(f => f.header.includes('working'), 'working header')
     await input('click')
     const menu = await frameWhere(f => f.overlay?.name === 'menu', 'menu')
-    expect(ov(menu).split('\n')).toEqual(['Talk', 'Stop Claude', 'Display off', 'End session'])
+    expect(ov(menu).split('\n')).toEqual(['Talk', 'Stop Claude', 'Display off', 'Close session'])
     await Bun.sleep(600) // let the fade finish before the screenshot
     await screenshot('menu')
     // The firmware moves the list highlight itself: nothing is redrawn, so wait instead of watching frames.
@@ -367,7 +367,7 @@ describe.skipIf(!RUN)('glasses app in the simulator', () => {
     await frameWhere(f => !f.overlay, 'question set aside')
     await input('click')
     const menu = await frameWhere(f => f.overlay?.name === 'menu', 'menu')
-    expect(ov(menu).split('\n')).toEqual(['Review: Bash', 'Review question', 'Talk', 'Stop Claude', 'Display off', 'End session'])
+    expect(ov(menu).split('\n')).toEqual(['Review: Bash', 'Review question', 'Talk', 'Stop Claude', 'Display off', 'Close session'])
     await Bun.sleep(400)
     await screenshot('menu-long')
     for (let i = 0; i < 5; i++) {

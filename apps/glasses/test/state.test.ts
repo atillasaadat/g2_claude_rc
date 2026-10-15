@@ -3,7 +3,7 @@ import { DEFAULT_GESTURES } from '../src/gestures'
 import { TIMELINE_LINES } from '../src/layout'
 import { initialState, isAnimating, reduce, SCROLL_STEP, totalLines, type AppState } from '../src/state'
 import { view } from '../src/state'
-import { env, g, gs, NOW, paired, recv, withLines } from './helpers'
+import { env, g, gs, NOW, paired, perm, recv, withLines } from './helpers'
 
 describe('timeline: envelopes', () => {
   test('session updates the header info; older replays never clobber newer state', () => {
@@ -67,22 +67,16 @@ describe('timeline: scrolling', () => {
     expect(g(r.state, 'double_tap').effects).toEqual([])
   })
 
-  test('End session asks first, starting on Cancel, and Unpair phone forgets everything', () => {
-    const base = recv(withLines(paired(), 3), env('session', { name: 'repo', cwd: '/r', state: 'idle' }))
-    const asking = gs(base, 'tap', 'scroll_down', 'scroll_down', 'scroll_down', 'tap')
-    expect(asking.confirmEnd).toBe(true)
-    expect(asking.menuIndex).toBe(0)
-    // Cancel (the default) closes the menu and keeps the pairing.
-    const kept = g(asking, 'tap')
-    expect([kept.effects, kept.state.screen, kept.state.paired]).toEqual([[], 'timeline', true])
-    // Unpair phone asks main to forget the pairing...
-    const gone = g(gs(asking, 'scroll_down'), 'tap')
-    expect(gone.effects).toEqual([{ type: 'unpair' }])
-    // ...and once it has, no session, card or question is left.
-    const after = reduce(gone.state, { type: 'paired', paired: false }).state
-    expect([after.paired, Object.keys(after.views), after.cards, after.questions]).toEqual([false, [], [], []])
-    // Reopening the menu starts fresh, not on the question.
-    expect(gs(asking, 'double_tap', 'tap').confirmEnd).toBe(false)
+  test('Close session closes only the session on screen; the others and the pairing stay', () => {
+    const sess = (sid: string, name: string) => ({ ...env('session', { name, cwd: '/r', state: 'idle' }), sid })
+    let s = recv(recv(paired(), sess('a', 'first')), sess('b', 'second'))
+    s = recv(s, { ...env('permission', perm()), sid: 'a' })
+    s = { ...s, screen: 'timeline', active: 'a' }
+    const r = g(gs(s, 'tap', 'scroll_down', 'scroll_down', 'scroll_down', 'scroll_down'), 'tap')
+    expect(r.effects).toEqual([{ type: 'save_muted', sessions: [{ sid: 'a', name: 'first' }] }])
+    expect([r.state.paired, r.state.active === 'a', 'a' in r.state.views, 'b' in r.state.views, r.state.cards]).toEqual([true, false, false, true, []])
+    // It stays closed across resyncs; the phone view's Reconnect brings it back.
+    expect(recv(r.state, sess('a', 'first')).views.a).toBeUndefined()
   })
 
   test('a fresh long reply lands on its first line; a short one stays at the bottom', () => {

@@ -61,7 +61,7 @@ describe('Display', () => {
     const page = calls[1]!.arg as { containerTotalNum: number; textObject: unknown[]; listObject: Array<{ isEventCapture: number; itemContainer: { itemName: string[] } }> }
     expect(page.containerTotalNum).toBe(3)
     expect(page.textObject.length).toBe(2)
-    expect(page.listObject[0]!.itemContainer.itemName).toEqual(['Talk', 'Stop Claude', 'Display off', 'End session'])
+    expect(page.listObject[0]!.itemContainer.itemName).toEqual(['Talk', 'Stop Claude', 'Display off', 'Close session'])
     expect(page.listObject[0]!.isEventCapture).toBe(1)
   })
 

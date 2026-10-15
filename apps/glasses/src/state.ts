@@ -32,7 +32,7 @@ export type Link = 'offline' | 'relay' | 'online'
 export type ScreenId = 'timeline' | 'menu' | 'card' | 'question' | 'voice'
 
 export interface MenuItem {
-  id: 'review' | 'review_question' | 'talk' | 'stop' | 'dark' | 'end' | 'end_cancel' | 'end_confirm'
+  id: 'review' | 'review_question' | 'talk' | 'stop' | 'dark' | 'close'
   label: string
   available: boolean
 }
@@ -124,8 +124,6 @@ export interface AppState {
   clock: number
   overlaySince: number
   menuIndex: number
-  /** The menu is asking whether to unpair (End session). */
-  confirmEnd: boolean
   /** Pending permission requests, oldest first. The first one is on screen. */
   cards: readonly PermissionCard[]
   /** Starts on deny, so a stray tap never approves anything. */
@@ -186,7 +184,6 @@ export type Msg =
 export type Effect =
   | { type: 'exit' }
   /** Forget every pairing on this phone: every session goes, and /g2:pair reconnects. */
-  | { type: 'unpair' }
   | { type: 'send'; kind: 'stop'; body: Record<string, never>; sid: string; room: string }
   | { type: 'send'; kind: 'verdict'; body: Body<'verdict'>; sid: string; room: string }
   | { type: 'send'; kind: 'prompt'; body: Body<'prompt'>; sid: string; room: string }
@@ -213,7 +210,6 @@ export function initialState(): AppState {
     clock: 0,
     overlaySince: 0,
     menuIndex: 0,
-    confirmEnd: false,
     cards: [],
     cardChoice: 'deny',
     cardShownAt: 0,
@@ -298,20 +294,13 @@ export function osMenu(s: AppState): OsMenuItem[] {
 export const sessionName = (s: AppState, sid: string): string => view(s, sid).session?.name ?? 'Claude Code'
 
 export function menuItems(s: AppState): MenuItem[] {
-  // End session asks first, on Cancel, so one stray tap never unpairs the phone.
-  if (s.confirmEnd) {
-    return [
-      { id: 'end_cancel', label: 'Cancel', available: true },
-      { id: 'end_confirm', label: 'Unpair phone', available: true },
-    ]
-  }
   return [
     ...(s.cards[0] ? [{ id: 'review' as const, label: `Review: ${s.cards[0].tool_name}`, available: true }] : []),
     ...(s.questions[0] ? [{ id: 'review_question' as const, label: 'Review question', available: true }] : []),
     { id: 'talk', label: s.voiceAvailable ? 'Talk' : 'Talk (no Groq key)', available: s.voiceAvailable },
     { id: 'stop', label: 'Stop Claude', available: true },
     { id: 'dark', label: 'Display off', available: true },
-    { id: 'end', label: 'End session', available: true },
+    { id: 'close', label: 'Close session', available: true },
   ]
 }
 
@@ -679,12 +668,11 @@ function confirmMenu(s: AppState, now: number): Result {
       return done(s.voiceAvailable ? startListening(s, now) : s)
     case 'dark':
       return done({ ...s, screen: 'timeline', dark: true })
-    case 'end':
-      return done({ ...s, confirmEnd: true, menuIndex: 0 })
-    case 'end_cancel':
-      return done({ ...s, confirmEnd: false, screen: 'timeline' })
-    case 'end_confirm':
-      return done({ ...s, confirmEnd: false, screen: 'timeline' }, [{ type: 'unpair' }])
+    case 'close': {
+      // Only the session on screen leaves the glasses, as Disconnect in the phone view; Reconnect there brings it back.
+      const r = muteSession({ ...s, screen: 'timeline' }, s.active)
+      return done(r.state, r.effects)
+    }
     default:
       return done(s)
   }
@@ -704,7 +692,7 @@ function selectSession(s: AppState, sid: string): AppState {
   return withView({ ...s, active: sid, toast: undefined }, sid, { ...view(s, sid), unread: false })
 }
 
-/** Phone view Disconnect: the session, its cards and its questions leave this phone. */
+/** Phone view Disconnect, or Close session on the glasses: the session, its cards and its questions leave this phone. */
 function muteSession(s: AppState, sid: string): Result {
   if (!s.views[sid] || s.muted.some(m => m.sid === sid)) return done(s)
   const muted = [...s.muted, { sid, name: sessionName(s, sid) }].slice(-MAX_MUTED)
@@ -813,7 +801,7 @@ function onGesture(s: AppState, gesture: Gesture, map: GestureMap, now: number):
     case 'timeline.live':
       return done(mapActive(s, toLive))
     case 'menu.open':
-      return done({ ...open(s, 'menu', now), menuIndex: 0, confirmEnd: false })
+      return done({ ...open(s, 'menu', now), menuIndex: 0 })
     case 'voice.start':
       return done(s.voiceAvailable ? startListening(s, now) : s)
     case 'nav.back':

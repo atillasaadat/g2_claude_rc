@@ -4,6 +4,9 @@ Every release has a git tag and a GitHub Release with the full commit list. App 
 
 Add the entry here before running `scripts/release.sh`, which refuses a version without one.
 
+## App 0.4.11
+- The tap menu's End session is now **Close session**: it takes only the session on screen off the glasses, with its cards and questions. Other sessions and every computer's pairing stay. Before, it unpaired the phone from every computer. Reconnect in the phone view brings a closed session back; Forget all there still unpairs everything.
+
 ## Plugin 0.4.9
 - `/g2:pair` always shows the code and a link to its QR code in the conversation, so it works the same in the terminal, the Claude app and Claude Code on the web. The terminal dialog (with its Accept and Decline buttons) and the `show` argument are gone. A code works once, for 3 minutes.
 

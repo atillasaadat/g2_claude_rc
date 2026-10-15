@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import { OsEventTypeList, type EvenHubEvent } from '@evenrealities/even_hub_sdk'
 import { toSignal } from '../src/input'
 import { reduce } from '../src/state'
-import { gs, paired } from './helpers'
+import { env, gs, paired, recv } from './helpers'
 
 const ev = (e: Record<string, unknown>): EvenHubEvent => e as unknown as EvenHubEvent
 
@@ -31,12 +31,13 @@ describe('menu_select', () => {
     expect(r.effects).toEqual([{ type: 'send', kind: 'stop', body: {}, sid: '', room: '' }])
   })
 
-  test('Talk opens the mic; End session asks before unpairing', () => {
+  test('Talk opens the mic; Close session closes the session on screen, never the pairing', () => {
     expect(reduce(gs(paired(), 'tap'), { type: 'menu_select', index: 0 }).state.voice.phase).toBe('listening')
-    const asked = reduce(gs(paired(), 'tap'), { type: 'menu_select', index: 3 }).state
-    expect(asked.confirmEnd).toBe(true)
-    expect(reduce(asked, { type: 'menu_select', index: 0 }).effects).toEqual([])
-    expect(reduce(asked, { type: 'menu_select', index: 1 }).effects).toEqual([{ type: 'unpair' }])
+    const s = { ...recv(paired(), { ...env('session', { name: 'repo', cwd: '/r', state: 'idle' }), sid: 'a' }), active: 'a' }
+    const r = reduce(gs(s, 'tap'), { type: 'menu_select', index: 3 })
+    expect(r.effects).toEqual([{ type: 'save_muted', sessions: [{ sid: 'a', name: 'repo' }] }])
+    expect(r.state.views.a).toBeUndefined()
+    expect([r.state.paired, r.state.screen]).toEqual([true, 'timeline'])
   })
 
   test('ignored when the menu is not open', () => {
