@@ -1,4 +1,4 @@
-// Scan QR (phone view): reads the pairing QR from /g2:pair show's link page,
+// Scan QR (phone view): reads the pairing QR from /g2:pair's link page,
 // from a photo taken with the phone camera.
 //
 // The decoder is ZXing (zxing-wasm). jsQR missed real photos of a screen

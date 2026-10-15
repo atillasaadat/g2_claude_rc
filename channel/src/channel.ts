@@ -270,11 +270,6 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
     return 'The user dismissed the question without choosing. Do not assume an answer: continue another way, or ask differently.'
   }
 
-  /**
-   * The code is shown with an MCP elicitation dialog, which only the user
-   * sees: if the model saw it, a prompt injection could leak it and whoever
-   * typed it first would get the key.
-   */
   /** Tells the session a phone paired, so an unexpected pairing does not go unnoticed. */
   const announcePairing = (): void => {
     void mcp
@@ -289,9 +284,10 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
   }
 
   /**
-   * /g2:pair show: the code and a QR for this conversation, so the Claude app
-   * and the web viewer see it too. That puts the code in the model's context,
-   * so it is opt-in and short-lived, and the session hears about the pairing.
+   * /g2:pair: the code and a QR link in the conversation, so it works in the
+   * terminal, the Claude app and the web viewer alike. That puts the code in
+   * the model's context, so it is short-lived, works once, and the session
+   * hears about the pairing.
    */
   const pairInConversation = async (): Promise<string> => {
     pairingCode?.cancel()
@@ -317,59 +313,6 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
     await loadOrCreatePairing(cfg.home, { rotate: true })
     await rekey()
     return 'Unpaired: this computer has a new key, so every phone that was paired is cut off. Run /g2:pair to pair a phone again.'
-  }
-
-  const pairByCode = async (): Promise<string> => {
-    if (!mcp.getClientCapabilities()?.elicitation) {
-      return 'Pairing needs an interactive Claude Code session, which can show the code in a dialog. Start one (cc-g2) and run /g2:pair there.'
-    }
-    pairingCode?.cancel()
-    const open = await openCodePairing(pairing)
-    pairingCode = open
-    void open.done.then(ok => {
-      if (pairingCode === open) pairingCode = null
-      log(ok ? 'phone paired by code' : 'pairing code closed')
-      if (ok) announcePairing()
-    })
-    let result: boolean | null = null
-    void open.done.then(ok => (result = ok))
-    // The dialog stays up until the phone has paired: it closes by itself
-    // then, and an early Accept (Enter is the default) brings it back with
-    // the same code, so the code can never vanish before it is used.
-    let notice = ''
-    while (result === null) {
-      const left = open.expiresAt - Date.now()
-      if (left <= 0) break
-      const closeDialog = new AbortController()
-      void open.done.then(() => closeDialog.abort())
-      let action: string
-      try {
-        const r = await mcp.elicitInput(
-          {
-            message:
-              `${notice}G2 pairing code:  ${open.code}\n\n` +
-              `Type it in the G2 Claude Code app under Pairing. It works once, for ${Math.max(1, Math.round(left / 60_000))} more minutes. ` +
-              `This closes by itself once the app has paired. Decline to cancel.`,
-            requestedSchema: { type: 'object', properties: {} },
-          },
-          { signal: closeDialog.signal, timeout: left },
-        )
-        action = r.action
-      } catch (err) {
-        if (closeDialog.signal.aborted || result !== null) break // paired (or closed) while the dialog was up
-        open.cancel()
-        return `Could not show the pairing dialog (${(err as Error).message}). Run /g2:pair again.`
-      }
-      if (action !== 'accept') {
-        open.cancel()
-        return 'Pairing cancelled. Run /g2:pair again for a new code.'
-      }
-      // Give a phone that is mid-exchange a moment before showing the code again.
-      await Promise.race([open.done, Bun.sleep(1_500)])
-      notice = 'Not paired yet, so here is the code again.\n\n'
-    }
-    if ((await open.done) === true) return 'Paired: the phone app now has this computer. The code was only shown to the user.'
-    return 'The code closed without pairing (too many wrong attempts, or it expired). Run /g2:pair again.'
   }
 
   const mcp = new Server(
@@ -398,11 +341,8 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
       {
         name: 'pair',
         description:
-          'Pair the G2 Claude Code phone app with this computer. Call it only when the user asks to pair (for example through /g2:pair). By default it shows a one-time code in a private terminal dialog and the code never enters this conversation. With show: true, only when the user explicitly asked to show the code here (for example /g2:pair show), it returns the code and a link to a page with its QR code instead, valid for 3 minutes; show both to the user exactly as returned and never send them anywhere else.',
-        inputSchema: {
-          type: 'object',
-          properties: { show: { type: 'boolean', description: 'Show the code and a QR in the conversation (only when the user asked for that).' } },
-        },
+          'Pair the G2 Claude Code phone app with this computer. Call it only when the user asks to pair (for example through /g2:pair). It returns a one-time code and a link to a page with its QR code, valid for 3 minutes; show both to the user exactly as returned and never send them anywhere else.',
+        inputSchema: { type: 'object', properties: {} },
       },
       {
         name: 'unpair',
@@ -425,10 +365,7 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
       if (!mcp.getClientCapabilities()?.elicitation) return { content: [{ type: 'text', text: later }] }
       return { content: [{ type: 'text', text: await askEverywhere(r.question, later, extra.signal) }] }
     }
-    if (req.params.name === 'pair') {
-      const show = (req.params.arguments as { show?: unknown } | undefined)?.show === true
-      return { content: [{ type: 'text', text: show ? await pairInConversation() : await pairByCode() }] }
-    }
+    if (req.params.name === 'pair') return { content: [{ type: 'text', text: await pairInConversation() }] }
     if (req.params.name === 'unpair') return { content: [{ type: 'text', text: await unpairAll() }] }
     if (req.params.name !== 'glance') throw new Error(`unknown tool ${req.params.name}`)
     const text = (req.params.arguments as { text?: unknown } | undefined)?.text

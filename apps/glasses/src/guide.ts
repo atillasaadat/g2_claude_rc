@@ -27,7 +27,7 @@ export const GUIDE_HTML = `
     <li>
       <strong>Pair this app.</strong> In that session, run
       ${cmd('/g2:pair')}
-      and type the code it shows under <em>Pairing</em> below. Each code works once, for 10 minutes. From the Claude app or the web viewer, run <code>/g2:pair show</code> instead: type the code, or open its QR link on a screen and tap <em>Scan QR</em>. If a phone you do not know pairs, <code>/g2:unpair</code> cuts off every phone.
+      and type the code it shows under <em>Pairing</em> below, or open its QR link on a screen and tap <em>Scan QR</em>. It works the same in the terminal, the Claude app and the web viewer. Each code works once, for 3 minutes. If a phone you do not know pairs, <code>/g2:unpair</code> cuts off every phone.
     </li>
     <li>
       <strong>Add your Groq key</strong> for voice under <em>Voice</em> below. A free key from <strong>console.groq.com/keys</strong> works. It is stored on this phone only. Once saved, Voice shows it masked with a short fingerprint and whether Groq accepts it; a new key replaces it only if Groq accepts the new one.
@@ -50,7 +50,7 @@ export const GUIDE_HTML = `
   <h3 class="g-h">If something is off</h3>
   <ul class="g-trouble">
     <li><strong>Waiting for Claude Code:</strong> start the session with <code>cc-g2</code>, not <code>claude</code>.</li>
-    <li><strong>Code not accepted, or pairing hangs:</strong> codes work once and expire after 10 minutes, and the session that showed it must stay open. Update the plugin (<code>/plugin marketplace update g2cc</code>, then restart the session) and run <code>/g2:pair</code> again.</li>
+    <li><strong>Code not accepted, or pairing hangs:</strong> codes work once and expire after 3 minutes, and the session that showed it must stay open. Update the plugin (<code>/plugin marketplace update g2cc</code>, then restart the session) and run <code>/g2:pair</code> again.</li>
     <li><strong>No approval cards:</strong> in auto mode Claude decides itself. Press Shift+Tab in the session to change the mode.</li>
     <li><strong>Talk is off:</strong> add your Groq key under Voice.</li>
     <li><strong>Stop seems slow:</strong> it takes effect at Claude's next tool call.</li>

@@ -51,9 +51,8 @@ No clone needed.
    ```
    The flag is required because channels are a Claude Code research preview and g2 is not on Anthropic's allowlist. The first launch shows a warning; choose that you are using it for local development. Add `--rc` if you also want Remote Control (the Claude phone app). The glasses do not need it.
 4. **Install the glasses app:** G2 Claude Code from Even Hub in the Even app. Until the listing is live, see [Private build](#private-build-before-the-even-hub-listing).
-5. **Pair.** In a `cc-g2` session, run `/g2:pair`. A private dialog in the terminal shows a one-time code and stays open until the phone has paired. In the app's phone view, type the code under Pairing; it pairs as soon as all 8 characters are in. A code works once, for 10 minutes.
+5. **Pair.** In a `cc-g2` session (the terminal, the Claude app or the web viewer), run `/g2:pair`. A one-time code and a link to its QR code appear in the conversation. In the app's phone view, type the code under Pairing (it pairs as soon as all 8 characters are in), or open the link on a screen and tap **Scan QR**. A code works once, for 3 minutes. The QR page draws the code in your browser from the part of the link after `#`, which browsers never send to a server.
    - **More computers:** run `/g2:pair` on each one. The phone keeps every pairing (up to 8) and shows the sessions from all of them together. Pairing another computer never replaces the first; the Pairing section lists them, each with Forget.
-   - **From the Claude app or the web viewer,** which cannot show that dialog, run `/g2:pair show`. The code and a link to its QR code appear in the conversation for 3 minutes. Type the code, or open the link on a screen and tap **Scan QR** in the app. The page draws the QR in your browser from the part of the link after `#`, which browsers never send to a server.
    - When a phone pairs, the session says so. If you did not pair one, run `/g2:unpair`: it gives the computer a new key, which cuts off every paired phone, including in running sessions.
 6. **Voice:** paste your Groq key in the app under Voice. The app shows it masked with a fingerprint, checks it with Groq, and keeps it on the phone.
 
@@ -75,7 +74,7 @@ Without the flag (plain `claude`), the plugin still sends the feed and Stop stil
 
 ### How pairing works
 
-`/g2:pair` asks the channel for a one-time code and shows it in a Claude Code dialog (MCP elicitation). The code never enters Claude's context, where a prompt injection could leak it. `/g2:pair show` is the opt-in exception for viewers that cannot show the dialog. The code then is in Claude's context, so it only lasts 3 minutes, and the session is told when a phone pairs, so `/g2:unpair` can undo an unexpected one.
+`/g2:pair` asks the channel for a one-time code and puts it, with a link to its QR code, in the conversation, so it works the same in the terminal, the Claude app and the web viewer. The code is in Claude's context, so it only lasts 3 minutes and works once, and the session is told when a phone pairs, so `/g2:unpair` can undo an unexpected one.
 
 The first 3 characters pick a rendezvous room on the relay. The last 5 are the password for CPace, a PAKE over ristretto255 (@noble/curves):
 - The messages give nothing to test guesses against offline.

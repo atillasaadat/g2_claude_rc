@@ -1,5 +1,5 @@
 // The pairing QR page (/g2-claude/qr/#G2CC:XXXX-XXXX&exp=<unix seconds>).
-// /g2:pair show links here so the phone camera gets a real QR image, not one
+// /g2:pair links here so the phone camera gets a real QR image, not one
 // drawn with text characters, which viewers space out into stripes that will
 // not scan. The code travels in the #fragment, which browsers never send to a
 // server. `exp` is when the code closes; the page counts down to it and then
@@ -31,7 +31,7 @@ function gone(message: string): void {
 function tick(deadline: number): void {
   const left = deadline - Date.now()
   if (left <= 0) {
-    gone('This code has expired. Run /g2:pair show in Claude Code for a new one.')
+    gone('This code has expired. Run /g2:pair in Claude Code for a new one.')
     return
   }
   const s = Math.ceil(left / 1000)
@@ -41,7 +41,7 @@ function tick(deadline: number): void {
 }
 
 if (!CODE.test(text)) {
-  gone('No pairing code in this link. Run /g2:pair show in Claude Code for a new one.')
+  gone('No pairing code in this link. Run /g2:pair in Claude Code for a new one.')
 } else {
   label.textContent = text.slice(5)
   void QRCode.toCanvas(canvas, text, { errorCorrectionLevel: 'M', margin: 4, width: 320, color: { dark: '#000000', light: '#ffffff' } })

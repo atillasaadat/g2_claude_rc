@@ -4,6 +4,12 @@ Every release has a git tag and a GitHub Release with the full commit list. App 
 
 Add the entry here before running `scripts/release.sh`, which refuses a version without one.
 
+## Plugin 0.4.9
+- `/g2:pair` always shows the code and a link to its QR code in the conversation, so it works the same in the terminal, the Claude app and Claude Code on the web. The terminal dialog (with its Accept and Decline buttons) and the `show` argument are gone. A code works once, for 3 minutes.
+
+## App 0.4.10
+- The pairing help matches the new `/g2:pair`: run it anywhere, then type the code or scan its QR.
+
 ## App 0.4.9
 - Every long reply opens at its first line, so you read it from the start and swipe down to the end. Before, only the first reply did: after it, later replies stayed off screen until a double tap jumped to their last lines. A reply still leaves the text alone if you scrolled during that turn.
 

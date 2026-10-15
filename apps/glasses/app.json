@@ -22,7 +22,7 @@
     },
     {
       "name": "camera",
-      "desc": "Scan the pairing QR code that /g2:pair show displays in Claude Code. Photos stay on the phone."
+      "desc": "Scan the pairing QR code that /g2:pair displays in Claude Code. Photos stay on the phone."
     }
   ],
   "supported_languages": [

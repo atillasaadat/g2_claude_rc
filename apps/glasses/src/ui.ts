@@ -106,7 +106,7 @@ export function mountUi(cb: UiCallbacks): void {
       <details id="pairing">
         <summary>Pairing</summary>
         <div id="computer-list" class="sessions"></div>
-        <p class="hint">In Claude Code on your computer, run <code>/g2:pair</code> and type the code it shows here. From the Claude app or the web viewer, run <code>/g2:pair show</code> and type the code, or tap Scan QR and photograph the QR code. Pair each computer once: this phone keeps them all and shows the sessions from every one.</p>
+        <p class="hint">In Claude Code on your computer, run <code>/g2:pair</code> and type the code it shows here, or tap Scan QR and photograph the QR code from its link. Pair each computer once: this phone keeps them all and shows the sessions from every one.</p>
         <input id="code-input" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD-EFGH" maxlength="12" />
         <p class="hint">It pairs as soon as all 8 characters are in.</p>
         <div class="row">

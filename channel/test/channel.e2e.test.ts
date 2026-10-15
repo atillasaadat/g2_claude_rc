@@ -333,8 +333,8 @@ describe('session history', () => {
 })
 
 describe('pairing from the conversation, and unpairing', () => {
-  test('pair with show: true returns the code and a QR for the conversation', async () => {
-    mcpSend({ jsonrpc: '2.0', id: 40, method: 'tools/call', params: { name: 'pair', arguments: { show: true } } })
+  test('pair returns the code and a QR for the conversation', async () => {
+    mcpSend({ jsonrpc: '2.0', id: 40, method: 'tools/call', params: { name: 'pair', arguments: {} } })
     await until(() => mcpOut().some(m => m.id === 40))
     const text = (mcpOut().find(m => m.id === 40) as { result: { content: Array<{ text: string }> } }).result.content[0]!.text
     expect(text).toMatch(/^Pairing code: [0-9A-Z]{4}-[0-9A-Z]{4}$/m)

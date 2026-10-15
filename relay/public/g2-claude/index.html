@@ -163,7 +163,7 @@
     </li>
     <li>
       <h3>Pair</h3>
-      <p>Start a session with <code>cc-g2</code> and run <code>/g2:pair</code>. In the Claude app or the web viewer, run <code>/g2:pair show</code> instead: the code and a link to its QR code appear in the conversation for 3 minutes. Open the link on a screen, and the app's <strong>Scan QR</strong> button reads it with your phone camera. <code>/g2:unpair</code> cuts off every paired phone if one ever pairs that should not have. It shows a code like <code>K7PM-4QXD</code>. Open G2 Claude Code on your phone, type the code under Pairing, and tap Pair. A code works once and expires after 10 minutes, and it never contains your key: the two sides use it to agree on the key through an encrypted exchange.</p>
+      <p>Start a session with <code>cc-g2</code> and run <code>/g2:pair</code>, in the terminal, the Claude app or the web viewer. A code like <code>K7PM-4QXD</code> and a link to its QR code appear in the conversation. Open G2 Claude Code on your phone and type the code under Pairing, or open the link on a screen and the app's <strong>Scan QR</strong> button reads it with your phone camera. <code>/g2:unpair</code> cuts off every paired phone if one ever pairs that should not have. A code works once and expires after 3 minutes, and it never contains your key: the two sides use it to agree on the key through an encrypted exchange.</p>
       <div class="cmd"><pre>/g2:pair</pre><button type="button">Copy</button></div>
       <p>For voice, paste your Groq key in the app under Voice. It is stored on your phone only.</p>
     </li>
@@ -198,7 +198,7 @@
     <dt>The glasses say waiting for Claude Code</dt>
     <dd>Start the session with <code>cc-g2</code>, not <code>claude</code>. Its startup banner should mention <code>plugin:g2@g2cc</code>. Run <code>/mcp</code> to check that the g2 server is connected.</dd>
     <dt>The pairing code is not accepted</dt>
-    <dd>Codes work once and expire after 10 minutes, and only while the session that made them is open. If the phone keeps looking for your computer, update the plugin (<code>/plugin marketplace update g2cc</code>, then restart the session) and run <code>/g2:pair</code> again.</dd>
+    <dd>Codes work once and expire after 3 minutes, and only while the session that made them is open. If the phone keeps looking for your computer, update the plugin (<code>/plugin marketplace update g2cc</code>, then restart the session) and run <code>/g2:pair</code> again.</dd>
     <dt>Claude Code says the g2 server failed, or that it needs Bun</dt>
     <dd>The plugin runs on <a href="https://bun.sh">Bun</a>. Run <code>/g2:setup</code> and Claude installs it with the official installer, or install it yourself. Then open a new terminal and start the session again.</dd>
     <dt>No approval cards appear</dt>

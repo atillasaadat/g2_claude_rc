@@ -844,3 +844,8 @@ No secrets or Anthropic credentials are involved. **Verified:** the first run pa
 - **Report:** when a final reply came in, the glasses showed its newest lines, so reading it meant scrolling all the way up to its start.
 - **Cause:** a long reply lands on its first line by setting `fromBottom` (a chunk), but that landing was skipped whenever `fromBottom` was not 0. After one long reply the view stays in that reply's chunk, and a new prompt only goes back to live when it arrives on the timeline screen (not under the voice box). So the next reply did not land, and a double tap then jumped to its last lines.
 - **Fix:** `SessionView.reading` marks a scroll the user made by hand (a swipe that reached the app). A reply lands unless the user scrolled during the turn; a landing does not count as reading, and the next prompt (from anywhere) or going live clears it.
+
+## One way to pair (2026-10-15, user decision)
+- **Request:** make `/g2:pair show` the only behavior, since the private dialog does not work in Claude Code web sessions; drop the Accept/Decline dialog and the `show` argument.
+- **Change:** the `pair` tool takes no arguments and always returns the code and the QR link for the conversation (3 minutes, once, the session is told when a phone pairs). The elicitation dialog path is removed. `bun channel/pair.ts` in a terminal is unchanged.
+- **Trade-off:** the code is now always in Claude's context, which the dialog avoided. The short life, single use, CPace's 3-attempt limit, the pairing notice and `/g2:unpair` are what bound that risk.
