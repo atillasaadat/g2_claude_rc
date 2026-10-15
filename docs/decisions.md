@@ -839,3 +839,8 @@ No secrets or Anthropic credentials are involved. **Verified:** the first run pa
   - A new channel that exits within 15 s is replaced by the previous version.
 - **Why it is acceptable:** the code comes only from the marketplace the user added, through Claude Code's installer; nothing is downloaded by the plugin. The user approved the self-update explicitly. `G2CC_NO_AUTO_UPDATE=1` turns it off.
 - **Limits:** Claude Code keeps the instructions and tools from the first `initialize` until a reload, so a release that changes them still needs one. Hooks keep running the old version's `hook.js`, which only forwards to the socket and must stay compatible. Sessions on 0.4.7 or older need one last reload.
+
+## Replies always open at their start (2026-10-14, user report)
+- **Report:** when a final reply came in, the glasses showed its newest lines, so reading it meant scrolling all the way up to its start.
+- **Cause:** a long reply lands on its first line by setting `fromBottom` (a chunk), but that landing was skipped whenever `fromBottom` was not 0. After one long reply the view stays in that reply's chunk, and a new prompt only goes back to live when it arrives on the timeline screen (not under the voice box). So the next reply did not land, and a double tap then jumped to its last lines.
+- **Fix:** `SessionView.reading` marks a scroll the user made by hand (a swipe that reached the app). A reply lands unless the user scrolled during the turn; a landing does not count as reading, and the next prompt (from anywhere) or going live clears it.

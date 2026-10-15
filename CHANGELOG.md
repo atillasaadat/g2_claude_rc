@@ -4,6 +4,9 @@ Every release has a git tag and a GitHub Release with the full commit list. App 
 
 Add the entry here before running `scripts/release.sh`, which refuses a version without one.
 
+## App 0.4.9
+- Every long reply opens at its first line, so you read it from the start and swipe down to the end. Before, only the first reply did: after it, later replies stayed off screen until a double tap jumped to their last lines. A reply still leaves the text alone if you scrolled during that turn.
+
 ## Plugin 0.4.8
 - Sessions update themselves. When a newer g2 release is out, one session per computer installs it with Claude Code's own installer (`claude plugin update g2@g2cc`), and every running session switches to it once it is idle, with no `/reload-plugins`. The glasses keep the session and its history. `G2CC_NO_AUTO_UPDATE=1` turns it off. Sessions already running an older version need one last `/reload-plugins` (or a new session) to get this.
 

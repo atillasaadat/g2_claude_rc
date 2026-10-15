@@ -68,6 +68,11 @@ export interface SessionView {
    * reset it to the top, so new activity does not touch them.
    */
   chunk?: readonly string[]
+  /**
+   * The user scrolled by hand since the last prompt, so a reply leaves the
+   * view where it is. A landing on a reply's start does not count.
+   */
+  reading?: boolean
   /** A stop was sent and the channel has not yet reported idle or stopped. */
   stopPending: boolean
   lastSeen: number
@@ -339,7 +344,7 @@ export const CHUNK_MAX_LINES = 40
 
 /** Following live again: the newest lines, redrawn as they come. */
 const toLive = (v: SessionView): SessionView => {
-  const { chunk: _gone, ...rest } = v
+  const { chunk: _gone, reading: _done, ...rest } = v
   return { ...rest, fromBottom: 0 }
 }
 
@@ -362,6 +367,9 @@ function historyAt(v: SessionView, top: number): SessionView {
   }
   return { ...v, fromBottom: last - from, chunk }
 }
+
+/** A scroll the user made: a reply arriving now leaves it alone (back at live, nothing to keep). */
+const byHand = (v: SessionView): SessionView => (v.fromBottom > 0 ? { ...v, reading: true } : v)
 
 /** First line of the chunk (or of the live view) on the glasses. */
 const viewTop = (v: SessionView): number => Math.max(0, totalLines(v.entries) - TIMELINE_LINES - v.fromBottom)
@@ -422,15 +430,18 @@ function onEvent(v: SessionView, env: Pick<Extract<AnyEnvelope, { kind: 'event' 
   const next = withEntries(v, [...v.entries, entry])
   if (b.type !== 'prompt' || now - env.ts > FRESH_MS) return next
   // A new turn: back to live (only from the timeline; overlays are never buried).
-  return { ...(onTimeline ? toLive(next) : next), stopPending: false }
+  // Either way the turn's reply may land on its start again.
+  const { reading: _done, ...rest } = onTimeline ? toLive(next) : next
+  return { ...rest, stopPending: false }
 }
 
 function onReply(v: SessionView, env: Extract<AnyEnvelope, { kind: 'reply' }>, now: number): SessionView {
   if (hasEntry(v, env.id)) return v
   const entry: TimelineEntry = { id: env.id, ts: env.ts, kind: 'reply', text: toPlainText(env.body.text) }
   const next = withEntries(v, [...v.entries, entry])
-  if (v.fromBottom !== 0 || now - env.ts > FRESH_MS) return next
+  if (v.reading || now - env.ts > FRESH_MS) return next
   // Land on the start of a reply that is taller than the view; the glasses scroll through the rest.
+  // This also moves a view left on the previous reply's start, which the user never scrolled.
   const start = buildTimeline(next.entries).starts.get(entry.id) ?? 0
   return historyAt(next, start)
 }
@@ -795,10 +806,10 @@ function onGesture(s: AppState, gesture: Gesture, map: GestureMap, now: number):
     // These arrive when a swipe hits the chunk's top or bottom (or any swipe
     // while live, when the newest lines just fit).
     case 'timeline.up':
-      return done(mapActive(s, x => (x.fromBottom >= maxScroll(x.entries) ? x : historyAt(x, viewTop(x) - SCROLL_STEP))))
+      return done(mapActive(s, x => (x.fromBottom >= maxScroll(x.entries) ? x : byHand(historyAt(x, viewTop(x) - SCROLL_STEP)))))
     case 'timeline.down':
       // At the chunk's last screen: continue one line on, as a swipe inside it would.
-      return done(mapActive(s, x => (x.fromBottom === 0 ? x : historyAt(x, viewTop(x) + Math.max(0, (x.chunk?.length ?? 0) - TIMELINE_LINES) + 1))))
+      return done(mapActive(s, x => (x.fromBottom === 0 ? x : byHand(historyAt(x, viewTop(x) + Math.max(0, (x.chunk?.length ?? 0) - TIMELINE_LINES) + 1)))))
     case 'timeline.live':
       return done(mapActive(s, toLive))
     case 'menu.open':

@@ -86,6 +86,28 @@ describe('scrolling the timeline', () => {
     expect(shown(s).at(-1)).toBe('Reply line 20')
   })
 
+  test('the next long reply also lands on its first line, though the last one left the view in a chunk', () => {
+    const long = (n: number) => Array.from({ length: 20 }, (_, i) => `Reply ${n} line ${i + 1}`).join('\n')
+    let s = recv(withLines(paired(), 5), env('reply', { text: long(1) }))
+    expect(view(s).fromBottom).toBeGreaterThan(0)
+    // A prompt typed in the terminal (or spoken while the voice box was still up).
+    s = recv({ ...s, screen: 'voice' }, env('event', { type: 'prompt', summary: 'next' }))
+    s = recv({ ...s, screen: 'timeline' }, env('reply', { text: long(2) }))
+    expect(shown(s)[0]).toBe('Reply 2 line 1')
+  })
+
+  test('a reply does not move a view the user scrolled during the turn', () => {
+    let s = recv(withLines(paired(), 30), env('event', { type: 'prompt', summary: 'go' }))
+    s = gs(s, 'scroll_up')
+    const before = shown(s)
+    s = recv(s, env('reply', { text: Array.from({ length: 20 }, (_, i) => `R ${i}`).join('\n') }))
+    expect(shown(s)).toEqual(before)
+    // The next prompt ends the reading: its reply lands again.
+    s = recv(s, env('event', { type: 'prompt', summary: 'again' }))
+    s = recv(s, env('reply', { text: Array.from({ length: 20 }, (_, i) => `Q ${i}`).join('\n') }))
+    expect(shown(s)[0]).toBe('Q 0')
+  })
+
   test('swiping up at the very top does nothing', () => {
     let s = gs(withLines(paired(), 12), 'scroll_up', 'scroll_up', 'scroll_up')
     const top = frame(s).timeline

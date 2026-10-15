@@ -39,7 +39,7 @@ export const GUIDE_HTML = `
   <p class="hint">Every <code>cc-g2</code> session shows up on your glasses within a second. With two or more, the glasses' side menu lists them. Using several computers? Run <code>/g2:pair</code> on each: the phone keeps them all. From plugin 0.4.8, running sessions update themselves once idle, with no <code>/reload-plugins</code>. Older ones update with <code>/plugin marketplace update g2cc</code>, then <code>/reload-plugins</code>.</p>
   <h3 class="g-h">On the glasses</h3>
   <table class="g-table">
-    <tr><th>Swipe</th><td>Scroll the timeline; the glasses scroll older lines themselves (the R1 ring works too). Earlier activity is there as soon as the app opens</td></tr>
+    <tr><th>Swipe</th><td>Scroll the timeline; the glasses scroll older lines themselves (the R1 ring works too). Earlier activity is there as soon as the app opens. A long reply opens at its first line; swipe down to read on</td></tr>
     <tr><th>Tap</th><td>Menu: Talk, Stop Claude, Display off, End session (unpairs this phone from every computer; asks first). On a card, confirm</td></tr>
     <tr><th>Double tap</th><td>Back to the newest line. On a card, leave it for later</td></tr>
     <tr><th>Phone view</th><td>Sessions from every computer: show one on the glasses, disconnect it, or reconnect it. Pairing: your computers, each with Forget</td></tr>
