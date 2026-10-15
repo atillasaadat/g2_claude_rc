@@ -14,6 +14,8 @@ const shutdown = (): void => {
   void channel.stop().finally(() => process.exit(0))
 }
 process.on('SIGTERM', shutdown)
+// From the launcher: a newer plugin version takes over this session.
+process.on('SIGUSR2', () => void channel.stop({ quiet: true }).finally(() => process.exit(0)))
 process.on('SIGINT', shutdown)
 // A closed terminal: say goodbye to the glasses too.
 process.on('SIGHUP', shutdown)

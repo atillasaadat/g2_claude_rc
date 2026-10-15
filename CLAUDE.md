@@ -147,6 +147,8 @@ Launch alias (document in README):
 alias cc-g2='claude --dangerously-load-development-channels plugin:g2@g2cc'
 ```
 
+The `.mcp.json` entry `dist/server.js` is the launcher (`channel/launcher.ts`): it runs the channel (`dist/channel.js`) as a child and swaps in a newer installed version when the session is idle (`channel/src/self-update.ts`, which may run `claude plugin update g2@g2cc`). `G2CC_NO_AUTO_UPDATE=1` turns it off.
+
 For development from source, `server:g2` with a sandbox `.mcp.json` still works (`scripts/make-sandbox.sh`).
 
 `--rc` (Remote Control) is optional: it is accepted in the same launch as the development channel, and the channel works alongside it. See docs/decisions.md for the RC app side.

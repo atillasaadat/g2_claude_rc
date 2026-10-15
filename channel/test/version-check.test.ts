@@ -33,6 +33,8 @@ describe('updateNotice', () => {
     expect(msg).toContain('0.4.4')
     expect(msg).toContain('0.4.3')
     expect(msg).toContain('/plugin marketplace update g2cc')
+    const auto = await updateNotice({ installed: '0.4.3', home: home(), now: NOW, fetch: async () => manifest('0.4.4'), selfUpdates: true })
+    expect(auto).toContain('switches to it once idle')
     expect(msg).toContain('auto-update')
   })
 

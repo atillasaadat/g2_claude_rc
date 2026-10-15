@@ -12,6 +12,8 @@ import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { GLANCE_MAX, relayAuthToken, relayRoomUrl, SecureChannel, type Body, type C2G_KINDS, type HistoryItem } from '@g2cc/protocol'
 import { historyPath, pruneHistoryFiles, SessionHistory } from './history'
+import { SWAP_METHOD } from './launcher'
+import { runClaudeInstaller, startSelfUpdate, UPDATE_CHECK_EVERY_MS } from './self-update'
 import { DEFAULT_RELAY_URL, type ChannelConfig } from './config'
 import { ensurePrivateDirs, SAFE_SID, startHookSocket, type HookResponse, type HookSocket } from './hook-socket'
 import { SessionController } from './controller'
@@ -63,7 +65,8 @@ const log = (msg: string): void => {
 
 export interface RunningChannel {
   readonly hookSocket: string | null
-  stop(): Promise<void>
+  /** `quiet`: the launcher is swapping in a newer version, so the session is not ending. */
+  stop(opts?: { quiet?: boolean }): Promise<void>
 }
 
 export async function runChannel(cfg: ChannelConfig, transport: Transport): Promise<RunningChannel> {
@@ -434,14 +437,34 @@ export async function runChannel(cfg: ChannelConfig, transport: Transport): Prom
     return { content: [{ type: 'text', text: relay.isOpen ? 'shown' : 'queued: glasses relay offline' }] }
   })
 
-  const stop = async (): Promise<void> => {
+  // Under the launcher, move to a newer plugin version on our own when idle (src/self-update.ts).
+  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT
+  const stopSelfUpdate =
+    process.env.G2CC_LAUNCHER === '1' && pluginRoot && process.env.G2CC_NO_AUTO_UPDATE !== '1'
+      ? startSelfUpdate(
+          {
+            root: pluginRoot,
+            home: cfg.home,
+            busy: () => stopped || controller.busy() || pairingCode !== null,
+            requestSwap: root => void transport.send({ jsonrpc: '2.0', method: SWAP_METHOD, params: { root } }),
+            install: runClaudeInstaller,
+            fetch: (url, init) => fetch(url, init),
+            now: Date.now,
+            log,
+          },
+          Number(process.env.G2CC_UPDATE_CHECK_MS) || UPDATE_CHECK_EVERY_MS,
+        )
+      : () => {}
+
+  const stop = async (opts: { quiet?: boolean } = {}): Promise<void> => {
     if (stopped) return
     stopped = true
+    stopSelfUpdate()
     unwatchFile(pairingPath(cfg.home))
     pairingCode?.cancel()
     hooks?.stop()
     // Tell the glasses this session is gone, so it leaves the session list.
-    emit('session', { ...controller.snapshot(), state: 'ended' })
+    if (!opts.quiet) emit('session', { ...controller.snapshot(), state: 'ended' })
     await outbound
     relay.stop()
     await mcp.close()

@@ -103,6 +103,12 @@ export class SessionController {
     this.tracker = new SessionTracker({ name: opts.name, cwd: opts.cwd })
   }
 
+  /** Mid-turn, or something waits on the user: no plugin swap now. */
+  busy(): boolean {
+    const state = this.tracker.snapshot().state
+    return state === 'working' || state === 'waiting' || this.pending.size > 0 || this.questions.size > 0 || this.waiting.size > 0
+  }
+
   snapshot(): Body<'session'> {
     return this.tracker.snapshot()
   }

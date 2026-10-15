@@ -36,7 +36,7 @@ export const GUIDE_HTML = `
       <strong>Get alerts in other apps.</strong> In a session, run <code>/config</code> and turn on <code>inputNeededNotifEnabled</code> and <code>agentPushNotifEnabled</code>. Allow notifications for the Claude app, then allow it in the Even app's notification settings.
     </li>
   </ol>
-  <p class="hint">Every <code>cc-g2</code> session shows up on your glasses within a second. With two or more, the glasses' side menu lists them. Using several computers? Run <code>/g2:pair</code> on each: the phone keeps them all. Without auto-update, update the plugin with <code>/plugin marketplace update g2cc</code>, then <code>/reload-plugins</code>. A session tells you when a newer release is out.</p>
+  <p class="hint">Every <code>cc-g2</code> session shows up on your glasses within a second. With two or more, the glasses' side menu lists them. Using several computers? Run <code>/g2:pair</code> on each: the phone keeps them all. From plugin 0.4.8, running sessions update themselves once idle, with no <code>/reload-plugins</code>. Older ones update with <code>/plugin marketplace update g2cc</code>, then <code>/reload-plugins</code>.</p>
   <h3 class="g-h">On the glasses</h3>
   <table class="g-table">
     <tr><th>Swipe</th><td>Scroll the timeline; the glasses scroll older lines themselves (the R1 ring works too). Earlier activity is there as soon as the app opens</td></tr>

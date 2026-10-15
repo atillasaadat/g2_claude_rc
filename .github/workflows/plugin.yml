@@ -1,4 +1,5 @@
-# The Claude Code plugin runs the committed bundle plugin/dist/server.js, so
+# The Claude Code plugin runs the committed bundles plugin/dist/server.js (the
+# launcher) and plugin/dist/channel.js, so
 # every change to the channel must ship a rebuilt bundle. This fails if it is stale.
 name: plugin
 on:

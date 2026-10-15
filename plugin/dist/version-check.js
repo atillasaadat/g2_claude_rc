@@ -58,6 +58,8 @@ async function updateNotice(o) {
   const latest = await latestVersion(o);
   if (!latest || !isNewer(latest, o.installed))
     return "";
+  if (o.selfUpdates)
+    return `g2 plugin ${latest} is out (this session runs ${o.installed}). It installs itself and this session switches to it once idle.`;
   return `g2 plugin ${latest} is out (this session runs ${o.installed}). ` + "Run /plugin marketplace update g2cc, then /reload-plugins. " + "To get updates on their own: /plugin, Marketplaces, g2cc, turn on auto-update.";
 }
 
@@ -69,7 +71,8 @@ try {
     home: process.env.G2CC_HOME ?? join2(homedir(), ".g2cc"),
     now: Date.now(),
     fetch: (url, init) => fetch(url, init),
-    disabled: Boolean(process.env.G2CC_NO_UPDATE_CHECK)
+    disabled: Boolean(process.env.G2CC_NO_UPDATE_CHECK),
+    selfUpdates: process.env.G2CC_NO_AUTO_UPDATE !== "1"
   }) : "";
   if (notice)
     process.stdout.write(JSON.stringify({ systemMessage: notice }));

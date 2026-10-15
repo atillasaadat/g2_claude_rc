@@ -18,6 +18,7 @@ try {
           now: Date.now(),
           fetch: (url, init) => fetch(url, init),
           disabled: Boolean(process.env.G2CC_NO_UPDATE_CHECK),
+          selfUpdates: process.env.G2CC_NO_AUTO_UPDATE !== '1',
         })
       : ''
   if (notice) process.stdout.write(JSON.stringify({ systemMessage: notice }))

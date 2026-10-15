@@ -827,3 +827,15 @@ No secrets or Anthropic credentials are involved. **Verified:** the first run pa
   - The app also skips any feed envelope whose id is already on the timeline, which fixes duplicates when a fresh link replays the relay ring.
   - Older apps drop the unknown kind; older plugins send none, and the app works as before.
 - **Not done:** trimming the relay ring or resync traffic. The history frames go through the ring too, so a phone connect downloads somewhat more (at most 100 frames, 1 MB, as before).
+
+## Sessions update themselves (2026-10-14, user request)
+
+- **Request:** stop having to run `/plugin marketplace update g2cc` and `/reload-plugins` in every session on every computer for each release.
+- **What Claude Code does:** marketplace auto-update only runs when a session starts, and a running session keeps its MCP server until `/reload-plugins`. `claude plugin update g2@g2cc` installs a release from the CLI (about 80 s here; "restart required to apply"). Old versions stay in the cache while a session uses them (`.in_use` holds session PIDs).
+- **Design:** `dist/server.js` is now a launcher that holds Claude Code's stdio and runs the channel (`dist/channel.js`) as a child, passing lines through.
+  - The channel checks every 10 minutes (the release number at most every 6 hours, as for the start-up notice). A newer release not yet installed: it runs `claude plugin update g2@g2cc` under a per-computer lock (`~/.g2cc/update.lock`), once per release per channel.
+  - A newer version installed beside its own and the session idle (no turn running, no permission card, question, waiting ask or pairing code): it sends `g2/swap {root}` on stdout. The launcher never forwards it.
+  - The launcher swaps only to a directory beside its own that holds g2 at a newer version with a `dist/channel.js`, and only with no JSON-RPC request in flight either way. It stops the old channel with SIGUSR2 (a quiet stop: no `ended`, so the glasses keep the session), starts the new one, replays `initialize` (dropping its answer) and `notifications/initialized`, sends on anything Claude Code sent meanwhile, then `notifications/tools/list_changed`.
+  - A new channel that exits within 15 s is replaced by the previous version.
+- **Why it is acceptable:** the code comes only from the marketplace the user added, through Claude Code's installer; nothing is downloaded by the plugin. The user approved the self-update explicitly. `G2CC_NO_AUTO_UPDATE=1` turns it off.
+- **Limits:** Claude Code keeps the instructions and tools from the first `initialize` until a reload, so a release that changes them still needs one. Hooks keep running the old version's `hook.js`, which only forwards to the socket and must stay compatible. Sessions on 0.4.7 or older need one last reload.

@@ -32,6 +32,8 @@ interface Options {
   now: number
   fetch: (url: string, init: RequestInit) => Promise<Response>
   disabled?: boolean
+  /** The session moves to new versions by itself (self-update.ts), so say that instead of how to update. */
+  selfUpdates?: boolean
 }
 
 function readCache(home: string): { checkedAt: number; latest: string } | null {
@@ -43,7 +45,7 @@ function readCache(home: string): { checkedAt: number; latest: string } | null {
   }
 }
 
-async function latestVersion(o: Options): Promise<string | null> {
+export async function latestVersion(o: Omit<Options, 'installed'>): Promise<string | null> {
   const cached = readCache(o.home)
   if (cached && o.now - cached.checkedAt < CHECK_EVERY_MS) return cached.latest
   try {
@@ -68,6 +70,7 @@ export async function updateNotice(o: Options): Promise<string> {
   if (o.disabled) return ''
   const latest = await latestVersion(o)
   if (!latest || !isNewer(latest, o.installed)) return ''
+  if (o.selfUpdates) return `g2 plugin ${latest} is out (this session runs ${o.installed}). It installs itself and this session switches to it once idle.`
   return (
     `g2 plugin ${latest} is out (this session runs ${o.installed}). ` +
     'Run /plugin marketplace update g2cc, then /reload-plugins. ' +

@@ -9,6 +9,6 @@
     "channel"
   ],
   "scripts": {
-    "build:plugin": "bun build channel/server.ts --target=bun --outfile plugin/dist/server.js && bun build channel/hook.ts --target=bun --outfile plugin/dist/hook.js && bun build channel/version-check.ts --target=bun --outfile plugin/dist/version-check.js"
+    "build:plugin": "bun build channel/launcher.ts --target=bun --outfile plugin/dist/server.js && bun build channel/server.ts --target=bun --outfile plugin/dist/channel.js && bun build channel/hook.ts --target=bun --outfile plugin/dist/hook.js && bun build channel/version-check.ts --target=bun --outfile plugin/dist/version-check.js"
   }
 }

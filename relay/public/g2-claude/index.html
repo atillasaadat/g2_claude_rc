@@ -211,7 +211,7 @@
 
   <footer>
     <p>Built by Atilla Saadat with Claude Code. Messages are encrypted end to end with AES-256-GCM using a key that only your computer and your phone hold; the relay forwards ciphertext and keeps a short buffer so the glasses can catch up after reconnecting.</p>
-    <p>With auto-update on, new sessions use the latest release. Without it, run <code>/plugin marketplace update g2cc</code>, then <code>/reload-plugins</code>. A session tells you when it starts if a newer release is out (it reads the released version number from GitHub at most every 6 hours; <code>G2CC_NO_UPDATE_CHECK=1</code> turns that off).</p>
+    <p>From plugin 0.4.8, sessions update themselves: when a newer release is out, one session installs it with Claude Code's own installer, and every running session switches to it once idle, with no <code>/reload-plugins</code>. <code>G2CC_NO_AUTO_UPDATE=1</code> turns that off. Then, with auto-update on, new sessions use the latest release; without it, run <code>/plugin marketplace update g2cc</code>, then <code>/reload-plugins</code>. A session tells you when it starts if a newer release is out (it reads the released version number from GitHub at most every 6 hours; <code>G2CC_NO_UPDATE_CHECK=1</code> turns that off).</p>
     <p>Source code, issues and the design log: <a href="https://github.com/atillasaadat/g2_claude_rc">github.com/atillasaadat/g2_claude_rc</a>.</p>
   </footer>
 </main>

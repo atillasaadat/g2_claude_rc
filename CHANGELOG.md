@@ -4,6 +4,9 @@ Every release has a git tag and a GitHub Release with the full commit list. App 
 
 Add the entry here before running `scripts/release.sh`, which refuses a version without one.
 
+## Plugin 0.4.8
+- Sessions update themselves. When a newer g2 release is out, one session per computer installs it with Claude Code's own installer (`claude plugin update g2@g2cc`), and every running session switches to it once it is idle, with no `/reload-plugins`. The glasses keep the session and its history. `G2CC_NO_AUTO_UPDATE=1` turns it off. Sessions already running an older version need one last `/reload-plugins` (or a new session) to get this.
+
 ## App 0.4.8
 - Opening the app shows each session's earlier activity, so you can scroll back through it without sending a new prompt. Needs plugin 0.4.7.
 - A reconnect no longer repeats lines on the timeline.
