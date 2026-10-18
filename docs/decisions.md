@@ -854,3 +854,10 @@ No secrets or Anthropic credentials are involved. **Verified:** the first run pa
 - **Report:** End session unpaired every Claude Code session. That was the 2026-10-03 design (End session = unpair this phone), chosen when there was one computer; with multi-computer pairing it forgot every computer.
 - **Choice:** close just the session on screen (the user picked this over unpairing only that computer, or keeping it).
 - **Change:** the menu item is Close session. It uses the phone view's Disconnect (`muteSession`): the session, its cards and its questions leave the glasses, the mute is saved on the phone so resyncs do not bring it back, and Reconnect in the phone view undoes it. Since it is undoable and touches no pairing, it has no confirm step. Forget all in the phone view is now the only way to unpair everything.
+
+## Text that fits the glasses (2026-10-17, user report)
+- **Report:** a one-line `»` response ran across the screen and could not be read; and replies in other formats should read well on the glasses.
+- **Cause:** glances and notes went through `fitLine`, one line cut with "...". In the user's own session history, 20 of 21 glances were longer than one line (they can be 120 characters). Replies were word-wrapped flat, so wrapped list items lost their indent, and Markdown tables came through as raw `| a | b |` rows.
+- **Fix:**
+  - `wrapBlock` (layout.ts) wraps while keeping each line's indent and a hanging indent after a marker (`•`, `12.`, `»`, `!`). Glances, notes and replies use it. Tool lines stay single lines, since they are a compact log.
+  - `toPlainText` turns a table row into a list item, "first: second" for two columns, else "first · header: value · ...", and drops the `|---|` rule. It also strips nested quote markers, `~~strike~~`, images (keeps the alt text), backslash escapes and `<br>`, and handles double-backtick code.

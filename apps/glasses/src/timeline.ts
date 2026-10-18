@@ -3,7 +3,7 @@
 // the line counts for scrolling and the renderer slices the visible window.
 
 import { getTextWidth } from '@evenrealities/pretext'
-import { fitLine, TIMELINE_WIDTH, wrapLines } from './layout'
+import { fitLine, TIMELINE_WIDTH, wrapBlock, wrapLines } from './layout'
 
 const INDENT = '  '
 
@@ -37,12 +37,13 @@ function entryLines(e: TimelineEntry, width: number): string[] {
       const label = e.tool && e.text && e.text !== e.tool ? `${e.tool}: ${e.text}` : (e.tool ?? e.text)
       return [fitLine(e.result === undefined ? `▶ ${label}` : `• ${label} → ${e.result}`, width)]
     }
+    // Notes and glances are full sentences: wrapped, never cut.
     case 'notify':
-      return [fitLine(`! ${e.text}`, width)]
+      return wrapBlock(`! ${e.text.replace(/\s+/g, ' ').trim()}`, width)
     case 'glance':
-      return [fitLine(`» ${e.text}`, width)]
+      return wrapBlock(`» ${e.text.replace(/\s+/g, ' ').trim()}`, width)
     case 'reply':
-      return wrapLines(e.text, width)
+      return wrapBlock(e.text, width)
   }
 }
 

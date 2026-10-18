@@ -46,4 +46,27 @@ describe('visibleWindow', () => {
     expect(visibleWindow(lines, 3, 5)).toEqual(['L12', 'L13', 'L14'])
     expect(visibleWindow(['a'], 3, 0)).toEqual(['a'])
   })
+
+  test('a long glance or note wraps instead of being cut, continuation lines indented', () => {
+    const text = 'All 34 references verified and pushed (acf8f17); 5 real errors fixed, 3 TODO-CITEs resolved'
+    const { lines } = buildTimeline([e({ kind: 'glance', text }), e({ kind: 'notify', text })])
+    const glance = lines.slice(0, lines.indexOf(lines.find(l => l.startsWith('! '))!))
+    expect(glance.length).toBeGreaterThan(1)
+    expect(glance[0]!.startsWith('» ')).toBe(true)
+    expect(glance.slice(1).every(l => l.startsWith('  '))).toBe(true)
+    expect(glance.join(' ').replace(/^» /, '').replace(/\s+/g, ' ')).toBe(text)
+    expect(lines.every(l => getTextWidth(l) <= TIMELINE_WIDTH)).toBe(true)
+    expect(lines.some(l => l.includes('...'))).toBe(false)
+  })
+
+  test('reply bullets, numbered items and indented code keep a hanging indent', () => {
+    const long = 'this item is long enough that it has to wrap onto a second line on the glasses'
+    const { lines } = buildTimeline([e({ kind: 'reply', text: `• ${long}\n12. ${long}\n    const x = ${long}` })])
+    const at = (prefix: string) => lines.findIndex(l => l.startsWith(prefix))
+    const b = at('• '), n = at('12. '), c = at('    const')
+    expect(lines[b + 1]!.startsWith('  ')).toBe(true)
+    expect(lines[n + 1]!.startsWith('    ')).toBe(true)
+    expect(lines[c + 1]!.startsWith('    ')).toBe(true)
+    expect(lines.every(l => getTextWidth(l) <= TIMELINE_WIDTH)).toBe(true)
+  })
 })

@@ -30,4 +30,22 @@ describe('toPlainText', () => {
   test('collapses runs of blank lines', () => {
     expect(toPlainText('a\n\n\n\nb')).toBe('a\n\nb')
   })
+
+  test('table rows become list items, each value labelled by its column', () => {
+    expect(toPlainText('| Test | Result |\n|---|:--:|\n| unit | **pass** |\n| e2e | fail |')).toBe('• unit: pass\n• e2e: fail')
+    expect(toPlainText('Results:\n\n| arm | locked | steps |\n|---|---|---|\n| v33 | 37 / 40 | 484 |\n\nDone')).toBe(
+      'Results:\n\n• v33 · locked: 37 / 40 · steps: 484\n\nDone',
+    )
+  })
+
+  test('nested quotes, strikethrough, images, escapes and line breaks', () => {
+    expect(toPlainText('>> deep quote\n> > also deep')).toBe('deep quote\nalso deep')
+    expect(toPlainText('~~old~~ new ![diagram](x.png) \\*not italic\\*')).toBe('old new diagram *not italic*')
+    expect(toPlainText('one<br>two<br/>three')).toBe('one\ntwo\nthree')
+    expect(toPlainText('use ``a `b` c`` here')).toBe('use a `b` c here')
+  })
+
+  test('task lists keep their boxes', () => {
+    expect(toPlainText('- [ ] todo\n- [x] done')).toBe('• [ ] todo\n• [x] done')
+  })
 })

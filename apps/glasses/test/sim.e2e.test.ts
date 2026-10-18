@@ -200,6 +200,17 @@ describe.skipIf(!RUN)('glasses app in the simulator', () => {
     expect(litPixels(png, 38, 288)).toBeGreaterThan(200)
   })
 
+  test('a long glance wraps onto indented lines instead of running off the screen', async () => {
+    const text = 'All 34 references verified and pushed; 5 real errors fixed and 3 TODO-CITEs resolved'
+    await send('glance', { text })
+    const f = await frameWhere(f => f.timeline.includes('TODO-CITEs resolved'), 'wrapped glance')
+    const lines = f.timeline.split('\n')
+    const start = lines.findIndex(l => l.startsWith('» All 34'))
+    expect(lines.slice(start + 1).every(l => l.startsWith('  '))).toBe(true)
+    expect(lines.slice(start).join(' ').replace(/^» /, '').replace(/\s+/g, ' ')).toBe(text)
+    await screenshot('glance-wrap')
+  })
+
   test('a long reply lands on its first line, and the glasses scroll through it on their own', async () => {
     await send('session', { name: 'g2cc-sandbox', cwd: '/x', state: 'idle', mode: 'auto' })
     const text = Array.from({ length: 14 }, (_, i) => `Line ${i + 1}: the timeline scrolls continuously.`).join('\n')

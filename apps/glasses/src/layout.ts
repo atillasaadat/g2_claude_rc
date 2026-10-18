@@ -123,6 +123,40 @@ export function wrapLines(text: string, maxPx: number = INNER_WIDTH): string[] {
   return lines
 }
 
+/** Leading indent kept by wrapBlock, at most this many spaces. */
+const MAX_INDENT = 8
+const LEAD = /^([ \t]*)((?:[•▶!»>]|\d{1,3}[.)])[ \t]+)?/
+
+/** Spaces about as wide as `text`, so continuation lines line up under it. */
+function padFor(text: string): string {
+  return ' '.repeat(Math.round(getTextWidth(text) / getTextWidth(' ')))
+}
+
+/**
+ * Word wrap that keeps each line's shape: its leading indent (code, nested
+ * lists) and a hanging indent after a list marker ("• ", "12. ", "» "), so
+ * wrapped items read as one block.
+ */
+export function wrapBlock(text: string, maxPx: number = INNER_WIDTH): string[] {
+  const lines: string[] = []
+  for (const line of text.replace(/\r/g, '').split('\n')) {
+    const m = LEAD.exec(line)!
+    const indent = m[1]!.replace(/\t/g, '  ').slice(0, MAX_INDENT)
+    const prefix = `${indent}${m[2] ? m[2].trimEnd() + ' ' : ''}`
+    const rest = line.slice(m[0].length)
+    // A prefix too wide to leave room (a deeply indented line) is dropped rather than squeezing the text.
+    const room = maxPx - getTextWidth(prefix)
+    if (!rest.trim() || room < maxPx / 2) {
+      lines.push(...wrapLines(rest.trim() ? line.trim() : prefix.trimEnd(), maxPx))
+      continue
+    }
+    const [first = '', ...more] = wrapLines(rest, room)
+    const pad = padFor(prefix)
+    lines.push(`${prefix}${first}`, ...more.map(l => `${pad}${l}`))
+  }
+  return lines
+}
+
 /** At most `max` wrapped lines; the last one is cut with '...' when there is more. */
 export function clampLines(text: string, max: number, maxPx: number): string[] {
   const lines = wrapLines(text, maxPx)
