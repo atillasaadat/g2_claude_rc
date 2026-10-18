@@ -294,6 +294,32 @@ describe.skipIf(!RUN)('glasses app in the simulator', () => {
     await frameWhere(f => !f.overlay, 'closed by resolution')
   })
 
+  test('scrolling up sends one screen at a time, then preloads the full block after a pause', async () => {
+    await send('session', { name: 'g2cc-sandbox', cwd: '/x', state: 'idle', mode: 'auto' })
+    // One frame, not 30: the relay rate-limits bursts.
+    await send('history', { items: Array.from({ length: 30 }, (_, i) => ({ id: `up${i + 1}`, ts: Date.now() - 1_000 + i, kind: 'event' as const, body: { type: 'notify' as const, summary: `up note ${i + 1}` } })) })
+    await frameWhere(f => f.timeline.includes('! up note 30') && f.header.endsWith('auto'), 'live with notes')
+    await input('up')
+    const step = await frameWhere(f => /▼ newer$/.test(f.header), 'one screen up')
+    expect(step.timeline.split('\n').length).toBe(9)
+    const topLine = step.timeline.split('\n')[0]
+    // After the pause: the same top line, now with everything below it, so swipes down scroll on the glasses.
+    const full = await frameWhere(f => f.timeline.split('\n').length > 9, 'full block preloaded', 3_000)
+    expect(full.timeline.split('\n')[0]).toBe(topLine)
+    await Bun.sleep(300)
+    const before = await screenshot('up-preloaded')
+    await consoleSince()
+    await input('down')
+    await Bun.sleep(400)
+    expect((await consoleSince()).filter(e => e.message.includes('[g2cc] frame'))).toEqual([])
+    expect(Buffer.from(await screenshot('up-preloaded-down')).equals(Buffer.from(before))).toBe(false)
+    await input('double_click')
+    await frameWhere(f => f.header.endsWith('auto'), 'live again')
+    // Leave a state the next test changes (it waits for a new idle frame).
+    await send('session', { name: 'g2cc-sandbox', cwd: '/x', state: 'working', mode: 'auto' })
+    await frameWhere(f => f.header.includes('working'), 'working')
+  }, 20_000)
+
   test('voice: the box fills in live, then review and send a prompt to the computer', async () => {
     await send('session', { name: 'g2cc-sandbox', cwd: '/x', state: 'idle', mode: 'auto' })
     await frameWhere(f => f.header.includes('idle') && !f.overlay, 'idle')

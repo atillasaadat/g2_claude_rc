@@ -14,7 +14,7 @@ import { frameOf, render } from './render'
 import { transcribe } from './asr/stt'
 import { checkGroqKey, type KeyCheck } from './asr/key-status'
 import { VoiceRecorder } from './recorder'
-import { initialState, isAnimating, micWanted, reduce, sessionList, type AppState, type Msg } from './state'
+import { initialState, isAnimating, micWanted, reduce, sessionList, view, type AppState, type Msg } from './state'
 import { Storage, STT_KEY_SHAPE, type StoredPairing } from './storage'
 import { mirror, mountUi, setComputers, setDisplaySleep, setGestureMap, setSessions, setStatus, setVoiceStatus } from './ui'
 
@@ -70,10 +70,10 @@ function syncTicker(): void {
   }
 }
 
-function paint(): void {
+function paint(now = false): void {
   const scene = render(state)
   const frame = frameOf(scene)
-  display?.show(scene)
+  display?.show(scene, { now })
   mirror(frame)
   setStatus(state.link, state.paired)
   const live = sessionList(state)
@@ -109,10 +109,21 @@ function paint(): void {
   lastLogged = logged
 }
 
+/** After swiping up stops for this long, the one-screen chunk is replaced by the full one (state.ts chunkShort). */
+const EXPAND_AFTER_MS = 500
+let expandTimer: ReturnType<typeof setTimeout> | null = null
+
 function dispatch(msg: Msg): void {
   const result = reduce(state, msg)
   state = result.state
-  paint()
+  // A swipe is waiting on this frame: draw it now, not after the debounce.
+  paint(msg.type === 'gesture')
+  // Only swipes restart the pause; ticks and other messages leave it running.
+  const short = view(state).chunkShort === true
+  if (msg.type === 'gesture' || !short) {
+    if (expandTimer) clearTimeout(expandTimer)
+    expandTimer = short ? setTimeout(() => dispatch({ type: 'expand_chunk' }), EXPAND_AFTER_MS) : null
+  }
   if (started) {
     syncMic()
     if (state.voice.phase === 'transcribing') recorder.finish(state.voice.attempt)

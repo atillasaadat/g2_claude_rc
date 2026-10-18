@@ -42,7 +42,9 @@ describe('timeline: scrolling', () => {
     const s = withLines(paired(), 30)
     const up = gs(s, 'scroll_up')
     expect(view(up).fromBottom).toBe(SCROLL_STEP)
-    expect(view(gs(up, 'scroll_down')).fromBottom).toBe(0)
+    // One line down, as the glasses scroll, then the rest of the way to live.
+    expect(view(gs(up, 'scroll_down')).fromBottom).toBe(SCROLL_STEP - 1)
+    expect(view(gs(up, 'scroll_down', 'scroll_down')).fromBottom).toBe(0)
     expect(view(gs(s, 'scroll_down')).fromBottom).toBe(0)
     const top = gs(s, ...Array(30).fill('scroll_up'))
     expect(view(top).fromBottom).toBe(totalLines(view(s).entries) - TIMELINE_LINES)

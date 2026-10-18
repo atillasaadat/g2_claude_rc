@@ -16,14 +16,42 @@ describe('scrolling the timeline', () => {
     expect(view(s).chunk).toBeUndefined()
   })
 
-  test('a swipe up loads a chunk from 3 lines up to the newest, for the glasses to scroll', () => {
+  test('a swipe up sends one screen from 3 lines up: a small, fast redraw', () => {
     const live = withLines(paired(), 30)
     const s = gs(live, 'scroll_up')
     const all = lines(s)
     const top = all.length - TIMELINE_LINES - 3
-    expect(shown(s)).toEqual(all.slice(top))
-    expect(shown(s).length).toBe(TIMELINE_LINES + 3)
+    expect(shown(s)).toEqual(all.slice(top, top + TIMELINE_LINES))
     expect(frame(s).header.endsWith('▼ newer')).toBe(true)
+  })
+
+  test('after a pause the screen is preloaded into a full chunk from the same top line, so nothing moves', () => {
+    const up = gs(withLines(paired(), 30), 'scroll_up')
+    const all = lines(up)
+    const full = reduce(up, { type: 'expand_chunk' }).state
+    expect(shown(full)[0]).toBe(shown(up)[0])
+    expect(shown(full)).toEqual(all.slice(all.length - TIMELINE_LINES - 3))
+    // Already full, or live: nothing to do.
+    expect(reduce(full, { type: 'expand_chunk' }).state).toBe(full)
+    const live = withLines(paired(), 30)
+    expect(reduce(live, { type: 'expand_chunk' }).state).toBe(live)
+  })
+
+  test('a swipe down on a one-screen chunk moves one line and loads the full chunk from there', () => {
+    const up = gs(withLines(paired(), 30), 'scroll_up', 'scroll_up')
+    const all = lines(up)
+    const top = all.indexOf(shown(up)[0]!)
+    const down = gs(up, 'scroll_down')
+    expect(shown(down)[0]).toBe(all[top + 1])
+    expect(shown(down).length).toBeGreaterThan(TIMELINE_LINES)
+  })
+
+  test('an upward step sends far less text than a full chunk', () => {
+    const many = withLines(paired(), 200)
+    let up = many
+    for (let i = 0; i < 20; i++) up = gs(up, 'scroll_up')
+    const full = reduce(up, { type: 'expand_chunk' }).state
+    expect(frame(up).timeline.length * 3).toBeLessThan(frame(full).timeline.length)
   })
 
   test('a swipe up at the top of a chunk loads the lines above it', () => {
@@ -33,7 +61,7 @@ describe('scrolling the timeline', () => {
   })
 
   test('a swipe down at the bottom of a chunk continues one line on, then back to live', () => {
-    let s = gs(withLines(paired(), 30), 'scroll_up', 'scroll_up', 'scroll_up', 'scroll_up')
+    let s = reduce(gs(withLines(paired(), 30), 'scroll_up', 'scroll_up', 'scroll_up', 'scroll_up'), { type: 'expand_chunk' }).state
     const all = lines(s)
     const end = all.indexOf(shown(s).at(-1)!)
     // The chunk ends before the newest line only if it was cut to fit; here it reaches it.
@@ -46,6 +74,7 @@ describe('scrolling the timeline', () => {
   test('a long history is cut into chunks that fit one upgrade', () => {
     let s = withLines(paired(), 200)
     for (let i = 0; i < 40; i++) s = gs(s, 'scroll_up')
+    s = reduce(s, { type: 'expand_chunk' }).state
     const text = frame(s).timeline
     expect(text.length).toBeLessThanOrEqual(CHUNK_CHARS)
     const all = lines(s)

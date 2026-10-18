@@ -881,3 +881,13 @@ No secrets or Anthropic credentials are involved. **Verified:** the first run pa
   - A typed answer in the terminal dialog reached Claude and dismissed the glasses card.
   - A glasses answer closed the terminal dialog.
   - The web view was not driven here; the user's earlier answer there is the evidence for it.
+
+## Faster upward scrolling (2026-10-18, user report)
+- **Report:** scrolling down is smooth, but scrolling up still loads; preload the text?
+- **Limit, rechecked:** the glasses show any new text from its top line. The SDK has no scroll position, and `textContainerUpgrade`'s `contentOffset`/`contentLength` (a partial update) does not help in the simulator: a test page that appended at the end, or inserted at offset 0, got its whole text replaced and the view reset each time. So each swipe up past the top of the held block always needs a new block from the phone, and true native upward scrolling is not possible.
+- **Change:**
+  - A swipe up now sends one screen (`chunkShort`, 9 lines instead of up to 1800 characters, about a quarter of the text). Text that fits the box does not scroll on the glasses, so every swipe still reaches the app.
+  - 500 ms after the last swipe, main.ts sends `expand_chunk`, which replaces it with the full block from the same top line. That looks the same, so nothing moves, and downward reading is native again. Only gestures restart that timer; animation ticks do not.
+  - A swipe down on a one-screen block moves one line and loads the full block.
+  - Display: a redraw caused by a gesture skips the 100 ms debounce. Flushes are serialized, so a scene that arrives mid-flush is drawn right after.
+- **Not verified on hardware:** the gain depends on Bluetooth time per character, which the simulator does not model.

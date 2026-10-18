@@ -82,4 +82,22 @@ describe('Display', () => {
     await d.init(render(paired()))
     expect(calls.map(c => c.fn)).toEqual(['create', 'rebuild'])
   })
+
+  test('a redraw for a swipe skips the debounce, and redraws never overlap', async () => {
+    const { bridge, calls } = fakeBridge()
+    const d = new Display(bridge, new BridgeQueue(), e => {
+      throw e
+    })
+    const s0 = paired()
+    await d.init(render(s0))
+    const one = recv(s0, env('event', { type: 'notify', summary: 'one' }))
+    const two = recv(one, env('event', { type: 'notify', summary: 'two' }))
+    d.show(render(one), { now: true })
+    d.show(render(two), { now: true })
+    await Bun.sleep(20)
+    const upgrades = calls.filter(c => c.fn === 'upgrade').map(c => (c.arg as { content: string }).content)
+    expect(upgrades.length).toBe(2)
+    expect(upgrades.at(-1)).toContain('! two')
+  })
 })
+

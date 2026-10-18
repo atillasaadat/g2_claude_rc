@@ -69,6 +69,13 @@ export interface SessionView {
    */
   chunk?: readonly string[]
   /**
+   * The chunk is one screen only, sent for a swipe up: a quarter of the text
+   * of a full chunk, so the redraw is quick. It fits the box, so every swipe
+   * still reaches us, and after a pause it is replaced by the full chunk from
+   * the same top line (`expand_chunk`), which looks the same.
+   */
+  chunkShort?: boolean
+  /**
    * The user scrolled by hand since the last prompt, so a reply leaves the
    * view where it is. A landing on a reply's start does not count.
    */
@@ -167,6 +174,8 @@ export type Msg =
   | { type: 'partial'; attempt: number; text: string }
   | { type: 'transcript_error'; attempt: number; message: string }
   | { type: 'voice_limit' }
+  /** A pause after swiping up: preload the full chunk behind the one-screen chunk. */
+  | { type: 'expand_chunk' }
   | { type: 'tick'; now: number }
   /** An item of the glasses OS side menu was chosen (see osMenu). */
   | { type: 'os_menu'; itemID: number }
@@ -333,7 +342,7 @@ export const CHUNK_MAX_LINES = 40
 
 /** Following live again: the newest lines, redrawn as they come. */
 const toLive = (v: SessionView): SessionView => {
-  const { chunk: _gone, reading: _done, ...rest } = v
+  const { chunk: _gone, chunkShort: _short, reading: _done, ...rest } = v
   return { ...rest, fromBottom: 0 }
 }
 
@@ -342,11 +351,14 @@ const toLive = (v: SessionView): SessionView => {
  * the glasses can scroll through them without us. At or past the newest
  * screen it is live again.
  */
-function historyAt(v: SessionView, top: number): SessionView {
+function historyAt(v: SessionView, top: number, opts: { short?: boolean } = {}): SessionView {
   const { lines } = buildTimeline(v.entries)
   const last = lines.length - TIMELINE_LINES
   if (last <= 0 || top >= last) return toLive(v)
   const from = Math.max(0, top)
+  if (opts.short) return { ...v, fromBottom: last - from, chunk: lines.slice(from, from + TIMELINE_LINES), chunkShort: true }
+  const { chunkShort: _short, ...full } = v
+  v = full
   const chunk: string[] = []
   let chars = 0
   for (const line of lines.slice(from, from + CHUNK_MAX_LINES)) {
@@ -794,7 +806,8 @@ function onGesture(s: AppState, gesture: Gesture, map: GestureMap, now: number):
     // These arrive when a swipe hits the chunk's top or bottom (or any swipe
     // while live, when the newest lines just fit).
     case 'timeline.up':
-      return done(mapActive(s, x => (x.fromBottom >= maxScroll(x.entries) ? x : byHand(historyAt(x, viewTop(x) - SCROLL_STEP)))))
+      // One screen only: the glasses show any new text from its top, so going up always costs a redraw; keep it small.
+      return done(mapActive(s, x => (x.fromBottom >= maxScroll(x.entries) ? x : byHand(historyAt(x, viewTop(x) - SCROLL_STEP, { short: true })))))
     case 'timeline.down':
       // At the chunk's last screen: continue one line on, as a swipe inside it would.
       return done(mapActive(s, x => (x.fromBottom === 0 ? x : byHand(historyAt(x, viewTop(x) + Math.max(0, (x.chunk?.length ?? 0) - TIMELINE_LINES) + 1)))))
@@ -909,6 +922,11 @@ export function reduce(s: AppState, msg: Msg): Result {
     case 'tick': {
       const next = { ...s, clock: msg.now }
       return done(shouldSleep(next, msg.now) ? { ...next, dark: true } : next)
+    }
+    case 'expand_chunk': {
+      const v = view(s)
+      if (!v.chunkShort) return done(s)
+      return done(withView(s, s.active, historyAt(v, viewTop(v))))
     }
     case 'os_menu':
       return onOsMenu(s, msg.itemID)

@@ -112,13 +112,40 @@ export class Display {
     this.shown = scene
   }
 
-  show(scene: Scene): void {
+  /** `now`: a swipe asked for it, so skip the debounce; the user is waiting on this frame. */
+  show(scene: Scene, opts: { now?: boolean } = {}): void {
     this.pending = scene
+    if (opts.now) {
+      if (this.timer) clearTimeout(this.timer)
+      this.timer = null
+      void this.drain()
+      return
+    }
     if (this.timer) return
     this.timer = setTimeout(() => {
       this.timer = null
-      void this.flush()
+      void this.drain()
     }, RENDER_DEBOUNCE_MS)
+  }
+
+  private flushing = false
+  private flushAgain = false
+
+  /** One flush at a time; a scene that arrives meanwhile is drawn right after. */
+  private async drain(): Promise<void> {
+    if (this.flushing) {
+      this.flushAgain = true
+      return
+    }
+    this.flushing = true
+    try {
+      do {
+        this.flushAgain = false
+        await this.flush()
+      } while (this.flushAgain || this.pending)
+    } finally {
+      this.flushing = false
+    }
   }
 
   /** Redraws everything, e.g. after the app returns to the foreground. */
