@@ -76,6 +76,44 @@ function client(url: string, extra: Partial<ConstructorParameters<typeof RelayCl
 }
 
 describe('RelayClient', () => {
+  test('async frame handlers run one at a time, in arrival order, even when an earlier one is slower', async () => {
+    const relay = fakeRelay()
+    cleanup.push(relay.stop)
+    const handled: number[] = []
+    const { c, statuses } = client(relay.url, {
+      onFrame: async f => {
+        // The first frame takes longest (as decrypting a long reply can).
+        await Bun.sleep(f[0] === 1 ? 60 : 0)
+        handled.push(f[0]!)
+      },
+    })
+    c.start()
+    await until(() => statuses.includes('open'))
+    relay.send(Uint8Array.of(1))
+    relay.send(Uint8Array.of(2))
+    relay.send(Uint8Array.of(3))
+    await until(() => handled.length === 3)
+    expect(handled).toEqual([1, 2, 3])
+  })
+
+  test('a handler that throws does not stop the frames after it', async () => {
+    const relay = fakeRelay()
+    cleanup.push(relay.stop)
+    const handled: number[] = []
+    const { c, statuses } = client(relay.url, {
+      onFrame: async f => {
+        if (f[0] === 1) throw new Error('bad frame')
+        handled.push(f[0]!)
+      },
+    })
+    c.start()
+    await until(() => statuses.includes('open'))
+    relay.send(Uint8Array.of(1))
+    relay.send(Uint8Array.of(2))
+    await until(() => handled.length === 1)
+    expect(handled).toEqual([2])
+  })
+
   test('connects, sends frames, receives frames and presence', async () => {
     const relay = fakeRelay()
     cleanup.push(relay.stop)

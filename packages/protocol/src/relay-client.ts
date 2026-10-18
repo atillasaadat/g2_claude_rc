@@ -16,7 +16,12 @@ export interface Presence {
 export interface RelayClientOptions {
   /** Full WebSocket URL, including room and role. */
   url: string
-  onFrame: (frame: Uint8Array) => void
+  /**
+   * A frame from the peer. An async handler (decrypting is) runs only after
+   * the one before it settles, so frames are handled in the order they
+   * arrived; otherwise a short frame could overtake a long one.
+   */
+  onFrame: (frame: Uint8Array) => unknown
   onStatus?: (status: RelayStatus) => void
   onPresence?: (presence: Presence) => void
   /** Called when the relay says this socket is over its rate limit. */
@@ -33,6 +38,8 @@ export interface RelayClientOptions {
 const DEAD_AFTER_PINGS = 2.5
 
 export class RelayClient {
+  /** Frame handlers in arrival order (see onFrame). */
+  private frames: Promise<void> = Promise.resolve()
   private ws: WebSocket | null = null
   private readonly buffer: Uint8Array[] = []
   private attempt = 0
@@ -143,7 +150,10 @@ export class RelayClient {
       if (this.ws === ws) this.lastHeard = Date.now()
       if (ev.data === 'pong') answersPings = true
       if (typeof ev.data !== 'string') {
-        this.opts.onFrame(new Uint8Array(ev.data as ArrayBuffer))
+        const frame = new Uint8Array(ev.data as ArrayBuffer)
+        this.frames = this.frames.then(async () => void (await this.opts.onFrame(frame))).catch(() => {
+          // A frame the handler could not use; the next ones still run.
+        })
         return
       }
       if (ev.data === 'pong') return

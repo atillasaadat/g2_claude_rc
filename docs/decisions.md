@@ -891,3 +891,9 @@ No secrets or Anthropic credentials are involved. **Verified:** the first run pa
   - A swipe down on a one-screen block moves one line and loads the full block.
   - Display: a redraw caused by a gesture skips the 100 ms debounce. Flushes are serialized, so a scene that arrives mid-flush is drawn right after.
 - **Not verified on hardware:** the gain depends on Bluetooth time per character, which the simulator does not model.
+
+## Frames in arrival order (2026-10-18, a failed CI run)
+- **Report:** the plugin check failed once on main. In the end-to-end test "a turn streams prompt, tools, state and reply", the idle `session` frame came in before the `reply` frame.
+- **Cause:** the channel seals and sends frames in order (one promise chain). But every receiver's `onFrame` was an async decrypt, and `RelayClient` called it without waiting, so a short frame could finish decrypting before a long one that arrived first. The same applied to the app (`link.ts`), the channel's inbound side and the pairing clients. So this was a real ordering bug on the glasses, not just in the test: a session could show idle before its reply, or a `tool_end` could arrive before its `tool_start` and not merge.
+- **Fix:** `RelayClient` runs frame handlers one at a time on a promise chain, in arrival order. A handler that throws is caught, and the frames after it still run.
+- **Also:** the voice simulator test kept the 5 s default timeout with about 1.8 s of fixed waits in it, and failed when the simulator was slow. It now has 15 s. Its duration (3.6 s) is the same with and without this change.

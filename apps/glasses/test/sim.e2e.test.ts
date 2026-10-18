@@ -343,7 +343,7 @@ describe.skipIf(!RUN)('glasses app in the simulator', () => {
     await send('ack', { ids: [inbound.find(e => e.kind === 'prompt')!.id] })
     await frameWhere(f => f.header.startsWith('→ Sent to g2cc-sandbox'), 'sent confirmation')
     await screenshot('prompt-sent')
-  })
+  }, 15_000)
 
   test('Display off blanks the glasses, and a reply (or any gesture) brings them back', async () => {
     await send('session', { name: 'g2cc-sandbox', cwd: '/x', state: 'working', mode: 'auto' })

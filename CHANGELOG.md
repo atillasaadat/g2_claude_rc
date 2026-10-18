@@ -4,6 +4,12 @@ Every release has a git tag and a GitHub Release with the full commit list. App 
 
 Add the entry here before running `scripts/release.sh`, which refuses a version without one.
 
+## App 0.4.15
+- Messages from your computers are handled in the order they arrive. Before, a short message could overtake a long one while both were being decrypted, so a session could show as idle before its reply was in, or a tool's result could arrive before its start.
+
+## Plugin 0.4.11
+- Commands from the glasses are handled in the order they arrive (the same fix as app 0.4.15, in the shared relay client).
+
 ## App 0.4.14
 - Scrolling up is quicker. The glasses always show new text from its top line, so every swipe up past the top of what they hold needs new text from the phone. That step now sends one screen instead of a whole block (about a quarter of the text), and a swipe redraws at once, without the 100 ms render delay. Half a second after you stop, the rest of the block is preloaded from the same top line, so nothing moves and reading back down scrolls on the glasses again.
 

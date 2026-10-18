@@ -28957,6 +28957,7 @@ var DEAD_AFTER_PINGS = 2.5;
 
 class RelayClient {
   opts;
+  frames = Promise.resolve();
   ws = null;
   buffer = [];
   attempt = 0;
@@ -29060,7 +29061,8 @@ class RelayClient {
       if (ev.data === "pong")
         answersPings = true;
       if (typeof ev.data !== "string") {
-        this.opts.onFrame(new Uint8Array(ev.data));
+        const frame = new Uint8Array(ev.data);
+        this.frames = this.frames.then(async () => void await this.opts.onFrame(frame)).catch(() => {});
         return;
       }
       if (ev.data === "pong")
