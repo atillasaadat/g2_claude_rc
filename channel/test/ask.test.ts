@@ -76,10 +76,10 @@ describe('ask tool', () => {
     expect(answers).toEqual([])
   })
 
-  test('pending questions survive new prompts (the answer itself arrives as one) and resync re-sends them', () => {
+  test('pending questions survive the end of the turn and an answer message, and resync re-sends them', () => {
     const { c, out } = setup()
     c.onAsk({ question: 'Which branch?', options: ['main', 'dev'] })
-    c.onHook({ ...base, hook_event_name: 'UserPromptSubmit', prompt: 'x' })
+    c.onHook({ ...base, hook_event_name: 'UserPromptSubmit', prompt: '<channel source="plugin:g2:g2" question_id="q1" source_kind="answer">\nx\n</channel>' })
     c.onHook({ ...base, hook_event_name: 'Stop' })
     out.length = 0
     c.resync()
@@ -167,5 +167,28 @@ describe('ask in both places', () => {
     c.awaitGlassesAnswer(q.question_id).stop()
     c.onInbound(answer(q.question_id, 'yes'))
     expect(answers.map(a => a.questionId)).toEqual([q.question_id])
+  })
+
+  test('typing or speaking a new prompt instead of answering clears the open question everywhere', () => {
+    const { c, out, answers } = setup()
+    c.onAsk({ question: 'Which branch?', options: ['main', 'dev'] })
+    const [q] = questions(out)
+    c.onHook({ ...base, hook_event_name: 'UserPromptSubmit', prompt: 'use main' })
+    expect(out.filter(e => e.kind === 'question_resolved').map(e => e.body)).toEqual([{ question_id: q!.question_id }])
+    // A late tap on the glasses then does nothing.
+    c.onInbound(answer(q!.question_id, 'dev'))
+    expect(answers).toEqual([])
+  })
+
+  test("the answer's own channel message does not clear other questions, and a waiting ask is never cleared", () => {
+    const { c, out } = setup()
+    c.onAsk({ question: 'A?', options: ['x', 'y'] })
+    c.onAsk({ question: 'B?', options: ['x', 'y'] })
+    const [a, b] = questions(out)
+    c.awaitGlassesAnswer(b!.question_id)
+    c.onInbound(answer(a!.question_id, 'x'))
+    c.onHook({ ...base, hook_event_name: 'UserPromptSubmit', prompt: `<channel source="plugin:g2:g2" question_id="${a!.question_id}" source_kind="answer">\nThe user answered\n</channel>` })
+    c.onHook({ ...base, hook_event_name: 'UserPromptSubmit', prompt: 'something else' })
+    expect(out.filter(e => e.kind === 'question_resolved')).toEqual([])
   })
 })

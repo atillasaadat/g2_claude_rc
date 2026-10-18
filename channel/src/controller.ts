@@ -20,7 +20,7 @@
 import { z } from 'zod'
 import { REQUEST_ID_RE, type AnyEnvelope, type Body, type C2G_KINDS, type HistoryItem } from '@g2cc/protocol'
 import type { HookResponse } from './hook-socket'
-import { isDisplayTool, SessionTracker, translateHook, type HookPayload } from './hooks'
+import { isAnswerPrompt, isDisplayTool, SessionTracker, translateHook, type HookPayload } from './hooks'
 import { clip, oneLine, redact } from './redact'
 
 type C2GKind = (typeof C2G_KINDS)[number]
@@ -94,6 +94,10 @@ export class SessionController {
   private stopRequested = false
   /** Insertion-ordered, so the oldest request of a tool resolves first. */
   private readonly pending = new Map<string, Pending>()
+  /** Tool calls started and not finished, by tool name, oldest first: a permission request belongs to the oldest one. */
+  private readonly started = new Map<string, string[]>()
+  /** request_id -> tool_use_id, so a result seen in the transcript settles its card. */
+  private readonly requestTool = new Map<string, string>()
   private readonly questions = new Map<string, Body<'question'>>()
   /** Questions whose ask call is still waiting (shown in the terminal too): a glasses answer goes there, not to a channel message. */
   private readonly waiting = new Map<string, (choice: string) => void>()
@@ -188,12 +192,17 @@ export class SessionController {
       input_preview: clip(redact(r.input_preview), PREVIEW_MAX),
     }
     this.pending.set(r.request_id, body)
+    const queue = this.started.get(r.tool_name) ?? []
+    const taken = new Set(this.requestTool.values())
+    const toolUseId = queue.find(id => !taken.has(id))
+    if (toolUseId) this.requestTool.set(r.request_id, toolUseId)
     this.opts.emit({ kind: 'permission', body })
     this.emitSession(this.tracker.set('waiting'))
   }
 
   private resolve(requestId: string): void {
     this.pending.delete(requestId)
+    this.requestTool.delete(requestId)
     this.opts.emit({ kind: 'permission_resolved', body: { request_id: requestId } })
   }
 
@@ -201,12 +210,51 @@ export class SessionController {
     for (const id of [...this.pending.keys()]) this.resolve(id)
   }
 
+  /** A turn is running or a card is open: the transcript may hold what no hook reports. */
+  wantsTranscript(): boolean {
+    const state = this.tracker.snapshot().state
+    return state === 'working' || state === 'waiting' || this.pending.size > 0
+  }
+
+  /** What the transcript says happened, from the terminal or the web view (src/transcript-watch.ts). */
+  onTranscriptNews(news: { toolResults: readonly string[]; interrupted: boolean }): void {
+    for (const id of news.toolResults) {
+      this.finished(id)
+      for (const [requestId, toolUseId] of [...this.requestTool]) if (toolUseId === id && this.pending.has(requestId)) this.resolve(requestId)
+    }
+    if (!news.interrupted) return
+    // Interrupted there: no Stop hook follows, so the turn ends here.
+    this.resolveAll()
+    this.started.clear()
+    if (this.tracker.snapshot().state !== 'stopped') this.emitSession(this.tracker.set('idle'))
+  }
+
+  private finished(toolUseId: string): void {
+    for (const [name, ids] of this.started) {
+      const left = ids.filter(id => id !== toolUseId)
+      if (left.length) this.started.set(name, left)
+      else this.started.delete(name)
+    }
+  }
+
   onHook(p: HookPayload): HookResponse {
     if (this.opts.sessionId && p.session_id !== this.opts.sessionId) return {}
 
+    if (p.hook_event_name === 'PreToolUse' && p.tool_name && p.tool_use_id) {
+      this.started.set(p.tool_name, [...(this.started.get(p.tool_name) ?? []), p.tool_use_id].slice(-20))
+    }
+    if ((p.hook_event_name === 'PostToolUse' || p.hook_event_name === 'PostToolUseFailure') && p.tool_use_id) this.finished(p.tool_use_id)
+    if (p.hook_event_name === 'Stop' || p.hook_event_name === 'UserPromptSubmit') this.started.clear()
+
     if (p.hook_event_name === 'UserPromptSubmit') this.stopRequested = false
-    if (p.hook_event_name === 'UserPromptSubmit' || p.hook_event_name === 'Stop') this.resolveAll()
-    if (p.hook_event_name === 'PostToolUse') {
+    // Idle: a denial or an interrupt in the terminal or the web view settled any open dialog without a PostToolUse or Stop.
+    const idle = p.hook_event_name === 'Notification' && p.notification_type === 'idle_prompt'
+    if (p.hook_event_name === 'UserPromptSubmit' || p.hook_event_name === 'Stop' || idle) this.resolveAll()
+    // A new prompt typed or spoken instead of answering supersedes the open questions (not one an ask call still waits on).
+    if (p.hook_event_name === 'UserPromptSubmit' && typeof p.prompt === 'string' && !isAnswerPrompt(p.prompt)) {
+      for (const id of [...this.questions.keys()]) if (!this.waiting.has(id)) this.resolveQuestion(id)
+    }
+    if (p.hook_event_name === 'PostToolUse' || p.hook_event_name === 'PostToolUseFailure') {
       const match = [...this.pending.values()].find(q => q.tool_name === p.tool_name)
       if (match) this.resolve(match.request_id)
     }

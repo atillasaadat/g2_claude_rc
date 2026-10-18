@@ -104,7 +104,9 @@ The relay admits a socket to a room only with the room's auth token (an HMAC of 
   - The header shows **→ Sent** once the computer has the prompt. On a weak phone connection it is resent for up to 50 s. If it still cannot get through, it comes back as **Not delivered. Send again?**, and one tap sends it again.
   - Spoken keywords are handled on the glasses and never sent: **stop**, **cancel**, and **approve** / **deny** (the last two only while a card is showing).
 - **Approvals:** permission cards start on Deny, and taps within 0.5 s of a card appearing are ignored.
-- **Claude's questions** show on the glasses and in the terminal at the same time. Answer in either; the other closes, and Claude gets the answer right away.
+- **Use the terminal, the web view and the glasses together.** Prompts, approvals and Claude's questions can be answered from any of them, and whatever you settle in one place clears in the others:
+  - **Claude's questions** show on the glasses and as a dialog in Claude Code, in the terminal and in the web or phone view (Remote Control). Pick an option in any of them, or type your own answer in the dialog. The first answer wins, the rest close, and Claude gets it right away. If you just type or say a new prompt instead, the open question is cleared from the glasses.
+  - **Approvals** show in all three. Allow or No in the terminal or the web view clears the card on the glasses, and so does a call that fails or a turn you interrupt there (Esc).
 - **Gestures** can be remapped in the phone view. The tap menu is a native list: the glasses scroll it themselves, so swipes there always move the highlight and a tap selects.
 
 ## Repository

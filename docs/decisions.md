@@ -861,3 +861,23 @@ No secrets or Anthropic credentials are involved. **Verified:** the first run pa
 - **Fix:**
   - `wrapBlock` (layout.ts) wraps while keeping each line's indent and a hanging indent after a marker (`•`, `12.`, `»`, `!`). Glances, notes and replies use it. Tool lines stay single lines, since they are a compact log.
   - `toPlainText` turns a table row into a list item, "first: second" for two columns, else "first · header: value · ...", and drops the `|---|` rule. It also strips nested quote markers, `~~strike~~`, images (keeps the alt text), backslash escapes and `<br>`, and handles double-backtick code.
+
+## One session, three places to answer (2026-10-18, user request)
+- **Request:** the terminal, the Claude Code web view (Remote Control) and the glasses are used interchangeably, so every input and output must work from all three.
+- **Checked, by surface:**
+  - Prompts, the feed and replies already worked everywhere.
+  - Approvals: Remote Control forwards permission prompts to the web view, and the channel relay sends them to the glasses. The first answer wins.
+  - `ask` questions: the MCP elicitation dialog shows in the terminal and is forwarded to the web view. The user confirmed this, and answered one there. Native AskUserQuestion stays redirected to `ask` while glasses are connected, since a hook cannot hold it open for the glasses without blocking the terminal and web dialog.
+- **Found in this session's log:** `ask` gave up after 30 minutes (`ASK_WAIT_MS`). The SDK request timed out, but Claude Code kept the dialog open, so the user's answer there 7 hours later was dropped. Only a later glasses answer got through.
+- **Found in a live throwaway session (manual mode):** answering No in the terminal fires no PostToolUse, PostToolUseFailure or Stop, and no idle_prompt follows. The glasses card and the "working" state stayed until the next prompt. The transcript does get a `tool_result` for the call's `tool_use_id` (which PreToolUse carries), plus a `[Request interrupted by user for tool use]` message.
+- **Changes (plugin 0.4.10):**
+  - `ask` waits up to a day, as long as AskUserQuestion would. The dialog adds an optional free-text field, "Or type your own answer".
+  - Its result says where the answer came from, and the tool description and instructions name all three places.
+  - A UserPromptSubmit that is not a glasses answer message (`source_kind="answer"`) clears open questions that no `ask` call is still waiting on.
+  - `PostToolUseFailure` is hooked: it shows as `failed: <first line>` or `interrupted`, and it clears that tool's card.
+  - `TranscriptWatch` (`channel/src/transcript-watch.ts`) runs while a turn is going or a card is open. It reads only the bytes appended since the last read. A `tool_result` for a card's `tool_use_id` clears the card, and an interrupt marker clears all cards and sets the session idle. `idle_prompt` also clears cards.
+- **Verified live:**
+  - A No in the terminal cleared the glasses card in about 5 s, and the state went idle.
+  - A typed answer in the terminal dialog reached Claude and dismissed the glasses card.
+  - A glasses answer closed the terminal dialog.
+  - The web view was not driven here; the user's earlier answer there is the evidence for it.

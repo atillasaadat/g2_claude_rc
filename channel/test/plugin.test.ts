@@ -15,7 +15,7 @@ describe('plugin package', () => {
 
   test('every hook runs the bundled command hook in exec form, with a short timeout', () => {
     const { SessionStart: _bunCheck, ...hooks } = json('plugin/hooks/hooks.json').hooks as Record<string, { hooks: unknown[] }[]>
-    expect(Object.keys(hooks).sort()).toEqual(['Notification', 'PostToolUse', 'PreToolUse', 'Stop', 'UserPromptSubmit'])
+    expect(Object.keys(hooks).sort()).toEqual(['Notification', 'PostToolUse', 'PostToolUseFailure', 'PreToolUse', 'Stop', 'UserPromptSubmit'])
     for (const groups of Object.values(hooks))
       for (const h of groups.flatMap(g => g.hooks))
         expect(h).toEqual({ type: 'command', command: 'bun', args: ['${CLAUDE_PLUGIN_ROOT}/dist/hook.js'], timeout: 3 })

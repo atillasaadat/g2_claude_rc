@@ -46,7 +46,7 @@ Even Hub app (Vite + TS, Even Hub SDK) in the Even Realities phone app → G2
 | Final reply text | Stop hook input carries `last_assistant_message` (fall back to the last assistant entry in `transcript_path`), then follows the same path as the feed |
 | Voice prompt | Glasses ASR → confirm tap → Worker → channel → `notifications/claude/channel` with `content` = transcript |
 | Permission approval | Claude Code → `notifications/claude/channel/permission_request` → glasses card → Allow or Deny → `notifications/claude/channel/permission` with `{request_id, behavior}` |
-| Claude asks a question | Claude calls the `ask` tool with a question and options → a question card on the glasses **and** a choice dialog in the terminal (MCP elicitation), at once → the first answer wins: the tool returns it, and the other side closes (an aborted dialog, or a `question_resolved` envelope). Without a dialog (for example `claude -p`), the answer returns later as a channel event with `meta.question_id` |
+| Claude asks a question | Claude calls the `ask` tool with a question and options → a question card on the glasses **and** a choice dialog (MCP elicitation, with an optional free-text answer) in the terminal and, through Remote Control, the web view, at once → the first answer wins: the tool returns it, and the other side closes (an aborted dialog, or a `question_resolved` envelope). Without a dialog (for example `claude -p`), the answer returns later as a channel event with `meta.question_id` |
 | Stop | Glasses → Worker → channel sets a stop flag → the next PreToolUse hook gets back `continue: false` **plus** a PreToolUse `permissionDecision: "deny"` (exact JSON in docs/decisions.md). `continue: false` alone lets the pending tool run first. The flag clears on the next UserPromptSubmit. |
 
 Why stop is a hook rather than a channel message: channel events queue while Claude is busy and are only delivered on the next turn, so a "stop" message would arrive too late.
@@ -129,6 +129,7 @@ All hooks are exec-form command hooks: `{"type": "command", "command": "bun", "a
   - If the stop flag is set, respond with the stop JSON.
   - If the tool is `AskUserQuestion`, deny it with a reason telling Claude to use the g2 `ask` tool.
   - If the tool is our own `ask` or `glance` under the plugin's own names (`mcp__plugin_g2_g2__`), allow it (a plugin cannot add permission rules). Never for look-alike names from another server called g2.
+- **PostToolUseFailure**: emit a `tool_end` event (`failed: <first line>` or `interrupted`) and clear that tool's card. A No in the terminal or web view fires no hook at all; the channel reads the transcript for it (`channel/src/transcript-watch.ts`, docs/decisions.md).
 - **PostToolUse**: emit a `tool_end` event with a short result summary. Bash `tool_response` has `{stdout, stderr, interrupted}` and no exit code, so summarize as ok/interrupted plus the first stderr line. Include files touched.
 - **UserPromptSubmit**: POST a `prompt` event and clear the stop flag.
 - **Notification**: POST a `notify` event.

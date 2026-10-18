@@ -109,4 +109,36 @@ describe('permission relay', () => {
     c.resync()
     expect(out.map(e => e.kind)).toEqual(['session', 'ack', 'permission', 'permission'])
   })
+
+  test('a card clears when its tool fails, or once Claude is idle after a denial or interrupt elsewhere', () => {
+    const { c, out } = setup()
+    c.onPermissionRequest(req('abcde'))
+    c.onHook({ ...base, hook_event_name: 'PostToolUseFailure', tool_name: 'Bash', error: 'Exit code 1' })
+    expect(of(out, 'permission_resolved')).toEqual([{ request_id: 'abcde' }])
+    // Denied in the terminal or the web view: no PostToolUse and often no Stop, but Claude goes idle.
+    c.onPermissionRequest(req('fghij'))
+    c.onHook({ ...base, hook_event_name: 'Notification', notification_type: 'idle_prompt', message: 'Claude is waiting for your input' })
+    expect(of(out, 'permission_resolved')).toEqual([{ request_id: 'abcde' }, { request_id: 'fghij' }])
+  })
+
+  test('a card settled in the terminal or web view without the tool running clears from the transcript', () => {
+    const { c, out } = setup()
+    c.onHook({ ...base, hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_use_id: 'toolu_a', tool_input: { command: 'touch x' } })
+    c.onPermissionRequest(req('abcde'))
+    expect(c.wantsTranscript()).toBe(true)
+    // Denied there: the transcript gets the tool result and the turn is interrupted, with no hook at all.
+    c.onTranscriptNews({ toolResults: ['toolu_a'], interrupted: true })
+    expect(of(out, 'permission_resolved')).toEqual([{ request_id: 'abcde' }])
+    expect(of(out, 'session').at(-1)?.state).toBe('idle')
+    expect(c.wantsTranscript()).toBe(false)
+  })
+
+  test('a result for another call leaves the card alone', () => {
+    const { c, out } = setup()
+    c.onHook({ ...base, hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_use_id: 'toolu_a', tool_input: { command: 'touch x' } })
+    c.onPermissionRequest(req('abcde'))
+    c.onTranscriptNews({ toolResults: ['toolu_other'], interrupted: false })
+    expect(of(out, 'permission_resolved')).toEqual([])
+  })
 })
+

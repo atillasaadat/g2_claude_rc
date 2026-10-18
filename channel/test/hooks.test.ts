@@ -185,3 +185,12 @@ test('a channel prompt from the g2 plugin is unwrapped and marked as glasses', (
   const p: HookPayload = { ...base, hook_event_name: 'UserPromptSubmit', prompt }
   expect(translateHook(p)).toEqual([{ kind: 'event', body: { type: 'prompt', summary: 'run the tests', origin: 'glasses' } }])
 })
+
+test('a failed tool shows as failed, with the first line of its error, and keeps the session working', () => {
+    const p = { ...base, hook_event_name: 'PostToolUseFailure', tool_name: 'Bash', tool_input: { command: 'npm test' }, error: 'Exit code 1\nError: nope' }
+    expect(translateHook(p)).toEqual([{ kind: 'event', body: { type: 'tool_end', tool: 'Bash', summary: 'failed: Exit code 1' } }])
+    expect(translateHook({ ...p, is_interrupt: true })).toEqual([{ kind: 'event', body: { type: 'tool_end', tool: 'Bash', summary: 'interrupted' } }])
+    const t = new SessionTracker({ name: 'repo', cwd: '/r' })
+    expect(t.update(p)?.state).toBe('working')
+})
+

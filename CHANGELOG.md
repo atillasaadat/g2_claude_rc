@@ -4,6 +4,16 @@ Every release has a git tag and a GitHub Release with the full commit list. App 
 
 Add the entry here before running `scripts/release.sh`, which refuses a version without one.
 
+## App 0.4.13
+- The guide says approvals and questions can also be answered in the terminal or the web view, and that the card on the glasses then clears (with plugin 0.4.10).
+
+## Plugin 0.4.10
+- Answer from anywhere: Claude's questions (the `ask` tool) wait for the first answer from the terminal, the web or phone view, or the glasses, however long that takes. Before, after 30 minutes the dialog stayed open in the terminal and web view but its answer was lost.
+- The question dialog also takes an answer in your own words, as AskUserQuestion's "Other" does.
+- An open question is cleared from the glasses when you type or say a new prompt instead of answering it.
+- An approval card on the glasses now clears when you answer No in the terminal or the web view, when the call fails, or when you interrupt the turn there. Before, it stayed until the next prompt, and the glasses kept showing the session as working.
+- Needs one `/reload-plugins` (or a new session) for the new failure hook; the rest arrives with the automatic update.
+
 ## App 0.4.12
 - Glances (the `»` line Claude sends at the end of a turn) and notes wrap onto the next lines instead of being cut off at the screen edge.
 - Replies keep their shape: list and numbered items wrap with a hanging indent, code keeps its indent, and tables show as one item per row with each value labelled by its column. Nested quotes, strikethrough, images, escaped characters and `<br>` are cleaned up too.

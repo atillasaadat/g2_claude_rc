@@ -26,6 +26,11 @@ export interface HookPayload {
   message?: string
   notification_type?: string
   last_assistant_message?: string
+  /** PostToolUseFailure: what went wrong, and whether it was an abort. */
+  error?: string
+  is_interrupt?: boolean
+  tool_use_id?: string
+  transcript_path?: string
 }
 
 export type Outbound = { kind: 'event'; body: Body<'event'> } | { kind: 'reply'; body: Body<'reply'> }
@@ -50,6 +55,9 @@ const isHiddenTool = (name: string, prefix: string): boolean => name === 'ToolSe
 
 /** The source tag is "g2" as a plain MCP server and "plugin:g2:g2" from the plugin. */
 const CHANNEL_WRAPPER = /^<channel source="(?:plugin:g2:)?g2"[^>]*>\n?([\s\S]*?)\n?<\/channel>\s*$/
+
+/** The channel message that carries a glasses answer to an ask question. */
+export const isAnswerPrompt = (prompt: string): boolean => /^<channel source="(?:plugin:g2:)?g2"[^>]*\bsource_kind="answer"/.test(prompt)
 
 const summary = (text: string): string => clip(oneLine(redact(text)), SUMMARY_MAX)
 
@@ -137,6 +145,12 @@ export function translateHook(p: HookPayload, ownPrefix = 'mcp__g2__'): Outbound
       const tool = toolLabel(p.tool_name)
       return [{ kind: 'event', body: { type: 'tool_end', tool, summary: summary(endSummary(p.tool_name, p.tool_input, p.tool_response, p.cwd)) } }]
     }
+    case 'PostToolUseFailure': {
+      if (!p.tool_name || isHiddenTool(p.tool_name, ownPrefix)) return []
+      const first = p.error?.split('\n').find(l => l.trim())
+      const what = p.is_interrupt ? 'interrupted' : first ? `failed: ${first}` : 'failed'
+      return [{ kind: 'event', body: { type: 'tool_end', tool: toolLabel(p.tool_name), summary: summary(what) } }]
+    }
     case 'UserPromptSubmit': {
       if (typeof p.prompt !== 'string') return []
       const wrapped = CHANNEL_WRAPPER.exec(p.prompt)
@@ -191,6 +205,7 @@ function nextState(prev: SessionBody['state'], p: HookPayload): SessionBody['sta
     case 'UserPromptSubmit':
     case 'PreToolUse':
     case 'PostToolUse':
+    case 'PostToolUseFailure':
       return 'working'
     case 'Notification':
       if (p.notification_type === 'permission_prompt') return 'waiting'
